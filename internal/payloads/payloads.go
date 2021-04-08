@@ -1,5 +1,9 @@
 package payloads
 
+import (
+	"github.com/bwmarrin/discordgo"
+)
+
 type Action string
 
 const (
@@ -9,8 +13,8 @@ const (
 )
 
 type Payload struct {
-	Action Action `json:"action"`
-	Data   interface{}
+	Action Action         `json:"action"`
+	Role   discordgo.Role `json:"data"`
 }
 
 // TODO: Find a better place for these now that they aren't a part of the payload

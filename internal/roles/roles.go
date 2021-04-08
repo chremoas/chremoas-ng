@@ -325,17 +325,18 @@ func Add(shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.Sta
 	}
 
 	role := discordgo.Role{
-		Name: name,
-		Managed: false,
+		Name:        name,
+		Managed:     false,
 		Mentionable: false,
-		Hoist: false,
-		Color: 0,
-		Position: 0,
+		Hoist:       false,
+		Color:       0,
+		Position:    0,
 		Permissions: 0,
 	}
+
 	payload := payloads.Payload{
 		Action: payloads.Create,
-		Data:   role,
+		Role:   role,
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -348,15 +349,26 @@ func Add(shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.Sta
 		fmt.Println("error:", err)
 	}
 
-	return common.SendSuccess("Queued role creation")
+	return common.SendSuccess(fmt.Sprintf("Created role `%s`", shortName))
 }
 
 func Destroy(shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	var roleID int
 	if len(shortName) == 0 {
 		return common.SendError("short name is required")
 	}
 
-	_, err := db.Delete("roles").
+	err := db.Select("chat_id").
+		From("roles").
+		Where(sq.Eq{"role_nick": shortName}).
+		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
+		QueryRow().Scan(&roleID)
+	if err != nil {
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error deleting role: %s", err))
+	}
+
+	_, err = db.Delete("roles").
 		Where(sq.Eq{"role_nick": shortName}).
 		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		Query()
@@ -365,7 +377,25 @@ func Destroy(shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilde
 		return common.SendFatal(fmt.Sprintf("error deleting role: %s", err))
 	}
 
-	return common.SendSuccess(fmt.Sprintf("Destroyed role: `%s`", shortName))
+	payload := payloads.Payload{
+		Action: payloads.Delete,
+		Role: discordgo.Role{
+			ID: fmt.Sprintf("%d", roleID),
+		},
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+
+	topic := fmt.Sprintf("%s-discord.role", viper.GetString("namespace"))
+	err = nsq.PublishAsync(topic, b, nil)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+
+	return common.SendSuccess(fmt.Sprintf("Destroyed role `%s`", shortName))
 }
 
 func validListItem(a string, list []string) bool {

@@ -108,7 +108,7 @@ func main() {
 	defer roleConsumer.Stop()
 
 	// Add NSQ handlers
-	roleConsumer.AddHandler(roles.New(logger, Session))
+	roleConsumer.AddHandler(roles.New(logger, Session, db))
 
 	err = roleConsumer.ConnectToNSQLookupd("10.42.1.30:4161")
 	if err != nil {
