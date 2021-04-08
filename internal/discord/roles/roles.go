@@ -1,35 +1,101 @@
-package discord
+package roles
 
 import (
+	"encoding/json"
 	"fmt"
 
+	"github.com/bwmarrin/discordgo"
+	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/nsqio/go-nsq"
+	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
 
 //var matchDiscordError = regexp.MustCompile(`^The role '.*' already exists$`)
 
-type Discord struct {
+type Role struct {
 	logger *zap.SugaredLogger
+	session *discordgo.Session
 }
 
-func New(logger *zap.SugaredLogger) *Discord {
-	return &Discord{logger: logger}
+func New(logger *zap.SugaredLogger, session *discordgo.Session) *Role {
+	return &Role{logger: logger, session: session}
 }
 
-func (d Discord) HandleMessage(m *nsq.Message) error {
+func (r Role) HandleMessage(m *nsq.Message) error {
 	if len(m.Body) == 0 {
 		// Returning nil will automatically send a FIN command to NSQ to mark the message as processed.
 		return nil
 	}
+	var body payloads.Payload
+	body.Data = discordgo.Role{}
+	json.Unmarshal(m.Body, &body)
 
-	fmt.Println(m.Body)
+	switch body.Action {
+	case payloads.Create:
+		err := r.create(body.Data.(discordgo.Role))
+		return err
+	case payloads.Update:
+		err := r.update(body.Data.(discordgo.Role))
+		return err
+	case payloads.Delete:
+		err := r.delete(body.Data.(discordgo.Role))
+		return err
+	default:
+		r.logger.Errorf("Unknown action: %s", body.Action)
+	}
+
+	fmt.Printf("%+v\n", body)
+
 
 	// Returning a non-nil error will automatically send a REQ command to NSQ to re-queue the message.
 	return nil
 }
 
-//func (d Discord) AddDiscordRole(name string, logger *zap.SugaredLogger, s *discordgo.Session) error {
+func (r Role) create(role discordgo.Role) error {
+	// Only one thing should write to discord at a time
+	r.session.RLock()
+	defer r.session.RUnlock()
+
+	err := r.session.State.RoleAdd(viper.GetString("bot.discordServerId"), &role)
+	if err != nil {
+		r.logger.Errorf("Error adding role: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (r Role) update(role discordgo.Role) error {
+	// Only one thing should write to discord at a time
+	r.session.RLock()
+	defer r.session.RUnlock()
+
+	err := r.session.State.RoleAdd(viper.GetString("bot.discordServerId"), &role)
+	if err != nil {
+		r.logger.Errorf("Error updating role: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (r Role) delete(role discordgo.Role) error {
+	// Only one thing should write to discord at a time
+	r.session.RLock()
+	defer r.session.RUnlock()
+
+	err := r.session.State.RoleRemove(viper.GetString("bot.discordServerId"), role.ID)
+	if err != nil {
+		r.logger.Errorf("Error updating role: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+//
+//func (r Role) AddDiscordRole(name string, logger *zap.SugaredLogger, s *discordgo.Session) error {
 //	// TODO: push to queue
 //	_, err := h.clients.discord.CreateRole(ctx, &discord.CreateRoleRequest{Name: name})
 //	if err != nil {

@@ -3,9 +3,9 @@ package payloads
 type Action string
 
 const (
-	CreateRole Action = "createRole"
-	DeleteRole Action = "DeleteRole"
-	UpdateRole Action = "updateRole"
+	Create Action = "create"
+	Delete Action = "Delete"
+	Update Action = "update"
 )
 
 type Payload struct {
@@ -13,6 +13,9 @@ type Payload struct {
 	Data   interface{}
 }
 
+// TODO: Find a better place for these now that they aren't a part of the payload
+
+// Role is the role data structure
 type Role struct {
 	Color       int32  `db:"color"`
 	Hoist       bool   `db:"hoist"`

@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/bwmarrin/discordgo"
 	"github.com/nsqio/go-nsq"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -323,14 +324,17 @@ func Add(shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.Sta
 		return common.SendFatal(fmt.Sprintf("error adding role: %s", err))
 	}
 
-	role := payloads.Role{
-		Joinable: false,
+	role := discordgo.Role{
 		Name: name,
-		ShortName: shortName,
-		Type: chatType,
+		Managed: false,
+		Mentionable: false,
+		Hoist: false,
+		Color: 0,
+		Position: 0,
+		Permissions: 0,
 	}
 	payload := payloads.Payload{
-		Action: payloads.CreateRole,
+		Action: payloads.Create,
 		Data:   role,
 	}
 	b, err := json.Marshal(payload)
@@ -338,7 +342,7 @@ func Add(shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.Sta
 		fmt.Println("error:", err)
 	}
 
-	topic := fmt.Sprintf("discord-%s", viper.GetString("namespace"))
+	topic := fmt.Sprintf("%s-discord.role", viper.GetString("namespace"))
 	err = nsq.PublishAsync(topic, b, nil)
 	if err != nil {
 		fmt.Println("error:", err)

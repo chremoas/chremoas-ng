@@ -14,6 +14,7 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
+	"github.com/chremoas/chremoas-ng/internal/discord/roles"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/nsqio/go-nsq"
@@ -23,7 +24,6 @@ import (
 
 	"github.com/chremoas/chremoas-ng/internal/commands"
 	"github.com/chremoas/chremoas-ng/internal/config"
-	"github.com/chremoas/chremoas-ng/internal/discord"
 	"github.com/chremoas/chremoas-ng/internal/log"
 )
 
@@ -100,17 +100,17 @@ func main() {
 	}
 
 	// Setup the Consumer handlers
-	topic := fmt.Sprintf("discord-%s", viper.GetString("namespace"))
-	consumer, err := nsq.NewConsumer(topic, "chatBot", queue)
+	topic := fmt.Sprintf("%s-discord.role", viper.GetString("namespace"))
+	roleConsumer, err := nsq.NewConsumer(topic, "discordGateway", queue)
 	if err != nil {
 		logger.Fatalf("error setting up queue consumer: %s\n", err)
 	}
-	defer consumer.Stop()
+	defer roleConsumer.Stop()
 
 	// Add NSQ handlers
-	consumer.AddHandler(discord.New(logger))
+	roleConsumer.AddHandler(roles.New(logger, Session))
 
-	err = consumer.ConnectToNSQLookupd("10.42.1.30:4161")
+	err = roleConsumer.ConnectToNSQLookupd("10.42.1.30:4161")
 	if err != nil {
 		logger.Fatal(err)
 	}
