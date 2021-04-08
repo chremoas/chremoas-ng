@@ -1,0 +1,53 @@
+namespace: net.4amlunch.dev
+
+registry:
+  hostname: 10.42.1.30
+  port: 8500
+  registerTtl: 20
+  registerInterval: 20
+
+bot:
+  token: Mzc0OTg1NzQ0MDEzNTkwNTI4.Wfi-sA.nhfWoAD9deOceIKrWfo4W74ss-I
+  discordServerId: 374983726763081738
+  role: "Bot Admin Role"
+  ignoredRoles:
+    - "Chremoas"
+
+database:
+  driver: postgres
+  protocol: tcp
+  host: 10.42.1.30
+  port: 5432
+  database: chremoas_dev
+  roledb: chremoas_dev_roles
+  username: chremoas_dev
+  password: s5lNJDoV9hEl9IKBDCBF
+  options: sslmode=disable
+  maxConnections: 5
+
+queue:
+  host: 10.42.1.30
+  port: 4150
+
+net:
+  listenHost: 0.0.0.0
+  listenPort: 3000
+
+oauth:
+  clientId: 39f9ba6a0d604cdfacbfa239a5ceacbe
+  clientSecret: EMirYe8XCSGBu3rAoAQnfbJp4fR3WO7NnHfwRgsS
+  callBackProtocol: https
+  callBackHost: chremoas-dev.4amlunch.net
+  callBackUrl: /auth
+  debug: false
+
+discord:
+  inviteUrl: https://discord.gg/wG7vhHc
+
+inputs:
+  - discord
+
+chat:
+  discord:
+    token: Bot Mzc0OTg1NzQ0MDEzNTkwNTI4.Wfi-sA.nhfWoAD9deOceIKrWfo4W74ss-I
+    prefix: "!"
