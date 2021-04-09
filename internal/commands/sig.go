@@ -11,24 +11,26 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/roles"
 )
 
-const roleHelpStr = `
-Usage: !role <subcommand> <arguments>
+const sigHelpStr = `
+Usage: !sig <subcommand> <arguments>
 
 Subcommands:
-    list: List all Roles
-    create: Add Role
-    destroy: Delete role
-    info: Get Role Info
-    keys: Get valid role keys
-    types: Get valid role types
-    set: Set role key
-    list_members: List Role members
-    list_roles: List user Roles
+    list: List all SIGs
+    create: Add SIGs
+    destroy: Delete SIGs
+    add: Add user to SIG
+    remove: Remove user from SIG
+    info: Get SIG info
+    join: Join SIG
+    leave: Leave SIG
+    set: Set sig key
+    list_members: List SIG members
+    list_sigs: List user SIGs
 `
 
 // This function will be called (due to AddHandler above) every time a new
 // message is created on any channel that the autenticated bot has access to.
-func (c Command) Role(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
+func (c Command) Sig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
 	var (
 		all bool
 		rs  string
@@ -36,11 +38,6 @@ func (c Command) Role(s *discordgo.Session, m *discordgo.Message, ctx *mux.Conte
 
 	c.logger.Infof("Recieved: %s", m.Content)
 	cmdStr := strings.Split(m.Content, " ")
-
-	if len(cmdStr) < 2 {
-		rs = fmt.Sprintf("```%s```", roleHelpStr)
-		goto sendMessage
-	}
 
 	switch cmdStr[1] {
 	case "create":
@@ -55,13 +52,6 @@ func (c Command) Role(s *discordgo.Session, m *discordgo.Message, ctx *mux.Conte
 			rs = "Usage: !role destroy <role_name>"
 		} else {
 			rs = roles.Destroy(cmdStr[2], c.logger, c.db, c.nsq)
-		}
-
-	case "set":
-		if len(cmdStr) < 5 {
-			rs = "Usage: !role set <role_name> <key> <value>"
-		} else {
-			rs = roles.Update(cmdStr[2], cmdStr[3], cmdStr[4], c.logger, c.db, c.nsq)
 		}
 
 	case "list":
@@ -99,10 +89,9 @@ func (c Command) Role(s *discordgo.Session, m *discordgo.Message, ctx *mux.Conte
 
 	case "help":
 	default:
-		rs = fmt.Sprintf("```%s```", roleHelpStr)
+		rs = fmt.Sprintf("```%s```", sigHelpStr)
 	}
 
-sendMessage:
 	_, err := s.ChannelMessageSend(m.ChannelID, rs)
 	if err != nil {
 		c.logger.Errorf("Error sending command: %s", err)

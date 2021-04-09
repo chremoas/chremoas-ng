@@ -60,7 +60,7 @@ func (r Role) HandleMessage(m *nsq.Message) error {
 	}
 }
 
-func (r Role) create(role discordgo.Role) error {
+func (r Role) create(role *discordgo.Role) error {
 	// Only one thing should write to discord at a time
 	r.logger.Info("role.create() acquiring lock")
 	r.session.Lock()
@@ -98,7 +98,7 @@ func (r Role) create(role discordgo.Role) error {
 	return nil
 }
 
-func (r Role) update(role discordgo.Role) error {
+func (r Role) update(role *discordgo.Role) error {
 	// Only one thing should write to discord at a time
 	r.logger.Info("role.create() acquiring lock")
 	r.session.Lock()
@@ -119,7 +119,7 @@ func (r Role) update(role discordgo.Role) error {
 	return nil
 }
 
-func (r Role) delete(role discordgo.Role) error {
+func (r Role) delete(role *discordgo.Role) error {
 	// Only one thing should write to discord at a time
 	r.logger.Info("role.create() acquiring lock")
 	r.session.Lock()

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
@@ -268,7 +269,7 @@ func Info(shortName string, sig bool, logger *zap.SugaredLogger, db *sq.Statemen
 
 	buffer.WriteString(fmt.Sprintf("ShortName: %s\n", roles[0].ShortName))
 	buffer.WriteString(fmt.Sprintf("Name: %s\n", roles[0].Name))
-	buffer.WriteString(fmt.Sprintf("Color: %d\n", roles[0].Color))
+	buffer.WriteString(fmt.Sprintf("Color: #%06x\n", roles[0].Color))
 	buffer.WriteString(fmt.Sprintf("Hoist: %t\n", roles[0].Hoist))
 	buffer.WriteString(fmt.Sprintf("Position: %d\n", roles[0].Position))
 	buffer.WriteString(fmt.Sprintf("Permissions: %d\n", roles[0].Permissions))
@@ -336,7 +337,7 @@ func Add(shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.Sta
 
 	payload := payloads.Payload{
 		Action: payloads.Create,
-		Role:   role,
+		Role:   &role,
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -379,7 +380,7 @@ func Destroy(shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilde
 
 	payload := payloads.Payload{
 		Action: payloads.Delete,
-		Role: discordgo.Role{
+		Role: &discordgo.Role{
 			ID: fmt.Sprintf("%d", roleID),
 		},
 	}
@@ -405,4 +406,96 @@ func validListItem(a string, list []string) bool {
 		}
 	}
 	return false
+}
+
+func Update(shortName, key, value string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	var chatID int
+
+	// ShortName, Key and Value are required so let's check for those
+	if len(shortName) == 0 {
+		return common.SendError("short name is required")
+	}
+
+	if len(key) == 0 {
+		return common.SendError("type is required")
+	}
+
+	if len(value) == 0 {
+		return common.SendError("name is requred")
+	}
+
+	if key == "Color" {
+		if string(value[0]) == "#" {
+			i, _ := strconv.ParseInt(value[1:], 16, 64)
+			value = strconv.Itoa(int(i))
+		}
+	}
+
+	if !validListItem(key, roleKeys) {
+		return common.SendError(fmt.Sprintf("`%s` isn't a valid Role Key", key))
+	}
+
+	err := db.Select("chat_id").
+		From("roles").
+		Where(sq.Eq{"role_nick": shortName}).
+		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
+		QueryRow().Scan(&chatID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return common.SendError(fmt.Sprintf("No such role: %s", shortName))
+		}
+		return common.SendFatal(err.Error())
+	}
+
+	if chatID == 0 {
+		return common.SendError(fmt.Sprintf("role `%s` doesn't have chatID set properly", shortName))
+	}
+
+	_, err = db.Update("roles").
+		Set(key, value).
+		Where(sq.Eq{"chat_id": chatID}).
+		Query()
+	if err != nil {
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error adding role: %s", err))
+	}
+
+	var role discordgo.Role
+
+	err = db.Select("name", "managed", "mentionable", "hoist", "color", "position", "permissions").
+		From("roles").
+		Where(sq.Eq{"chat_id": chatID}).
+		QueryRow().Scan(
+		&role.Name,
+		&role.Managed,
+		&role.Mentionable,
+		&role.Hoist,
+		&role.Color,
+		&role.Position,
+		&role.Permissions,
+	)
+	if err != nil {
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error fetching role from db: %s", err))
+	}
+
+	role.ID = fmt.Sprintf("%d", chatID)
+
+	payload := payloads.Payload{
+		Action: payloads.Update,
+		Role:   &role,
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+
+	topic := fmt.Sprintf("%s-discord.role", viper.GetString("namespace"))
+	err = nsq.PublishAsync(topic, b, nil)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+
+	return common.SendSuccess(fmt.Sprintf("Updated role `%s`", shortName))
 }

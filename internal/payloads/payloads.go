@@ -13,8 +13,8 @@ const (
 )
 
 type Payload struct {
-	Action Action         `json:"action"`
-	Role   discordgo.Role `json:"data"`
+	Action Action          `json:"action"`
+	Role   *discordgo.Role `json:"data"`
 }
 
 // TODO: Find a better place for these now that they aren't a part of the payload
