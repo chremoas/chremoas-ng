@@ -15,6 +15,13 @@ const (
 type Payload struct {
 	Action Action          `json:"action"`
 	Role   *discordgo.Role `json:"data"`
+	Filter *Filter         `json:"filter"`
+}
+
+// Filter is the filter data structure
+type Filter struct {
+	Name        string `db:"name"`
+	Description string `db:"description"`
 }
 
 // TODO: Find a better place for these now that they aren't a part of the payload

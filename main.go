@@ -125,6 +125,8 @@ func main() {
 		{"ping", "Sends a Pong", c.Ping},
 		{"pong", "Sends a Ping", c.Pong},
 		{"role", "Manages Roles", c.Role},
+		{"sig", "Manages Sigs", c.Sig},
+		{"filter", "Manages Filters", c.Filter},
 	}
 
 	for _, route := range commandList {

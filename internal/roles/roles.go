@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 
@@ -25,22 +24,27 @@ var (
 	clientType = map[bool]string{true: "SIG", false: "Role"}
 )
 
-func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType, sig, all bool) string {
+const (
+	Role = false
+	Sig  = true
+)
+
+var roleType = map[bool]string{Role: "role", Sig: "sig"}
+
+func List(sig, all bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var buffer bytes.Buffer
 	var roleList = make(map[string]string)
 
-	roles, err := getRoles(nil, logger, db)
+	roles, err := getRoles(sig, nil, logger, db)
 	if err != nil {
 		return common.SendFatal(err.Error())
 	}
 
 	for _, role := range roles {
-		if role.Sig == sig {
-			if role.Sig && !role.Joinable && !all {
-				continue
-			}
-			roleList[role.ShortName] = role.Name
+		if sig && !role.Joinable && !all {
+			continue
 		}
+		roleList[role.ShortName] = role.Name
 	}
 
 	if len(roleList) == 0 {
@@ -83,7 +87,9 @@ func Types() string {
 	return buffer.String()
 }
 
-func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+// Members lists all userIDs that match all the filters for a role. I'm not sure if we need to care about
+// sig or not here just yet.
+func Members(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var (
 		buffer bytes.Buffer
 		err    error
@@ -95,7 +101,7 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 	id, err = getRoleID(name, db)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return common.SendError(fmt.Sprintf("No such role: %s", name))
+			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], name))
 		}
 		logger.Error(err)
 		return common.SendError(fmt.Sprintf("error getting filter ID (%s): %s", name, err.Error()))
@@ -104,7 +110,9 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 	rows, err := db.Select("user_id").
 		From("filter_membership").
 		InnerJoin("role_filters USING (filter)").
+		Join("roles ON role_filters.role = roles.id").
 		Where(sq.Eq{"role_filters.role": id}).
+		Where(sq.Eq{"roles.sig": sig}).
 		Where(sq.Eq{"filter_membership.namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
@@ -129,7 +137,7 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func getRoles(shortName *string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) ([]payloads.Role, error) {
+func getRoles(sig bool, shortName *string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) ([]payloads.Role, error) {
 	var (
 		rs        []payloads.Role
 		charTotal int
@@ -137,6 +145,7 @@ func getRoles(shortName *string, logger *zap.SugaredLogger, db *sq.StatementBuil
 
 	q := db.Select("color", "hoist", "joinable", "managed", "mentionable", "name", "permissions",
 		"position", "role_nick", "sig", "sync").
+		Where(sq.Eq{"sig": sig}).
 		From("roles").
 		Where(sq.Eq{"namespace": viper.GetString("namespace")})
 
@@ -146,7 +155,7 @@ func getRoles(shortName *string, logger *zap.SugaredLogger, db *sq.StatementBuil
 
 	rows, err := q.Query()
 	if err != nil {
-		newErr := fmt.Errorf("error getting roles: %s", err)
+		newErr := fmt.Errorf("error getting %ss: %s", roleType[sig], err)
 		logger.Error(newErr)
 		return nil, newErr
 	}
@@ -172,7 +181,7 @@ func getRoles(shortName *string, logger *zap.SugaredLogger, db *sq.StatementBuil
 			&role.Sync,
 		)
 		if err != nil {
-			newErr := fmt.Errorf("error scanning role row: %s", err)
+			newErr := fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
 			logger.Error(newErr)
 			return nil, newErr
 		}
@@ -181,7 +190,7 @@ func getRoles(shortName *string, logger *zap.SugaredLogger, db *sq.StatementBuil
 	}
 
 	if charTotal >= 2000 {
-		return nil, errors.New("too many roles (exceeds Discord 2k character limit)")
+		return nil, fmt.Errorf("too many %ss (exceeds Discord 2k character limit)", roleType[sig])
 	}
 
 	return rs, nil
@@ -202,7 +211,7 @@ func getRoleID(name string, db *sq.StatementBuilderType) (int, error) {
 	return id, err
 }
 
-func ListUserRoles(userID string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func ListUserRoles(sig bool, userID string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var (
 		name      string
 		shortName string
@@ -216,11 +225,12 @@ func ListUserRoles(userID string, logger *zap.SugaredLogger, db *sq.StatementBui
 		Join("role_filters ON filters.id = role_filters.filter").
 		Join("roles ON role_filters.role = roles.id").
 		Where(sq.Eq{"filter_membership.user_id": userID}).
+		Where(sq.Eq{"roles.sig": sig}).
 		Where(sq.Eq{"filters.namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		logger.Error(err)
-		return common.SendError(fmt.Sprintf("error getting user roles (%s): %s", userID, err))
+		return common.SendError(fmt.Sprintf("error getting user %ss (%s): %s", roleType[sig], userID, err))
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
@@ -231,7 +241,7 @@ func ListUserRoles(userID string, logger *zap.SugaredLogger, db *sq.StatementBui
 	for rows.Next() {
 		err = rows.Scan(&shortName, &name)
 		if err != nil {
-			return common.SendError(fmt.Sprintf("error scanning role for userID (%s): %s", userID, err))
+			return common.SendError(fmt.Sprintf("error scanning %s for userID (%s): %s", roleType[sig], userID, err))
 		}
 
 		buffer.WriteString(fmt.Sprintf("%s - %s", shortName, name))
@@ -239,13 +249,13 @@ func ListUserRoles(userID string, logger *zap.SugaredLogger, db *sq.StatementBui
 	}
 
 	if count == 0 {
-		return common.SendError(fmt.Sprintf("User has no roles: <@%s>", userID))
+		return common.SendError(fmt.Sprintf("User has no %ss: <@%s>", roleType[sig], userID))
 	}
 
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Info(shortName string, sig bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func Info(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var buffer bytes.Buffer
 
 	// TODO: Wire up permissions
@@ -258,13 +268,13 @@ func Info(shortName string, sig bool, logger *zap.SugaredLogger, db *sq.Statemen
 	//	return common.SendError("User doesn't have permission to this command")
 	//}
 
-	roles, err := getRoles(&shortName, logger, db)
+	roles, err := getRoles(sig, &shortName, logger, db)
 	if err != nil {
 		return common.SendFatal(err.Error())
 	}
 
 	if len(roles) == 0 {
-		return common.SendError(fmt.Sprintf("no such role: %s", shortName))
+		return common.SendError(fmt.Sprintf("no such %s: %s", roleType[sig], shortName))
 	}
 
 	buffer.WriteString(fmt.Sprintf("ShortName: %s\n", roles[0].ShortName))
@@ -283,7 +293,7 @@ func Info(shortName string, sig bool, logger *zap.SugaredLogger, db *sq.Statemen
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Add(shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func Add(sig bool, shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var count int
 
 	// Type, Name and ShortName are required so let's check for those
@@ -313,16 +323,17 @@ func Add(shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.Sta
 	}
 
 	if count > 0 {
-		return common.SendError(fmt.Sprintf("role `%s` (%s) already exists", name, shortName))
+		return common.SendError(fmt.Sprintf("%s `%s` (%s) already exists", roleType[sig], name, shortName))
 	}
 
+	// need to pass in joinable at some point
 	_, err = db.Insert("roles").
-		Columns("namespace", "joinable", "name", "role_nick", "chat_type").
-		Values(viper.GetString("namespace"), false, name, shortName, chatType).
+		Columns("namespace", "sig", "joinable", "name", "role_nick", "chat_type").
+		Values(viper.GetString("namespace"), sig, false, name, shortName, chatType).
 		Query()
 	if err != nil {
 		logger.Error(err)
-		return common.SendFatal(fmt.Sprintf("error adding role: %s", err))
+		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
 	}
 
 	role := discordgo.Role{
@@ -350,10 +361,10 @@ func Add(shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.Sta
 		fmt.Println("error:", err)
 	}
 
-	return common.SendSuccess(fmt.Sprintf("Created role `%s`", shortName))
+	return common.SendSuccess(fmt.Sprintf("Created %s `%s`", roleType[sig], shortName))
 }
 
-func Destroy(shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func Destroy(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var roleID int
 	if len(shortName) == 0 {
 		return common.SendError("short name is required")
@@ -362,20 +373,22 @@ func Destroy(shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilde
 	err := db.Select("chat_id").
 		From("roles").
 		Where(sq.Eq{"role_nick": shortName}).
+		Where(sq.Eq{"sig": sig}).
 		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&roleID)
 	if err != nil {
 		logger.Error(err)
-		return common.SendFatal(fmt.Sprintf("error deleting role: %s", err))
+		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
 
 	_, err = db.Delete("roles").
 		Where(sq.Eq{"role_nick": shortName}).
+		Where(sq.Eq{"sig": sig}).
 		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		logger.Error(err)
-		return common.SendFatal(fmt.Sprintf("error deleting role: %s", err))
+		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
 
 	payload := payloads.Payload{
@@ -396,7 +409,7 @@ func Destroy(shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilde
 		fmt.Println("error:", err)
 	}
 
-	return common.SendSuccess(fmt.Sprintf("Destroyed role `%s`", shortName))
+	return common.SendSuccess(fmt.Sprintf("Destroyed %s `%s`", roleType[sig], shortName))
 }
 
 func validListItem(a string, list []string) bool {
@@ -408,7 +421,7 @@ func validListItem(a string, list []string) bool {
 	return false
 }
 
-func Update(shortName, key, value string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func Update(sig bool, shortName, key, value string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var chatID int
 
 	// ShortName, Key and Value are required so let's check for those
@@ -438,26 +451,28 @@ func Update(shortName, key, value string, logger *zap.SugaredLogger, db *sq.Stat
 	err := db.Select("chat_id").
 		From("roles").
 		Where(sq.Eq{"role_nick": shortName}).
+		Where(sq.Eq{"sig": sig}).
 		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&chatID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return common.SendError(fmt.Sprintf("No such role: %s", shortName))
+			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], shortName))
 		}
 		return common.SendFatal(err.Error())
 	}
 
 	if chatID == 0 {
-		return common.SendError(fmt.Sprintf("role `%s` doesn't have chatID set properly", shortName))
+		return common.SendError(fmt.Sprintf("%s `%s` doesn't have chatID set properly", roleType[sig], shortName))
 	}
 
 	_, err = db.Update("roles").
 		Set(key, value).
 		Where(sq.Eq{"chat_id": chatID}).
+		Where(sq.Eq{"sig": sig}).
 		Query()
 	if err != nil {
 		logger.Error(err)
-		return common.SendFatal(fmt.Sprintf("error adding role: %s", err))
+		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
 	}
 
 	var role discordgo.Role
@@ -465,6 +480,7 @@ func Update(shortName, key, value string, logger *zap.SugaredLogger, db *sq.Stat
 	err = db.Select("name", "managed", "mentionable", "hoist", "color", "position", "permissions").
 		From("roles").
 		Where(sq.Eq{"chat_id": chatID}).
+		Where(sq.Eq{"sig": sig}).
 		QueryRow().Scan(
 		&role.Name,
 		&role.Managed,
@@ -476,7 +492,7 @@ func Update(shortName, key, value string, logger *zap.SugaredLogger, db *sq.Stat
 	)
 	if err != nil {
 		logger.Error(err)
-		return common.SendFatal(fmt.Sprintf("error fetching role from db: %s", err))
+		return common.SendFatal(fmt.Sprintf("error fetching %s from db: %s", roleType[sig], err))
 	}
 
 	role.ID = fmt.Sprintf("%d", chatID)
@@ -497,5 +513,5 @@ func Update(shortName, key, value string, logger *zap.SugaredLogger, db *sq.Stat
 		fmt.Println("error:", err)
 	}
 
-	return common.SendSuccess(fmt.Sprintf("Updated role `%s`", shortName))
+	return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], shortName))
 }
