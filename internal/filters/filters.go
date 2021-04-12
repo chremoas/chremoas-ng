@@ -47,10 +47,10 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Add(name, description string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func Add(name, description string, sig bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	_, err := db.Insert("filters").
-		Columns("namespace", "name", "description").
-		Values(viper.GetString("namespace"), name, description).
+		Columns("namespace", "name", "description", "sig").
+		Values(viper.GetString("namespace"), name, description, sig).
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error inserting filter: %s", err)
@@ -61,9 +61,10 @@ func Add(name, description string, logger *zap.SugaredLogger, db *sq.StatementBu
 	return common.SendSuccess(fmt.Sprintf("Created filter `%s`", name))
 }
 
-func Delete(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func Delete(name string, sig bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	_, err := db.Delete("filters").
 		Where(sq.Eq{"name": name}).
+		Where(sq.Eq{"sig": sig}).
 		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {

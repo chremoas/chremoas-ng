@@ -9,6 +9,8 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
+	"github.com/chremoas/chremoas-ng/internal/filters"
+	"github.com/lib/pq"
 	"github.com/nsqio/go-nsq"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -293,9 +295,7 @@ func Info(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.Statemen
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Add(sig bool, shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	var count int
-
+func Add(sig, joinable bool, shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	// Type, Name and ShortName are required so let's check for those
 	if len(chatType) == 0 {
 		return common.SendError("type is required")
@@ -313,25 +313,16 @@ func Add(sig bool, shortName, name, chatType string, logger *zap.SugaredLogger, 
 		return common.SendError(fmt.Sprintf("`%s` isn't a valid Role Type", chatType))
 	}
 
-	err := db.Select("COUNT(*)").
-		From("roles").
-		Where(sq.Eq{"role_nick": shortName}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
-		QueryRow().Scan(&count)
-	if err != nil {
-		return common.SendFatal(err.Error())
-	}
-
-	if count > 0 {
-		return common.SendError(fmt.Sprintf("%s `%s` (%s) already exists", roleType[sig], name, shortName))
-	}
-
 	// need to pass in joinable at some point
-	_, err = db.Insert("roles").
+	_, err := db.Insert("roles").
 		Columns("namespace", "sig", "joinable", "name", "role_nick", "chat_type").
-		Values(viper.GetString("namespace"), sig, false, name, shortName, chatType).
+		Values(viper.GetString("namespace"), sig, joinable, name, shortName, chatType).
 		Query()
 	if err != nil {
+		// I don't love this but I can't find a better way right now
+		if err.(*pq.Error).Code == "23505" {
+			return common.SendError(fmt.Sprintf("%s `%s` (%s) already exists", roleType[sig], name, shortName))
+		}
 		logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
 	}
@@ -361,7 +352,16 @@ func Add(sig bool, shortName, name, chatType string, logger *zap.SugaredLogger, 
 		fmt.Println("error:", err)
 	}
 
-	return common.SendSuccess(fmt.Sprintf("Created %s `%s`", roleType[sig], shortName))
+	// We now need to create the default filter for this role
+	filterResponse := filters.Add(
+		shortName,
+		fmt.Sprintf("Auto-created filter for %s %s", roleType[sig], shortName),
+		sig,
+		logger,
+		db,
+	)
+
+	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Created %s `%s`", roleType[sig], shortName)))
 }
 
 func Destroy(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
@@ -409,7 +409,10 @@ func Destroy(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.State
 		fmt.Println("error:", err)
 	}
 
-	return common.SendSuccess(fmt.Sprintf("Destroyed %s `%s`", roleType[sig], shortName))
+	// We now need to create the default filter for this role
+	filterResponse := filters.Delete(shortName, sig, logger, db)
+
+	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Destroyed %s `%s`", roleType[sig], shortName)))
 }
 
 func validListItem(a string, list []string) bool {

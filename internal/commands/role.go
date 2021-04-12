@@ -53,7 +53,7 @@ func (c Command) Role(s *discordgo.Session, m *discordgo.Message, ctx *mux.Conte
 		if len(cmdStr) < 4 {
 			rs = "Usage: !role create <role_name> <role_description>"
 		} else {
-			rs = roles.Add(roles.Role, cmdStr[2], strings.Join(cmdStr[3:], " "), "discord", c.logger, c.db, c.nsq)
+			rs = roles.Add(roles.Role, false, cmdStr[2], strings.Join(cmdStr[3:], " "), "discord", c.logger, c.db, c.nsq)
 		}
 
 	case "destroy":

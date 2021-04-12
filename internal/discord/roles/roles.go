@@ -130,6 +130,10 @@ func (r Role) delete(role *discordgo.Role) error {
 
 	err := r.session.GuildRoleDelete(r.guildID, role.ID)
 	if err != nil {
+		if err.(*discordgo.RESTError).Response.StatusCode == 404 {
+			r.logger.Warnf("Role doesn't exist in discord: %s", role.ID)
+			return nil
+		}
 		r.logger.Errorf("Error deleting role: %s", err)
 		return err
 	}

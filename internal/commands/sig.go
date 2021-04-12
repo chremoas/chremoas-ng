@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -52,10 +53,15 @@ func (c Command) Sig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Contex
 		rs = roles.List(roles.Sig, all, c.logger, c.db)
 
 	case "create":
-		if len(cmdStr) < 4 {
-			rs = "Usage: !sig create <sig_name> <sig_description>"
+		if len(cmdStr) < 5 {
+			rs = "Usage: !sig create <sig_name> <joinable> <sig_description>"
 		} else {
-			rs = roles.Add(roles.Sig, cmdStr[2], strings.Join(cmdStr[3:], " "), "discord", c.logger, c.db, c.nsq)
+			joinable, err := strconv.ParseBool(cmdStr[3])
+			if err != nil {
+				rs = common.SendError(fmt.Sprintf("Error parsing joinable `%s` is not a bool value", cmdStr[3]))
+			} else {
+				rs = roles.Add(roles.Sig, joinable, cmdStr[2], strings.Join(cmdStr[4:], " "), "discord", c.logger, c.db, c.nsq)
+			}
 		}
 
 	case "destroy":

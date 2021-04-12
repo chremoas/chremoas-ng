@@ -2,10 +2,12 @@ package commands
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
+	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
 )
 
@@ -41,17 +43,27 @@ func (c Command) Filter(s *discordgo.Session, m *discordgo.Message, ctx *mux.Con
 		rs = filters.List(c.logger, c.db)
 
 	case "create":
-		if len(cmdStr) < 4 {
-			rs = "Usage: !role create <role_name> <role_description>"
+		if len(cmdStr) < 5 {
+			rs = "Usage: !role create <role_name> <sig> <role_description>"
 		} else {
-			rs = filters.Add(cmdStr[2], strings.Join(cmdStr[3:], " "), c.logger, c.db)
+			sig, err := strconv.ParseBool(cmdStr[3])
+			if err != nil {
+				rs = common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
+			} else {
+				rs = filters.Add(cmdStr[2], strings.Join(cmdStr[4:], " "), sig, c.logger, c.db)
+			}
 		}
 
 	case "destroy":
-		if len(cmdStr) < 3 {
-			rs = "Usage: !role destroy <role_name>"
+		if len(cmdStr) < 4 {
+			rs = "Usage: !role destroy <role_name> <sig>"
 		} else {
-			rs = filters.Delete(cmdStr[2], c.logger, c.db)
+			sig, err := strconv.ParseBool(cmdStr[3])
+			if err != nil {
+				rs = common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
+			} else {
+				rs = filters.Delete(cmdStr[2], sig, c.logger, c.db)
+			}
 		}
 
 	case "add":
