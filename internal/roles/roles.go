@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
@@ -139,6 +140,7 @@ func Members(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementB
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
+// getRoles goes and fetches all the roles of type sig/role. If shortname is set only one role is fetched.
 func getRoles(sig bool, shortName *string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) ([]payloads.Role, error) {
 	var (
 		rs        []payloads.Role
@@ -517,4 +519,49 @@ func Update(sig bool, shortName, key, value string, logger *zap.SugaredLogger, d
 	}
 
 	return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], shortName))
+}
+
+func SigAction(sender, sig string, join, joinable bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+	s := strings.Split(sender, ":")
+
+	roles, err := getRoles(Sig, &sig, logger, db)
+	if err != nil {
+		return common.SendError(err.Error())
+	}
+	if len(roles) == 0 {
+		return common.SendError(fmt.Sprintf("No such sig: `%s`", sig))
+	}
+	role := roles[0]
+
+	if !role.Sig {
+		return common.SendError("Not a SIG")
+	}
+
+	// Is this a joinable role? Only check on Join/Leave not Add/Remove
+	if joinable {
+		if !role.Joinable {
+			return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", sig))
+		}
+	}
+
+	// add member to role
+	if join {
+		filters.AddMember(Sig, s[1], sig, logger, db)
+	} else {
+		filters.RemoveMember(Sig, s[1], sig, logger, db)
+	}
+
+	// TODO: sync membership
+	//_, err = r.RoleClient.SyncToChatService(ctx, r.GetSyncRequest(sender, false))
+	//if err != nil {
+	//	return common.SendError(err.Error())
+	//}
+	//
+	//_, outputName, err := r.MapName(ctx, []string{s[1]})
+
+	if join {
+		return common.SendSuccess(fmt.Sprintf("Added %s to %s", outputName[0], sig))
+	} else {
+		return common.SendSuccess(fmt.Sprintf("Removed %s from %s", outputName[0], sig))
+	}
 }

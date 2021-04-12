@@ -13,7 +13,7 @@ import (
 
 func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var (
-		count int
+		count  int
 		buffer bytes.Buffer
 		filter payloads.Filter
 	)
@@ -79,7 +79,7 @@ func Delete(name string, sig bool, logger *zap.SugaredLogger, db *sq.StatementBu
 func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var (
 		count, userID int
-		buffer bytes.Buffer
+		buffer        bytes.Buffer
 	)
 
 	rows, err := db.Select("user_id").
@@ -113,7 +113,7 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 	return buffer.String()
 }
 
-func AddMember(member, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func AddMember(sig bool, member, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var filterID int
 
 	if !common.IsDiscordUser(member) {
@@ -123,6 +123,7 @@ func AddMember(member, filter string, logger *zap.SugaredLogger, db *sq.Statemen
 	err := db.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
+		Where(sq.Eq{"sig": sig}).
 		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&filterID)
 	if err != nil {
@@ -146,7 +147,7 @@ func AddMember(member, filter string, logger *zap.SugaredLogger, db *sq.Statemen
 	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, filter))
 }
 
-func RemoveMember(member, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func RemoveMember(sig bool, member, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var filterID int
 
 	if !common.IsDiscordUser(member) {
@@ -156,6 +157,7 @@ func RemoveMember(member, filter string, logger *zap.SugaredLogger, db *sq.State
 	err := db.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
+		Where(sq.Eq{"sig": sig}).
 		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&filterID)
 	if err != nil {

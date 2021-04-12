@@ -67,17 +67,27 @@ func (c Command) Filter(s *discordgo.Session, m *discordgo.Message, ctx *mux.Con
 		}
 
 	case "add":
-		if len(cmdStr) < 4 {
-			rs = "Usage: !filter add <user> <filter_name>"
+		if len(cmdStr) < 5 {
+			rs = "Usage: !filter add <user> <filter_name> <sig>"
 		} else {
-			rs = filters.AddMember(cmdStr[2], cmdStr[3], c.logger, c.db)
+			sig, err := strconv.ParseBool(cmdStr[4])
+			if err != nil {
+				rs = common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
+			} else {
+				rs = filters.AddMember(sig, cmdStr[2], cmdStr[3], c.logger, c.db)
+			}
 		}
 
 	case "remove":
-		if len(cmdStr) < 4 {
-			rs = "Usage: !filter remove <user> <filter_name>"
+		if len(cmdStr) < 5 {
+			rs = "Usage: !filter remove <user> <filter_name> <sig>"
 		} else {
-			rs = filters.RemoveMember(cmdStr[2], cmdStr[3], c.logger, c.db)
+			sig, err := strconv.ParseBool(cmdStr[4])
+			if err != nil {
+				rs = common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
+			} else {
+				rs = filters.RemoveMember(sig, cmdStr[2], cmdStr[3], c.logger, c.db)
+			}
 		}
 
 	case "list_members":

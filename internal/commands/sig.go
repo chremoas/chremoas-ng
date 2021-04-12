@@ -19,12 +19,12 @@ Subcommands:
     *list: List all SIGs
     *create: Add SIGs
     *destroy: Delete SIGs
+    *info: Get SIG info
+    *set: Set sig key
     add: Add user to SIG
     remove: Remove user from SIG
-    *info: Get SIG info
     join: Join SIG
     leave: Leave SIG
-    *set: Set sig key
     *list_members: List SIG members
     *list_sigs: List user SIGs
 `
@@ -71,6 +71,13 @@ func (c Command) Sig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Contex
 			rs = roles.Destroy(roles.Sig, cmdStr[2], c.logger, c.db, c.nsq)
 		}
 
+	case "info":
+		if len(cmdStr) < 3 {
+			rs = "Usage: !sig info <sig_name>"
+		} else {
+			rs = roles.Info(roles.Sig, cmdStr[2], c.logger, c.db)
+		}
+
 	case "set":
 		if len(cmdStr) < 5 {
 			rs = "Usage: !sig set <sig_name> <key> <value>"
@@ -78,12 +85,17 @@ func (c Command) Sig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Contex
 			rs = roles.Update(roles.Sig, cmdStr[2], cmdStr[3], cmdStr[4], c.logger, c.db, c.nsq)
 		}
 
-	case "info":
-		if len(cmdStr) < 3 {
-			rs = "Usage: !sig info <sig_name>"
-		} else {
-			rs = roles.Info(roles.Sig, cmdStr[2], c.logger, c.db)
-		}
+	case "add":
+		rs = common.SendError("Not implemented")
+
+	case "remove":
+		rs = common.SendError("Not implemented")
+
+	case "join":
+		rs = common.SendError("Not implemented")
+
+	case "leave":
+		rs = common.SendError("Not implemented")
 
 	case "keys":
 		rs = roles.Keys()
