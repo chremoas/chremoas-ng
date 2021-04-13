@@ -144,6 +144,7 @@ func main() {
 		{"role", "Manages Roles", c.Role},
 		{"sig", "Manages Sigs", c.Sig},
 		{"filter", "Manages Filters", c.Filter},
+		{"perms", "Manages Permissions", c.Perms},
 	}
 
 	for _, route := range commandList {

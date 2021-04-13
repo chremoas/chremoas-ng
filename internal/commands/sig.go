@@ -17,17 +17,17 @@ const sigHelpStr = `
 Usage: !sig <subcommand> <arguments>
 
 Subcommands:
-    *list: List all SIGs
-    *create: Add SIGs
-    *destroy: Delete SIGs
-    *info: Get SIG info
-    *set: Set sig key
+    list: List all SIGs
+    create: Add SIGs
+    destroy: Delete SIGs
+    info: Get SIG info
+    set: Set sig key
     add: Add user to SIG
     remove: Remove user from SIG
     join: Join SIG
     leave: Leave SIG
-    *list_members: List SIG members
-    *list_sigs: List user SIGs
+    list_members: List SIG members
+    list_sigs: List user SIGs
 `
 
 // This function will be called (due to AddHandler above) every time a new
