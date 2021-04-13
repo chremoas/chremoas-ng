@@ -5,6 +5,6 @@ import (
 )
 
 func New() *zap.SugaredLogger {
-	logger, _ := zap.NewProduction()
+	logger, _ := zap.NewDevelopment()
 	return logger.Sugar()
 }

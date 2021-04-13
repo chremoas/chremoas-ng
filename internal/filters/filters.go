@@ -2,11 +2,14 @@ package filters
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
+	"github.com/lib/pq"
+	"github.com/nsqio/go-nsq"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
@@ -47,33 +50,52 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Add(name, description string, sig bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
-	_, err := db.Insert("filters").
+func Add(name, description string, sig bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
+	var id int
+
+	err := db.Insert("filters").
 		Columns("namespace", "name", "description", "sig").
 		Values(viper.GetString("namespace"), name, description, sig).
-		Query()
+		Suffix("RETURNING \"id\"").
+		QueryRow().Scan(&id)
 	if err != nil {
+		// I don't love this but I can't find a better way right now
+		if err.(*pq.Error).Code == "23505" {
+			return common.SendError(fmt.Sprintf("filter `%s` already exists", name)), -1
+		}
 		newErr := fmt.Errorf("error inserting filter: %s", err)
 		logger.Error(newErr)
-		return common.SendFatal(newErr.Error())
+		return common.SendFatal(newErr.Error()), -1
 	}
 
-	return common.SendSuccess(fmt.Sprintf("Created filter `%s`", name))
+	return common.SendSuccess(fmt.Sprintf("Created filter `%s`", name)), id
 }
 
-func Delete(name string, sig bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
-	_, err := db.Delete("filters").
+func Delete(name string, sig bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
+	var id int
+
+	rows, err := db.Delete("filters").
 		Where(sq.Eq{"name": name}).
 		Where(sq.Eq{"sig": sig}).
 		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
+		Suffix("RETURNING \"id\"").
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error deleting filter: %s", err)
 		logger.Error(newErr)
-		return common.SendFatal(newErr.Error())
+		return common.SendFatal(newErr.Error()), -1
 	}
 
-	return common.SendSuccess(fmt.Sprintf("Deleted filter `%s`", name))
+	for rows.Next() {
+		err = rows.Scan(&id)
+		if err != nil {
+			newErr := fmt.Errorf("error scanning filters id: %s", err)
+			logger.Error(newErr)
+			return common.SendFatal(newErr.Error()), -1
+		}
+	}
+
+	return common.SendSuccess(fmt.Sprintf("Deleted filter `%s`", name)), id
 }
 
 func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
@@ -113,12 +135,8 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 	return buffer.String()
 }
 
-func AddMember(sig bool, member, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func AddMember(sig bool, userID, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var filterID int
-
-	if !common.IsDiscordUser(member) {
-		return common.SendError("Second argument must be a discord user")
-	}
 
 	err := db.Select("id").
 		From("filters").
@@ -132,27 +150,32 @@ func AddMember(sig bool, member, filter string, logger *zap.SugaredLogger, db *s
 		return common.SendFatal(newErr.Error())
 	}
 
-	userID := common.ExtractUserId(member)
+	logger.Infof("Got userID:%s filterID:%d", userID, filterID)
 
 	_, err = db.Insert("filter_membership").
 		Columns("namespace", "filter", "user_id").
 		Values(viper.GetString("namespace"), filterID, userID).
 		Query()
 	if err != nil {
+		// I don't love this but I can't find a better way right now
+		if err.(*pq.Error).Code == "23505" {
+			return common.SendError(fmt.Sprintf("<@%s> already a member of `%s`", userID, filter))
+		}
 		newErr := fmt.Errorf("error inserting filter: %s", err)
 		logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
+	queueUpdate(userID, logger, nsq)
+
 	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, filter))
 }
 
-func RemoveMember(sig bool, member, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
-	var filterID int
-
-	if !common.IsDiscordUser(member) {
-		return common.SendError("Second argument must be a discord user")
-	}
+func RemoveMember(sig bool, userID, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	var (
+		filterID int
+		deleted  bool
+	)
 
 	err := db.Select("id").
 		From("filters").
@@ -166,12 +189,11 @@ func RemoveMember(sig bool, member, filter string, logger *zap.SugaredLogger, db
 		return common.SendFatal(newErr.Error())
 	}
 
-	userID := common.ExtractUserId(member)
-
-	_, err = db.Delete("filter_membership").
+	rows, err := db.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).
 		Where(sq.Eq{"user_id": userID}).
 		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
+		Suffix("RETURNING \"id\"").
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error deleting filter: %s", err)
@@ -179,5 +201,32 @@ func RemoveMember(sig bool, member, filter string, logger *zap.SugaredLogger, db
 		return common.SendFatal(newErr.Error())
 	}
 
-	return common.SendSuccess(fmt.Sprintf("Removed <@%s> to `%s`", userID, filter))
+	for rows.Next() {
+		deleted = true
+	}
+
+	if deleted {
+		queueUpdate(userID, logger, nsq)
+		return common.SendSuccess(fmt.Sprintf("Removed <@%s> from `%s`", userID, filter))
+	}
+
+	return common.SendError(fmt.Sprintf("<@%s> not a member of `%s`", userID, filter))
+}
+
+func queueUpdate(member string, logger *zap.SugaredLogger, nsq *nsq.Producer) {
+	payload := payloads.Payload{
+		Member: member,
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		logger.Errorf("error marshalling queue message: %s", err)
+	}
+
+	logger.Debug("Submitting member queue message")
+	topic := fmt.Sprintf("%s-discord.member", viper.GetString("namespace"))
+	err = nsq.PublishAsync(topic, b, nil)
+	if err != nil {
+		logger.Errorf("error publishing message: %s", err)
+	}
 }

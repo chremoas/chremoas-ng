@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
@@ -38,7 +37,7 @@ func List(sig, all bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType)
 	var buffer bytes.Buffer
 	var roleList = make(map[string]string)
 
-	roles, err := getRoles(sig, nil, logger, db)
+	roles, err := GetRoles(sig, nil, logger, db)
 	if err != nil {
 		return common.SendFatal(err.Error())
 	}
@@ -129,7 +128,7 @@ func Members(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementB
 			return common.SendError(fmt.Sprintf("error scanning user_id (%s): %s", name, err.Error()))
 		}
 
-		buffer.WriteString(fmt.Sprintf("%d", userID))
+		buffer.WriteString(fmt.Sprintf("\t%d\n", userID))
 		count += 1
 	}
 
@@ -137,11 +136,11 @@ func Members(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementB
 		return common.SendError(fmt.Sprintf("No members in: %s", name))
 	}
 
-	return fmt.Sprintf("```%s```", buffer.String())
+	return fmt.Sprintf("```%d members in %s:\n%s```", count, name, buffer.String())
 }
 
-// getRoles goes and fetches all the roles of type sig/role. If shortname is set only one role is fetched.
-func getRoles(sig bool, shortName *string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) ([]payloads.Role, error) {
+// GetRoles goes and fetches all the roles of type sig/role. If shortname is set only one role is fetched.
+func GetRoles(sig bool, shortName *string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) ([]payloads.Role, error) {
 	var (
 		rs        []payloads.Role
 		charTotal int
@@ -272,7 +271,7 @@ func Info(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.Statemen
 	//	return common.SendError("User doesn't have permission to this command")
 	//}
 
-	roles, err := getRoles(sig, &shortName, logger, db)
+	roles, err := GetRoles(sig, &shortName, logger, db)
 	if err != nil {
 		return common.SendFatal(err.Error())
 	}
@@ -298,6 +297,8 @@ func Info(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.Statemen
 }
 
 func Add(sig, joinable bool, shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	var roleID int
+
 	// Type, Name and ShortName are required so let's check for those
 	if len(chatType) == 0 {
 		return common.SendError("type is required")
@@ -316,10 +317,11 @@ func Add(sig, joinable bool, shortName, name, chatType string, logger *zap.Sugar
 	}
 
 	// need to pass in joinable at some point
-	_, err := db.Insert("roles").
+	err := db.Insert("roles").
 		Columns("namespace", "sig", "joinable", "name", "role_nick", "chat_type").
 		Values(viper.GetString("namespace"), sig, joinable, name, shortName, chatType).
-		Query()
+		Suffix("RETURNING \"id\"").
+		QueryRow().Scan(&roleID)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -339,6 +341,25 @@ func Add(sig, joinable bool, shortName, name, chatType string, logger *zap.Sugar
 		Permissions: 0,
 	}
 
+	// We now need to create the default filter for this role
+	filterResponse, filterID := filters.Add(
+		shortName,
+		fmt.Sprintf("Auto-created filter for %s %s", roleType[sig], shortName),
+		sig,
+		logger,
+		db,
+	)
+
+	// Associate new filter with new role
+	_, err = db.Insert("role_filters").
+		Columns("namespace", "role", "filter").
+		Values(viper.GetString("namespace"), roleID, filterID).
+		Query()
+	if err != nil {
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error adding role_filter for %s: %s", roleType[sig], err))
+	}
+
 	payload := payloads.Payload{
 		Action: payloads.Create,
 		Role:   &role,
@@ -354,20 +375,11 @@ func Add(sig, joinable bool, shortName, name, chatType string, logger *zap.Sugar
 		fmt.Println("error:", err)
 	}
 
-	// We now need to create the default filter for this role
-	filterResponse := filters.Add(
-		shortName,
-		fmt.Sprintf("Auto-created filter for %s %s", roleType[sig], shortName),
-		sig,
-		logger,
-		db,
-	)
-
 	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Created %s `%s`", roleType[sig], shortName)))
 }
 
 func Destroy(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	var roleID int
+	var chatID, roleID int
 	if len(shortName) == 0 {
 		return common.SendError("short name is required")
 	}
@@ -377,13 +389,16 @@ func Destroy(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.State
 		Where(sq.Eq{"role_nick": shortName}).
 		Where(sq.Eq{"sig": sig}).
 		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
-		QueryRow().Scan(&roleID)
+		QueryRow().Scan(&chatID)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], shortName))
+		}
 		logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
 
-	_, err = db.Delete("roles").
+	rows, err := db.Delete("roles").
 		Where(sq.Eq{"role_nick": shortName}).
 		Where(sq.Eq{"sig": sig}).
 		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
@@ -393,26 +408,37 @@ func Destroy(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.State
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
 
-	payload := payloads.Payload{
-		Action: payloads.Delete,
-		Role: &discordgo.Role{
-			ID: fmt.Sprintf("%d", roleID),
-		},
-	}
-
-	b, err := json.Marshal(payload)
-	if err != nil {
-		fmt.Println("error:", err)
-	}
-
-	topic := fmt.Sprintf("%s-discord.role", viper.GetString("namespace"))
-	err = nsq.PublishAsync(topic, b, nil)
-	if err != nil {
-		fmt.Println("error:", err)
+	for rows.Next() {
+		err = rows.Scan(&roleID)
+		if err != nil {
+			newErr := fmt.Errorf("error scanning role id: %s", err)
+			logger.Error(newErr)
+			return common.SendFatal(newErr.Error())
+		}
 	}
 
 	// We now need to create the default filter for this role
-	filterResponse := filters.Delete(shortName, sig, logger, db)
+	filterResponse, filterID := filters.Delete(shortName, sig, logger, db)
+
+	_, err = db.Delete("filter_membership").
+		Where(sq.Eq{"filter": filterID}).
+		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
+		Query()
+	if err != nil {
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error deleting filter_membershipts for %s: %s", roleType[sig], err))
+	}
+
+	_, err = db.Delete("role_filters").
+		Where(sq.Eq{"role": roleID}).
+		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
+		Query()
+	if err != nil {
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error deleting role_filters %s: %s", roleType[sig], err))
+	}
+
+	queueUpdate(chatID, payloads.Delete, logger, nsq)
 
 	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Destroyed %s `%s`", roleType[sig], shortName)))
 }
@@ -500,68 +526,28 @@ func Update(sig bool, shortName, key, value string, logger *zap.SugaredLogger, d
 		return common.SendFatal(fmt.Sprintf("error fetching %s from db: %s", roleType[sig], err))
 	}
 
-	role.ID = fmt.Sprintf("%d", chatID)
-
-	payload := payloads.Payload{
-		Action: payloads.Update,
-		Role:   &role,
-	}
-
-	b, err := json.Marshal(payload)
-	if err != nil {
-		fmt.Println("error:", err)
-	}
-
-	topic := fmt.Sprintf("%s-discord.role", viper.GetString("namespace"))
-	err = nsq.PublishAsync(topic, b, nil)
-	if err != nil {
-		fmt.Println("error:", err)
-	}
+	queueUpdate(chatID, payloads.Update, logger, nsq)
 
 	return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], shortName))
 }
 
-func SigAction(sender, sig string, join, joinable bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
-	s := strings.Split(sender, ":")
+func queueUpdate(chatID int, action payloads.Action, logger *zap.SugaredLogger, nsq *nsq.Producer) {
+	payload := payloads.Payload{
+		Action: action,
+		Role: &discordgo.Role{
+			ID: fmt.Sprintf("%d", chatID),
+		},
+	}
 
-	roles, err := getRoles(Sig, &sig, logger, db)
+	b, err := json.Marshal(payload)
 	if err != nil {
-		return common.SendError(err.Error())
-	}
-	if len(roles) == 0 {
-		return common.SendError(fmt.Sprintf("No such sig: `%s`", sig))
-	}
-	role := roles[0]
-
-	if !role.Sig {
-		return common.SendError("Not a SIG")
+		logger.Errorf("error marshalling json for queue: %s", err)
 	}
 
-	// Is this a joinable role? Only check on Join/Leave not Add/Remove
-	if joinable {
-		if !role.Joinable {
-			return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", sig))
-		}
-	}
-
-	// add member to role
-	if join {
-		filters.AddMember(Sig, s[1], sig, logger, db)
-	} else {
-		filters.RemoveMember(Sig, s[1], sig, logger, db)
-	}
-
-	// TODO: sync membership
-	//_, err = r.RoleClient.SyncToChatService(ctx, r.GetSyncRequest(sender, false))
-	//if err != nil {
-	//	return common.SendError(err.Error())
-	//}
-	//
-	//_, outputName, err := r.MapName(ctx, []string{s[1]})
-
-	if join {
-		return common.SendSuccess(fmt.Sprintf("Added %s to %s", outputName[0], sig))
-	} else {
-		return common.SendSuccess(fmt.Sprintf("Removed %s from %s", outputName[0], sig))
+	logger.Debug("Submitting role queue message")
+	topic := fmt.Sprintf("%s-discord.role", viper.GetString("namespace"))
+	err = nsq.PublishAsync(topic, b, nil)
+	if err != nil {
+		logger.Errorf("error publishing message: %s", err)
 	}
 }

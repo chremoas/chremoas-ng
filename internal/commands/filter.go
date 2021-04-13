@@ -26,87 +26,76 @@ Subcommands:
 // This function will be called (due to AddHandler above) every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (c Command) Filter(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
-	var (
-		rs string
-	)
+	_, err := s.ChannelMessageSend(m.ChannelID, c.doFilter(s, m, ctx))
+	if err != nil {
+		c.logger.Errorf("Error sending command: %s", err)
+	}
+}
 
+func (c Command) doFilter(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) string {
 	c.logger.Infof("Recieved: %s", m.Content)
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {
-		rs = fmt.Sprintf("```%s```", filterHelpStr)
-		goto sendMessage
+		return fmt.Sprintf("```%s```", filterHelpStr)
 	}
 
 	switch cmdStr[1] {
 	case "list":
-		rs = filters.List(c.logger, c.db)
+		return filters.List(c.logger, c.db)
 
 	case "create":
 		if len(cmdStr) < 5 {
-			rs = "Usage: !role create <role_name> <sig> <role_description>"
-		} else {
-			sig, err := strconv.ParseBool(cmdStr[3])
-			if err != nil {
-				rs = common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
-			} else {
-				rs = filters.Add(cmdStr[2], strings.Join(cmdStr[4:], " "), sig, c.logger, c.db)
-			}
+			return "Usage: !role create <role_name> <sig> <role_description>"
 		}
+		sig, err := strconv.ParseBool(cmdStr[3])
+		if err != nil {
+			return common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
+		}
+		f, _ := filters.Add(cmdStr[2], strings.Join(cmdStr[4:], " "), sig, c.logger, c.db)
+		return f
 
 	case "destroy":
 		if len(cmdStr) < 4 {
-			rs = "Usage: !role destroy <role_name> <sig>"
-		} else {
-			sig, err := strconv.ParseBool(cmdStr[3])
-			if err != nil {
-				rs = common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
-			} else {
-				rs = filters.Delete(cmdStr[2], sig, c.logger, c.db)
-			}
+			return "Usage: !role destroy <role_name> <sig>"
 		}
+		sig, err := strconv.ParseBool(cmdStr[3])
+		if err != nil {
+			return common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
+		}
+		f, _ := filters.Delete(cmdStr[2], sig, c.logger, c.db)
+		return f
 
 	case "add":
 		if len(cmdStr) < 5 {
-			rs = "Usage: !filter add <user> <filter_name> <sig>"
-		} else {
-			sig, err := strconv.ParseBool(cmdStr[4])
-			if err != nil {
-				rs = common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
-			} else {
-				rs = filters.AddMember(sig, cmdStr[2], cmdStr[3], c.logger, c.db)
-			}
+			return "Usage: !filter add <user> <filter_name> <sig>"
 		}
+		sig, err := strconv.ParseBool(cmdStr[4])
+		if err != nil {
+			return common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[4]))
+		}
+		return filters.AddMember(sig, cmdStr[2], cmdStr[3], c.logger, c.db, c.nsq)
 
 	case "remove":
 		if len(cmdStr) < 5 {
-			rs = "Usage: !filter remove <user> <filter_name> <sig>"
-		} else {
-			sig, err := strconv.ParseBool(cmdStr[4])
-			if err != nil {
-				rs = common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
-			} else {
-				rs = filters.RemoveMember(sig, cmdStr[2], cmdStr[3], c.logger, c.db)
-			}
+			return "Usage: !filter remove <user> <filter_name> <sig>"
 		}
+		sig, err := strconv.ParseBool(cmdStr[4])
+		if err != nil {
+			return common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
+		}
+		return filters.RemoveMember(sig, cmdStr[2], cmdStr[3], c.logger, c.db, c.nsq)
 
 	case "list_members":
 		if len(cmdStr) < 3 {
-			rs = "Usage: !role list_members <role_name>"
-		} else {
-			rs = filters.Members(cmdStr[2], c.logger, c.db)
+			return "Usage: !role list_members <role_name>"
 		}
+		return filters.Members(cmdStr[2], c.logger, c.db)
 
 	case "help":
-		rs = fmt.Sprintf("```%s```", filterHelpStr)
+		return fmt.Sprintf("```%s```", filterHelpStr)
 
 	default:
-		rs = fmt.Sprintf("```%s```", filterHelpStr)
-	}
-
-sendMessage:
-	_, err := s.ChannelMessageSend(m.ChannelID, rs)
-	if err != nil {
-		c.logger.Errorf("Error sending command: %s", err)
+		return fmt.Sprintf("```%s```", filterHelpStr)
 	}
 }

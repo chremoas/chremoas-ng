@@ -15,7 +15,7 @@ CREATE TABLE filter_membership
 (
     id        BIGSERIAL PRIMARY KEY NOT NULL,
     namespace VARCHAR(32)           NOT NULL,
-    filter    BIGINT REFERENCES filters (id),
+    filter    BIGINT REFERENCES filters (id) ON DELETE CASCADE,
     user_id   BIGINT
 );
 
@@ -51,8 +51,8 @@ CREATE TABLE role_filters
 (
     id        BIGSERIAL PRIMARY KEY NOT NULL,
     namespace VARCHAR(32)           NOT NULL,
-    role      BIGINT REFERENCES roles (id),
-    filter    BIGINT REFERENCES filters (id)
+    role      BIGINT REFERENCES roles (id) ON DELETE CASCADE,
+    filter    BIGINT REFERENCES filters (id) ON DELETE CASCADE
 );
 
 --- Permissions --------------------------------

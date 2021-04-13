@@ -16,6 +16,7 @@ type Payload struct {
 	Action Action          `json:"action"`
 	Role   *discordgo.Role `json:"data"`
 	Filter *Filter         `json:"filter"`
+	Member string          `json:"member"`
 }
 
 // Filter is the filter data structure

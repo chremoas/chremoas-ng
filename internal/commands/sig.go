@@ -7,6 +7,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
+	"github.com/chremoas/chremoas-ng/internal/sigs"
 
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/roles"
@@ -32,101 +33,136 @@ Subcommands:
 // This function will be called (due to AddHandler above) every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (c Command) Sig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
-	var (
-		all bool
-		rs  string
-	)
+	_, err := s.ChannelMessageSend(m.ChannelID, c.doSig(s, m, ctx))
+	if err != nil {
+		c.logger.Errorf("Error sending command: %s", err)
+	}
+}
 
+func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) string {
 	c.logger.Infof("Recieved: %s", m.Content)
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {
-		rs = fmt.Sprintf("```%s```", sigHelpStr)
-		goto sendMessage
+		return fmt.Sprintf("```%s```", sigHelpStr)
 	}
 
 	switch cmdStr[1] {
 	case "list":
+		var all bool
+
 		if len(cmdStr) > 2 && cmdStr[2] == "all" {
 			all = true
 		}
-		rs = roles.List(roles.Sig, all, c.logger, c.db)
+		return roles.List(roles.Sig, all, c.logger, c.db)
 
 	case "create":
 		if len(cmdStr) < 5 {
-			rs = "Usage: !sig create <sig_name> <joinable> <sig_description>"
+			return "Usage: !sig create <sig_name> <joinable> <sig_description>"
 		} else {
 			joinable, err := strconv.ParseBool(cmdStr[3])
 			if err != nil {
-				rs = common.SendError(fmt.Sprintf("Error parsing joinable `%s` is not a bool value", cmdStr[3]))
-			} else {
-				rs = roles.Add(roles.Sig, joinable, cmdStr[2], strings.Join(cmdStr[4:], " "), "discord", c.logger, c.db, c.nsq)
+				return common.SendError(fmt.Sprintf("Error parsing joinable `%s` is not a bool value", cmdStr[3]))
 			}
+			return roles.Add(roles.Sig, joinable, cmdStr[2], strings.Join(cmdStr[4:], " "), "discord", c.logger, c.db, c.nsq)
 		}
 
 	case "destroy":
 		if len(cmdStr) < 3 {
-			rs = "Usage: !sig destroy <sig_name>"
-		} else {
-			rs = roles.Destroy(roles.Sig, cmdStr[2], c.logger, c.db, c.nsq)
+			return "Usage: !sig destroy <sig_name>"
 		}
+		return roles.Destroy(roles.Sig, cmdStr[2], c.logger, c.db, c.nsq)
 
 	case "info":
 		if len(cmdStr) < 3 {
-			rs = "Usage: !sig info <sig_name>"
-		} else {
-			rs = roles.Info(roles.Sig, cmdStr[2], c.logger, c.db)
+			return "Usage: !sig info <sig_name>"
 		}
+		return roles.Info(roles.Sig, cmdStr[2], c.logger, c.db)
 
 	case "set":
 		if len(cmdStr) < 5 {
-			rs = "Usage: !sig set <sig_name> <key> <value>"
-		} else {
-			rs = roles.Update(roles.Sig, cmdStr[2], cmdStr[3], cmdStr[4], c.logger, c.db, c.nsq)
+			return "Usage: !sig set <sig_name> <key> <value>"
 		}
+		return roles.Update(roles.Sig, cmdStr[2], cmdStr[3], cmdStr[4], c.logger, c.db, c.nsq)
 
 	case "add":
-		rs = common.SendError("Not implemented")
+		var (
+			s   *sigs.Sig
+			err error
+		)
+		if len(cmdStr) < 4 {
+			return "Usage: !sig add <user> <sig>"
+		}
+		s, err = sigs.New(cmdStr[2], cmdStr[3], c.logger, c.db, c.nsq)
+		if err != nil {
+			return common.SendError(err.Error())
+		}
+		return s.Add()
 
 	case "remove":
-		rs = common.SendError("Not implemented")
+		var (
+			s   *sigs.Sig
+			err error
+		)
+		if len(cmdStr) < 4 {
+			return "Usage: !sig remove <user> <sig>"
+		}
+		s, err = sigs.New(cmdStr[2], cmdStr[3], c.logger, c.db, c.nsq)
+		if err != nil {
+			return common.SendError(err.Error())
+		}
+		return s.Remove()
 
 	case "join":
-		rs = common.SendError("Not implemented")
+		var (
+			s   *sigs.Sig
+			err error
+		)
+		if len(cmdStr) < 3 {
+			return "Usage: !sig join <sig>"
+		}
+		s, err = sigs.New(m.Author.ID, cmdStr[2], c.logger, c.db, c.nsq)
+		if err != nil {
+			return common.SendError(err.Error())
+		}
+		return s.Join()
 
 	case "leave":
-		rs = common.SendError("Not implemented")
+		var (
+			s   *sigs.Sig
+			err error
+		)
+		if len(cmdStr) < 3 {
+			return "Usage: !sig leave <sig>"
+		}
+		s, err = sigs.New(m.Author.ID, cmdStr[2], c.logger, c.db, c.nsq)
+		if err != nil {
+			return common.SendError(err.Error())
+		}
+		return s.Leave()
 
 	case "keys":
-		rs = roles.Keys()
+		return roles.Keys()
 
 	case "types":
-		rs = roles.Types()
+		return roles.Types()
 
 	case "list_members":
 		if len(cmdStr) < 3 {
-			rs = "Usage: !sig list_members <sig_name>"
-		} else {
-			rs = roles.Members(roles.Sig, cmdStr[2], c.logger, c.db)
+			return "Usage: !sig list_members <sig_name>"
 		}
+		return roles.Members(roles.Sig, cmdStr[2], c.logger, c.db)
 
 	case "list_sigs":
 		if len(cmdStr) < 3 {
-			rs = roles.ListUserRoles(roles.Sig, m.Author.ID, c.logger, c.db)
-		} else {
-			rs = roles.ListUserRoles(roles.Sig, common.ExtractUserId(cmdStr[2]), c.logger, c.db)
+			return roles.ListUserRoles(roles.Sig, m.Author.ID, c.logger, c.db)
 		}
+		return roles.ListUserRoles(roles.Sig, common.ExtractUserId(cmdStr[2]), c.logger, c.db)
 
 	case "help":
-		rs = fmt.Sprintf("```%s```", sigHelpStr)
+		return fmt.Sprintf("```%s```", sigHelpStr)
 
 	default:
-		rs = fmt.Sprintf("```%s```", sigHelpStr)
-	}
-
-sendMessage:
-	_, err := s.ChannelMessageSend(m.ChannelID, rs)
-	if err != nil {
-		c.logger.Errorf("Error sending command: %s", err)
+		return fmt.Sprintf("```%s```", sigHelpStr)
 	}
 }
