@@ -10,6 +10,7 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/filters"
+	"github.com/chremoas/chremoas-ng/internal/perms"
 	"github.com/lib/pq"
 	"github.com/nsqio/go-nsq"
 	"github.com/spf13/viper"
@@ -24,6 +25,7 @@ var (
 	roleKeys   = []string{"Name", "Color", "Hoist", "Position", "Permissions", "Joinable", "Managed", "Mentionable", "Sync"}
 	roleTypes  = []string{"internal", "discord"}
 	clientType = map[bool]string{true: "SIG", false: "Role"}
+	adminType  = map[bool]string{true: "sig_admins", false: "role_admins"}
 )
 
 const (
@@ -261,12 +263,6 @@ func ListUserRoles(sig bool, userID string, logger *zap.SugaredLogger, db *sq.St
 func Info(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var buffer bytes.Buffer
 
-	// TODO: Wire up permissions
-	//canPerform, err := r.Permissions.CanPerform(ctx, sender)
-	//if err != nil {
-	//	return common.SendFatal(err.Error())
-	//}
-
 	//if !canPerform {
 	//	return common.SendError("User doesn't have permission to this command")
 	//}
@@ -296,8 +292,12 @@ func Info(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.Statemen
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Add(sig, joinable bool, shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func Add(sig, joinable bool, shortName, name, chatType, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var roleID int
+
+	if !perms.CanPerform(author, adminType[sig], logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
 
 	// Type, Name and ShortName are required so let's check for those
 	if len(chatType) == 0 {
@@ -346,6 +346,7 @@ func Add(sig, joinable bool, shortName, name, chatType string, logger *zap.Sugar
 		shortName,
 		fmt.Sprintf("Auto-created filter for %s %s", roleType[sig], shortName),
 		sig,
+		author,
 		logger,
 		db,
 	)
@@ -378,8 +379,13 @@ func Add(sig, joinable bool, shortName, name, chatType string, logger *zap.Sugar
 	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Created %s `%s`", roleType[sig], shortName)))
 }
 
-func Destroy(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func Destroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var chatID, roleID int
+
+	if !perms.CanPerform(author, adminType[sig], logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
+
 	if len(shortName) == 0 {
 		return common.SendError("short name is required")
 	}
@@ -418,7 +424,7 @@ func Destroy(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.State
 	}
 
 	// We now need to create the default filter for this role
-	filterResponse, filterID := filters.Delete(shortName, sig, logger, db)
+	filterResponse, filterID := filters.Delete(shortName, sig, author, logger, db)
 
 	_, err = db.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).
@@ -452,8 +458,12 @@ func validListItem(a string, list []string) bool {
 	return false
 }
 
-func Update(sig bool, shortName, key, value string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func Update(sig bool, shortName, key, value, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var chatID int
+
+	if !perms.CanPerform(author, adminType[sig], logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
 
 	// ShortName, Key and Value are required so let's check for those
 	if len(shortName) == 0 {

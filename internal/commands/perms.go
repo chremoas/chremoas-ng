@@ -47,25 +47,25 @@ func (c Command) doPerms(s *discordgo.Session, m *discordgo.Message, ctx *mux.Co
 		if len(cmdStr) < 4 {
 			return "Usage: !perms create <permission_name> <permission_description>"
 		}
-		return perms.Add(cmdStr[2], cmdStr[3], c.logger, c.db)
+		return perms.Add(cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db)
 
 	case "destroy":
 		if len(cmdStr) < 3 {
 			return "Usage: !perms destroy <permission_name>"
 		}
-		return perms.Delete(cmdStr[2], c.logger, c.db)
+		return perms.Delete(cmdStr[2], m.Author.ID, c.logger, c.db)
 
 	case "add":
 		if len(cmdStr) < 4 {
 			return "Usage: !perms add <user> <permission>"
 		}
-		return perms.AddMember(cmdStr[2], cmdStr[3], c.logger, c.db)
+		return perms.AddMember(cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db)
 
 	case "remove":
 		if len(cmdStr) < 4 {
 			return "Usage: !perms remove <user> <permission>"
 		}
-		return perms.RemoveMember(cmdStr[2], cmdStr[3], c.logger, c.db)
+		return perms.RemoveMember(cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db)
 
 	case "list_users":
 		if len(cmdStr) < 3 {

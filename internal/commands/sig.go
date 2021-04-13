@@ -64,14 +64,14 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 			if err != nil {
 				return common.SendError(fmt.Sprintf("Error parsing joinable `%s` is not a bool value", cmdStr[3]))
 			}
-			return roles.Add(roles.Sig, joinable, cmdStr[2], strings.Join(cmdStr[4:], " "), "discord", c.logger, c.db, c.nsq)
+			return roles.Add(roles.Sig, joinable, cmdStr[2], strings.Join(cmdStr[4:], " "), "discord", m.Author.ID, c.logger, c.db, c.nsq)
 		}
 
 	case "destroy":
 		if len(cmdStr) < 3 {
 			return "Usage: !sig destroy <sig_name>"
 		}
-		return roles.Destroy(roles.Sig, cmdStr[2], c.logger, c.db, c.nsq)
+		return roles.Destroy(roles.Sig, cmdStr[2], m.Author.ID, c.logger, c.db, c.nsq)
 
 	case "info":
 		if len(cmdStr) < 3 {
@@ -83,63 +83,63 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 		if len(cmdStr) < 5 {
 			return "Usage: !sig set <sig_name> <key> <value>"
 		}
-		return roles.Update(roles.Sig, cmdStr[2], cmdStr[3], cmdStr[4], c.logger, c.db, c.nsq)
+		return roles.Update(roles.Sig, cmdStr[2], cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
 
 	case "add":
 		var (
-			s   *sigs.Sig
+			sig *sigs.Sig
 			err error
 		)
 		if len(cmdStr) < 4 {
 			return "Usage: !sig add <user> <sig>"
 		}
-		s, err = sigs.New(cmdStr[2], cmdStr[3], c.logger, c.db, c.nsq)
+		sig, err = sigs.New(cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db, c.nsq)
 		if err != nil {
 			return common.SendError(err.Error())
 		}
-		return s.Add()
+		return sig.Add()
 
 	case "remove":
 		var (
-			s   *sigs.Sig
+			sig *sigs.Sig
 			err error
 		)
 		if len(cmdStr) < 4 {
 			return "Usage: !sig remove <user> <sig>"
 		}
-		s, err = sigs.New(cmdStr[2], cmdStr[3], c.logger, c.db, c.nsq)
+		sig, err = sigs.New(cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db, c.nsq)
 		if err != nil {
 			return common.SendError(err.Error())
 		}
-		return s.Remove()
+		return sig.Remove()
 
 	case "join":
 		var (
-			s   *sigs.Sig
+			sig *sigs.Sig
 			err error
 		)
 		if len(cmdStr) < 3 {
 			return "Usage: !sig join <sig>"
 		}
-		s, err = sigs.New(m.Author.ID, cmdStr[2], c.logger, c.db, c.nsq)
+		sig, err = sigs.New(m.Author.ID, cmdStr[2], m.Author.ID, c.logger, c.db, c.nsq)
 		if err != nil {
 			return common.SendError(err.Error())
 		}
-		return s.Join()
+		return sig.Join()
 
 	case "leave":
 		var (
-			s   *sigs.Sig
+			sig *sigs.Sig
 			err error
 		)
 		if len(cmdStr) < 3 {
 			return "Usage: !sig leave <sig>"
 		}
-		s, err = sigs.New(m.Author.ID, cmdStr[2], c.logger, c.db, c.nsq)
+		sig, err = sigs.New(m.Author.ID, cmdStr[2], m.Author.ID, c.logger, c.db, c.nsq)
 		if err != nil {
 			return common.SendError(err.Error())
 		}
-		return s.Leave()
+		return sig.Leave()
 
 	case "keys":
 		return roles.Keys()

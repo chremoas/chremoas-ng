@@ -52,7 +52,7 @@ func (c Command) doFilter(s *discordgo.Session, m *discordgo.Message, ctx *mux.C
 		if err != nil {
 			return common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
 		}
-		f, _ := filters.Add(cmdStr[2], strings.Join(cmdStr[4:], " "), sig, c.logger, c.db)
+		f, _ := filters.Add(cmdStr[2], strings.Join(cmdStr[4:], " "), sig, m.Author.ID, c.logger, c.db)
 		return f
 
 	case "destroy":
@@ -63,7 +63,7 @@ func (c Command) doFilter(s *discordgo.Session, m *discordgo.Message, ctx *mux.C
 		if err != nil {
 			return common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
 		}
-		f, _ := filters.Delete(cmdStr[2], sig, c.logger, c.db)
+		f, _ := filters.Delete(cmdStr[2], sig, m.Author.ID, c.logger, c.db)
 		return f
 
 	case "add":
@@ -74,7 +74,7 @@ func (c Command) doFilter(s *discordgo.Session, m *discordgo.Message, ctx *mux.C
 		if err != nil {
 			return common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[4]))
 		}
-		return filters.AddMember(sig, cmdStr[2], cmdStr[3], c.logger, c.db, c.nsq)
+		return filters.AddMember(sig, cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db, c.nsq)
 
 	case "remove":
 		if len(cmdStr) < 5 {
@@ -84,7 +84,7 @@ func (c Command) doFilter(s *discordgo.Session, m *discordgo.Message, ctx *mux.C
 		if err != nil {
 			return common.SendError(fmt.Sprintf("Error parsing sig `%s` is not a bool value", cmdStr[3]))
 		}
-		return filters.RemoveMember(sig, cmdStr[2], cmdStr[3], c.logger, c.db, c.nsq)
+		return filters.RemoveMember(sig, cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db, c.nsq)
 
 	case "list_members":
 		if len(cmdStr) < 3 {

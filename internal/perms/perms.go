@@ -48,7 +48,15 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Add(name, description string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func Add(name, description, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+	if name == "server_admins" {
+		return common.SendError("User doesn't have permission to this command")
+	}
+
+	if !CanPerform(author, "server_admins", logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
+
 	_, err := db.Insert("permissions").
 		Columns("namespace", "name", "description").
 		Values(viper.GetString("namespace"), name, description).
@@ -66,7 +74,15 @@ func Add(name, description string, logger *zap.SugaredLogger, db *sq.StatementBu
 	return common.SendSuccess(fmt.Sprintf("Created permission `%s`", name))
 }
 
-func Delete(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func Delete(name, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+	if name == "server_admins" {
+		return common.SendError("User doesn't have permission to this command")
+	}
+
+	if !CanPerform(author, "server_admins", logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
+
 	_, err := db.Delete("permissions").
 		Where(sq.Eq{"name": name}).
 		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
@@ -117,8 +133,16 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 	return buffer.String()
 }
 
-func AddMember(user, permission string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func AddMember(user, permission, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var permissionID int
+
+	if permission == "server_admins" {
+		return common.SendError("User doesn't have permission to this command")
+	}
+
+	if !CanPerform(author, "server_admins", logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
 
 	if !common.IsDiscordUser(user) {
 		return common.SendError("second argument must be a discord user")
@@ -154,8 +178,16 @@ func AddMember(user, permission string, logger *zap.SugaredLogger, db *sq.Statem
 	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, permission))
 }
 
-func RemoveMember(user, permission string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func RemoveMember(user, permission, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var permissionID int
+
+	if permission == "server_admins" {
+		return common.SendError("User doesn't have permission to this command")
+	}
+
+	if !CanPerform(author, "server_admins", logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
 
 	if !common.IsDiscordUser(user) {
 		return common.SendError("second argument must be a discord user")
@@ -223,4 +255,46 @@ func UserPerms(user string, logger *zap.SugaredLogger, db *sq.StatementBuilderTy
 	}
 
 	return buffer.String()
+}
+
+func CanPerform(authorID, permission string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) bool {
+	var (
+		count        int
+		permissionID int
+	)
+
+	//authorID := strings.Split(author, ":")
+	//if len(authorID) < 2 {
+	//	logger.Infof("User %s doesn't have %s", author, permission)
+	//	return false
+	//}
+
+	err := db.Select("id").
+		From("permissions").
+		Where(sq.Eq{"name": permission}).
+		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
+		QueryRow().Scan(&permissionID)
+	if err != nil {
+		newErr := fmt.Errorf("error scanning permisionID: %s", err)
+		logger.Error(newErr)
+		return false
+	}
+
+	err = db.Select("COUNT(*)").
+		From("permission_membership").
+		Where(sq.Eq{"user_id": authorID}).
+		Where(sq.Eq{"permission": permissionID}).
+		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
+		QueryRow().Scan(&count)
+	if err != nil {
+		newErr := fmt.Errorf("error scanning permission count: %s", err)
+		logger.Error(newErr)
+		return false
+	}
+
+	if count == 0 {
+		return false
+	}
+
+	return true
 }

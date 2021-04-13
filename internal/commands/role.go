@@ -53,21 +53,21 @@ func (c Command) Role(s *discordgo.Session, m *discordgo.Message, ctx *mux.Conte
 		if len(cmdStr) < 4 {
 			rs = "Usage: !role create <role_name> <role_description>"
 		} else {
-			rs = roles.Add(roles.Role, false, cmdStr[2], strings.Join(cmdStr[3:], " "), "discord", c.logger, c.db, c.nsq)
+			rs = roles.Add(roles.Role, false, cmdStr[2], strings.Join(cmdStr[3:], " "), "discord", m.Author.ID, c.logger, c.db, c.nsq)
 		}
 
 	case "destroy":
 		if len(cmdStr) < 3 {
 			rs = "Usage: !role destroy <role_name>"
 		} else {
-			rs = roles.Destroy(roles.Role, cmdStr[2], c.logger, c.db, c.nsq)
+			rs = roles.Destroy(roles.Role, cmdStr[2], m.Author.ID, c.logger, c.db, c.nsq)
 		}
 
 	case "set":
 		if len(cmdStr) < 5 {
 			rs = "Usage: !role set <role_name> <key> <value>"
 		} else {
-			rs = roles.Update(roles.Role, cmdStr[2], cmdStr[3], cmdStr[4], c.logger, c.db, c.nsq)
+			rs = roles.Update(roles.Role, cmdStr[2], cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
 		}
 
 	case "info":

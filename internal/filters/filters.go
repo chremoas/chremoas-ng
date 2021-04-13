@@ -8,6 +8,7 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
+	"github.com/chremoas/chremoas-ng/internal/perms"
 	"github.com/lib/pq"
 	"github.com/nsqio/go-nsq"
 	"github.com/spf13/viper"
@@ -50,8 +51,12 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Add(name, description string, sig bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
+func Add(name, description string, sig bool, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
 	var id int
+
+	if !perms.CanPerform(author, "role_admins", logger, db) {
+		return common.SendError("User doesn't have permission to this command"), -1
+	}
 
 	err := db.Insert("filters").
 		Columns("namespace", "name", "description", "sig").
@@ -71,8 +76,12 @@ func Add(name, description string, sig bool, logger *zap.SugaredLogger, db *sq.S
 	return common.SendSuccess(fmt.Sprintf("Created filter `%s`", name)), id
 }
 
-func Delete(name string, sig bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
+func Delete(name string, sig bool, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
 	var id int
+
+	if !perms.CanPerform(author, "role_admins", logger, db) {
+		return common.SendError("User doesn't have permission to this command"), -1
+	}
 
 	rows, err := db.Delete("filters").
 		Where(sq.Eq{"name": name}).
@@ -135,8 +144,12 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 	return buffer.String()
 }
 
-func AddMember(sig bool, userID, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func AddMember(sig bool, userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var filterID int
+
+	if !perms.CanPerform(author, "role_admins", logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
 
 	err := db.Select("id").
 		From("filters").
@@ -171,11 +184,15 @@ func AddMember(sig bool, userID, filter string, logger *zap.SugaredLogger, db *s
 	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, filter))
 }
 
-func RemoveMember(sig bool, userID, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func RemoveMember(sig bool, userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var (
 		filterID int
 		deleted  bool
 	)
+
+	if !perms.CanPerform(author, "role_admins", logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
 
 	err := db.Select("id").
 		From("filters").

@@ -8,6 +8,7 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
+	"github.com/chremoas/chremoas-ng/internal/perms"
 	"github.com/chremoas/chremoas-ng/internal/roles"
 	"github.com/nsqio/go-nsq"
 	"go.uber.org/zap"
@@ -20,9 +21,10 @@ type Sig struct {
 	role   payloads.Role
 	sig    string
 	userID string
+	author string
 }
 
-func New(member, sig string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) (*Sig, error) {
+func New(member, sig, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) (*Sig, error) {
 	_, err := strconv.Atoi(member)
 	if err != nil {
 		if !common.IsDiscordUser(member) {
@@ -49,15 +51,22 @@ func New(member, sig string, logger *zap.SugaredLogger, db *sq.StatementBuilderT
 		role:   role[0],
 		sig:    sig,
 		userID: member,
+		author: author,
 	}, nil
 }
 
 func (s Sig) Add() string {
-	return filters.AddMember(roles.Sig, s.userID, s.sig, s.logger, s.db, s.nsq)
+	if !perms.CanPerform(s.author, "sig_admins", s.logger, s.db) {
+		return common.SendError("User not authorized")
+	}
+	return filters.AddMember(roles.Sig, s.userID, s.sig, s.author, s.logger, s.db, s.nsq)
 }
 
 func (s Sig) Remove() string {
-	return filters.RemoveMember(roles.Sig, s.userID, s.sig, s.logger, s.db, s.nsq)
+	if !perms.CanPerform(s.author, "sig_admins", s.logger, s.db) {
+		return common.SendError("User not authorized")
+	}
+	return filters.RemoveMember(roles.Sig, s.userID, s.sig, s.author, s.logger, s.db, s.nsq)
 }
 
 func (s Sig) Join() string {
