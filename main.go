@@ -4,16 +4,24 @@ package main
 
 // Import all Go packages required for this file.
 import (
+	"context"
 	"database/sql"
+	_ "expvar"
 	"flag"
 	"fmt"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
+	"github.com/chremoas/chremoas-ng/internal/auth-srv/repository"
+	"github.com/chremoas/chremoas-ng/internal/auth/web"
+	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/discord/members"
 	"github.com/chremoas/chremoas-ng/internal/discord/roles"
 	"github.com/jmoiron/sqlx"
@@ -37,7 +45,10 @@ func main() {
 		logger = log.New()
 	)
 
+	// =========================================================================
+	// Setup the configuration
 	// Get the config file name if we're not using consul
+
 	flag.String("configFile", "chremoas.yaml", "configuration file name")
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
@@ -50,6 +61,58 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	// =========================================================================
+	// Start Debug Service
+	//
+	// /debug/pprof - Added to the default mux by importing the net/http/pprof package.
+	// /debug/vars - Added to the default mux by importing the expvar package.
+	//
+	// Not concerned with shutting this down when the application is shutdown.
+
+	logger.Info("main: Initializing debugging support")
+
+	go func() {
+		logger.Info("main: Debug Listening %s", "0.0.0.0:4000")
+		if err = http.ListenAndServe("0.0.0.0:4000", http.DefaultServeMux); err != nil {
+			logger.Errorf("main: Debug Listener closed: %v", err)
+		}
+	}()
+
+	// =========================================================================
+	// Start auth-web Service
+
+	logger.Info("main: Initializing auth-web support")
+
+	// Make a channel to listen for an interrupt or terminate signal from the OS.
+	// Use a buffered channel because the signal package requires it.
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+
+	authWeb, err := web.New()
+	if err != nil {
+		logger.Fatalf("Error starting authWeb: %s", err)
+	}
+
+	api := http.Server{
+		Addr:         "0.0.0.0:3100",
+		Handler:      authWeb.Auth(),
+		ReadTimeout:  time.Second * 5,
+		WriteTimeout: time.Second * 5,
+	}
+
+	// Make a channel to listen for errors coming from the listener. Use a
+	// buffered channel so the goroutine can exit if we don't collect this error.
+	serverErrors := make(chan error, 1)
+
+	// Start the service listening for requests.
+	go func() {
+		logger.Infof("main: auth-web listening on %s", api.Addr)
+		serverErrors <- api.ListenAndServe()
+	}()
+
+	// =========================================================================
+	// Start the discord session
 
 	Session, err := discordgo.New("Bot " + viper.GetString("bot.token"))
 	if err != nil {
@@ -80,13 +143,20 @@ func main() {
      \______  /___|  /__|  |__|_|  /\____(____  /____  >
             \/     \/            \/ %-9s \/     \/`+"\n\n", Version)
 
+	// =========================================================================
 	// Setup DB connection
+
 	db, err := NewDB(logger)
 	if err != nil {
 		logger.Fatalf("error opening connection to PostgreSQL: %s\n", err)
 	}
 
+	// Old GORM crud that I hope to get rid of one day
+	err = repository.Setup(viper.GetString("database.driver"), common.NewConnectionString())
+
+	// =========================================================================
 	// Setup NSQ
+
 	queue := nsq.NewConfig()
 	queueAddr := fmt.Sprintf("%s:%d", viper.GetString("queue.host"), viper.GetInt("queue.port"))
 
@@ -101,8 +171,7 @@ func main() {
 	}
 
 	// Setup the Role Consumer handler
-	roleTopic := fmt.Sprintf("%s-discord.role", viper.GetString("namespace"))
-	roleConsumer, err := nsq.NewConsumer(roleTopic, "discordGateway", queue)
+	roleConsumer, err := nsq.NewConsumer(common.GetTopic("role"), "discordGateway", queue)
 	if err != nil {
 		logger.Fatalf("error setting up role queue consumer: %s\n", err)
 	}
@@ -117,8 +186,7 @@ func main() {
 	}
 
 	// Setup the Member Consumer handler
-	memberTopic := fmt.Sprintf("%s-discord.member", viper.GetString("namespace"))
-	memberConsumer, err := nsq.NewConsumer(memberTopic, "discordGateway", queue)
+	memberConsumer, err := nsq.NewConsumer(common.GetTopic("member"), "discordGateway", queue)
 	if err != nil {
 		logger.Fatalf("error setting up member queue consumer: %s\n", err)
 	}
@@ -145,6 +213,7 @@ func main() {
 		{"sig", "Manages Sigs", c.Sig},
 		{"filter", "Manages Filters", c.Filter},
 		{"perms", "Manages Permissions", c.Perms},
+		{"auth", "Manages Permissions", c.Auth},
 	}
 
 	for _, route := range commandList {
@@ -160,11 +229,28 @@ func main() {
 		logger.Fatalf("error opening connection to Discord: %s\n", err)
 	}
 
-	// Wait for a CTRL-C
+	// =========================================================================
+	// Main loop
+
 	logger.Info(`Now running. Press CTRL-C to exit.`)
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
-	<-sc
+	// Blocking main and waiting for shutdown.
+	select {
+	case err = <-serverErrors:
+		logger.Fatal(err)
+
+	case sig := <-shutdown:
+		logger.Infof("main: %v: Start shutdown", sig)
+
+		// Give outstanding requests a deadline for completion.
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+
+		// Asking listener to shutdown and shed load.
+		if err = api.Shutdown(ctx); err != nil {
+			api.Close()
+			logger.Fatalf("could not stop server gracefully: %s", err)
+		}
+	}
 
 	// Clean up
 	Session.Close()

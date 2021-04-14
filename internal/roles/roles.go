@@ -370,8 +370,7 @@ func Add(sig, joinable bool, shortName, name, chatType, author string, logger *z
 		fmt.Println("error:", err)
 	}
 
-	topic := fmt.Sprintf("%s-discord.role", viper.GetString("namespace"))
-	err = nsq.PublishAsync(topic, b, nil)
+	err = nsq.PublishAsync(common.GetTopic("role"), b, nil)
 	if err != nil {
 		fmt.Println("error:", err)
 	}
@@ -555,8 +554,7 @@ func queueUpdate(chatID int, action payloads.Action, logger *zap.SugaredLogger, 
 	}
 
 	logger.Debug("Submitting role queue message")
-	topic := fmt.Sprintf("%s-discord.role", viper.GetString("namespace"))
-	err = nsq.PublishAsync(topic, b, nil)
+	err = nsq.PublishAsync(common.GetTopic("role"), b, nil)
 	if err != nil {
 		logger.Errorf("error publishing message: %s", err)
 	}

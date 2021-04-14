@@ -1,0 +1,39 @@
+package commands
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/bwmarrin/discordgo"
+	"github.com/bwmarrin/disgord/x/mux"
+)
+
+const authHelpStr = `
+Usage: !auth <token>
+`
+
+// This function will be called (due to AddHandler above) every time a new
+// message is created on any channel that the autenticated bot has access to.
+func (c Command) Auth(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
+	_, err := s.ChannelMessageSend(m.ChannelID, c.doAuth(s, m, ctx))
+	if err != nil {
+		c.logger.Errorf("Error sending command: %s", err)
+	}
+}
+
+func (c Command) doAuth(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) string {
+	c.logger.Infof("Recieved: %s", m.Content)
+	cmdStr := strings.Split(m.Content, " ")
+
+	if len(cmdStr) < 2 {
+		return fmt.Sprintf("```%s```", authHelpStr)
+	}
+
+	switch cmdStr[1] {
+	case "help":
+		return fmt.Sprintf("```%s```", authHelpStr)
+
+	default:
+		return fmt.Sprintf("```%s```", authHelpStr)
+	}
+}

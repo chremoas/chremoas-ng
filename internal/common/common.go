@@ -1,6 +1,10 @@
 package common
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/spf13/viper"
+)
 
 func makeString(message string, sender string, sign string) string {
 	var output string
@@ -44,4 +48,24 @@ func SendFatal(message string, sender ...string) string {
 		s = sender[0]
 	}
 	return makeString(message, s, ":octagonal_sign:")
+}
+
+func GetTopic(topic string) string {
+	return fmt.Sprintf("%s-discord.%s", viper.GetString("namespace"), topic)
+}
+
+func NewConnectionString() string {
+	return viper.GetString("database.driver") +
+		"://" +
+		viper.GetString("database.username") +
+		":" +
+		viper.GetString("database.password") +
+		"@" +
+		viper.GetString("database.host") +
+		":" +
+		fmt.Sprintf("%d", viper.GetInt("database.port")) +
+		"/" +
+		viper.GetString("database.database") +
+		"?" +
+		viper.GetString("database.options")
 }

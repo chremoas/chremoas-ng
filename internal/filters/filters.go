@@ -241,8 +241,7 @@ func queueUpdate(member string, logger *zap.SugaredLogger, nsq *nsq.Producer) {
 	}
 
 	logger.Debug("Submitting member queue message")
-	topic := fmt.Sprintf("%s-discord.member", viper.GetString("namespace"))
-	err = nsq.PublishAsync(topic, b, nil)
+	err = nsq.PublishAsync(common.GetTopic("member"), b, nil)
 	if err != nil {
 		logger.Errorf("error publishing message: %s", err)
 	}

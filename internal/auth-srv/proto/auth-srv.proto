@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package abaeve.auth;
+
+enum EntityType {
+    ALLIANCE = 0;
+    CORPORATION = 1;
+    CHARACTER = 2;
+    ROLE = 3;
+}
+
+enum EntityOperation {
+    ADD_OR_UPDATE = 0;
+    REMOVE = 1;
+}
+
+service UserAuthentication {
+    //Called by the auth-web to state someone has started the auth process
+    rpc Create (AuthCreateRequest) returns (AuthCreateResponse) {};
+    //Called by the auth-bot or another system to state that they've linked a character to their account
+    rpc Confirm (AuthConfirmRequest) returns (AuthConfirmResponse) {};
+    rpc SyncToRoleService (SyncRequest) returns (SyncToRoleResponse) {};
+}
+
+service EntityQuery {
+    rpc GetAlliances (EntityQueryRequest) returns (AlliancesResponse) {};
+    rpc GetCorporations (EntityQueryRequest) returns (CorporationsResponse) {};
+    rpc GetCharacters (EntityQueryRequest) returns (CharactersResponse) {};
+}
+
+service EntityAdmin {
+    rpc AllianceUpdate (AllianceAdminRequest) returns (EntityAdminResponse) {};
+    rpc CorporationUpdate (CorporationAdminRequest) returns (EntityAdminResponse) {};
+    rpc CharacterUpdate (CharacterAdminRequest) returns (EntityAdminResponse) {};
+}
+
+message SyncRequest {
+    string ChannelId = 1;
+    string UserId = 2;
+    bool SendMessage = 3;
+}
+
+message Role {
+    string Name = 1;
+    string Description = 2;
+}
+
+message SyncToRoleResponse {
+    repeated Role Roles = 1;
+}
+
+message AuthCreateRequest {
+    string Token = 1;
+    Character Character = 2;
+    Corporation Corporation = 3;
+    Alliance Alliance = 4;
+    repeated string AuthScope = 5;
+}
+
+message AuthCreateResponse {
+    string AuthenticationCode = 1;
+    bool Success = 2;
+}
+
+message AuthConfirmRequest {
+    string UserId = 1;
+    string AuthenticationCode = 2;
+}
+
+message AuthConfirmResponse {
+    bool Success = 1;
+    string CharacterName = 2;
+}
+
+message CharactersResponse {
+    repeated Character List = 1;
+}
+
+message Character {
+    int64 Id = 1;
+    string Name = 2;
+    int64 CorporationId = 3;
+}
+
+message CorporationsResponse {
+    repeated Corporation List = 1;
+}
+
+message Corporation {
+    int64 Id = 1;
+    string Name = 2;
+    string Ticker = 3;
+    int64 AllianceId = 4;
+}
+
+message AlliancesResponse {
+    repeated Alliance List = 1;
+}
+
+message Alliance {
+    int64 Id = 1;
+    string Name = 2;
+    string Ticker = 3;
+}
+
+message EntityAdminResponse {
+    bool Success = 1;
+}
+
+message AllianceAdminRequest {
+    Alliance Alliance = 1;
+    EntityOperation Operation = 2;
+}
+
+message CorporationAdminRequest {
+    Corporation Corporation = 1;
+    EntityOperation Operation = 2;
+}
+
+message CharacterAdminRequest {
+    Character Character = 1;
+    EntityOperation Operation = 2;
+}
+
+message EntityQueryRequest {
+    EntityType EntityType = 1;
+}
