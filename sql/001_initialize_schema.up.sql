@@ -3,23 +3,21 @@
 CREATE TABLE filters
 (
     id          BIGSERIAL PRIMARY KEY NOT NULL,
-    namespace   VARCHAR(32)           NOT NULL,
     name        VARCHAR(32)           NOT NULL,
     description VARCHAR(256)          NOT NULL,
     sig         BOOL DEFAULT FALSE
 );
 
-CREATE UNIQUE INDEX filters_uindex ON filters (name, namespace, sig);
+CREATE UNIQUE INDEX filters_uindex ON filters (name, sig);
 
 CREATE TABLE filter_membership
 (
     id        BIGSERIAL PRIMARY KEY NOT NULL,
-    namespace VARCHAR(32)           NOT NULL,
     filter    BIGINT REFERENCES filters (id) ON DELETE CASCADE,
     user_id   BIGINT
 );
 
-CREATE UNIQUE INDEX filter_membership_uindex ON filter_membership (filter, user_id, namespace);
+CREATE UNIQUE INDEX filter_membership_uindex ON filter_membership (filter, user_id);
 
 
 --- Roles --------------------------------------
@@ -27,7 +25,6 @@ CREATE UNIQUE INDEX filter_membership_uindex ON filter_membership (filter, user_
 CREATE TABLE roles
 (
     id          BIGSERIAL PRIMARY KEY NOT NULL,
-    namespace   VARCHAR(32)           NOT NULL,
     color       INT                            DEFAULT 0,
     hoist       BOOL                           DEFAULT FALSE,
     joinable    BOOL                           DEFAULT FALSE,
@@ -45,12 +42,11 @@ CREATE TABLE roles
     updated     TIMESTAMP             NOT NULL DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX name_uindex ON roles (name, namespace, sig);
+CREATE UNIQUE INDEX name_uindex ON roles (name, sig);
 
 CREATE TABLE role_filters
 (
     id        BIGSERIAL PRIMARY KEY NOT NULL,
-    namespace VARCHAR(32)           NOT NULL,
     role      BIGINT REFERENCES roles (id) ON DELETE CASCADE,
     filter    BIGINT REFERENCES filters (id) ON DELETE CASCADE
 );
@@ -60,19 +56,17 @@ CREATE TABLE role_filters
 CREATE TABLE permissions
 (
     id          BIGSERIAL PRIMARY KEY NOT NULL,
-    namespace   VARCHAR(32)           NOT NULL,
     name        VARCHAR(32)           NOT NULL,
     description VARCHAR(256)          NOT NULL
 );
 
-CREATE UNIQUE INDEX permissions_uindex ON permissions (name, namespace);
+CREATE UNIQUE INDEX permissions_uindex ON permissions (name);
 
 CREATE TABLE permission_membership
 (
     id         BIGSERIAL PRIMARY KEY NOT NULL,
-    namespace  VARCHAR(32)           NOT NULL,
     permission BIGINT REFERENCES permissions (id),
     user_id    BIGINT
 );
 
-CREATE UNIQUE INDEX permission_membership_uindex ON permission_membership (permission, user_id, namespace);
+CREATE UNIQUE INDEX permission_membership_uindex ON permission_membership (permission, user_id);

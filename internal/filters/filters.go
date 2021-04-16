@@ -11,7 +11,6 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/perms"
 	"github.com/lib/pq"
 	"github.com/nsqio/go-nsq"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
 
@@ -24,7 +23,6 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 
 	rows, err := db.Select("name", "description").
 		From("filters").
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		logger.Error(err)
@@ -59,8 +57,8 @@ func Add(name, description string, sig bool, author string, logger *zap.SugaredL
 	}
 
 	err := db.Insert("filters").
-		Columns("namespace", "name", "description", "sig").
-		Values(viper.GetString("namespace"), name, description, sig).
+		Columns("name", "description", "sig").
+		Values(name, description, sig).
 		Suffix("RETURNING \"id\"").
 		QueryRow().Scan(&id)
 	if err != nil {
@@ -86,7 +84,6 @@ func Delete(name string, sig bool, author string, logger *zap.SugaredLogger, db 
 	rows, err := db.Delete("filters").
 		Where(sq.Eq{"name": name}).
 		Where(sq.Eq{"sig": sig}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		Suffix("RETURNING \"id\"").
 		Query()
 	if err != nil {
@@ -117,7 +114,6 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 		From("filters").
 		Join("filter_membership ON filters.id = filter_membership.filter").
 		Where(sq.Eq{"filters.name": name}).
-		Where(sq.Eq{"filters.namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error getting filter membership list: %s", err)
@@ -155,7 +151,6 @@ func AddMember(sig bool, userID, filter, author string, logger *zap.SugaredLogge
 		From("filters").
 		Where(sq.Eq{"name": filter}).
 		Where(sq.Eq{"sig": sig}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&filterID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning filterID: %s", err)
@@ -166,8 +161,8 @@ func AddMember(sig bool, userID, filter, author string, logger *zap.SugaredLogge
 	logger.Infof("Got userID:%s filterID:%d", userID, filterID)
 
 	_, err = db.Insert("filter_membership").
-		Columns("namespace", "filter", "user_id").
-		Values(viper.GetString("namespace"), filterID, userID).
+		Columns("filter", "user_id").
+		Values(filterID, userID).
 		Query()
 	if err != nil {
 		// I don't love this but I can't find a better way right now
@@ -198,7 +193,6 @@ func RemoveMember(sig bool, userID, filter, author string, logger *zap.SugaredLo
 		From("filters").
 		Where(sq.Eq{"name": filter}).
 		Where(sq.Eq{"sig": sig}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&filterID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning filterID: %s", err)
@@ -209,7 +203,6 @@ func RemoveMember(sig bool, userID, filter, author string, logger *zap.SugaredLo
 	rows, err := db.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).
 		Where(sq.Eq{"user_id": userID}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		Suffix("RETURNING \"id\"").
 		Query()
 	if err != nil {

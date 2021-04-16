@@ -4,68 +4,132 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 
-	"github.com/chremoas/chremoas-ng/internal/auth-srv/model"
-	abaeve_auth "github.com/chremoas/chremoas-ng/internal/auth-srv/proto"
-	"github.com/chremoas/chremoas-ng/internal/auth-srv/repository"
+	sq "github.com/Masterminds/squirrel"
+	"github.com/chremoas/chremoas-ng/internal/common"
+	"github.com/chremoas/chremoas-ng/internal/roles"
+	"github.com/lib/pq"
+	"github.com/nsqio/go-nsq"
+	"go.uber.org/zap"
 )
 
-func Create(_ context.Context, request *abaeve_auth.AuthCreateRequest) (response *abaeve_auth.AuthCreateResponse, err error) {
-	var alliance *model.Alliance
+func Create(_ context.Context, request *CreateRequest, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) (*string, error) {
+	var (
+		err   error
+		count int
+	)
 
-	//We MIGHT NOT have any kind of alliance information
+	// ===========================================================================================
+	// Get alliance
+
+	// We MIGHT NOT have any kind of alliance information
 	if request.Alliance != nil {
-		alliance = repository.AllianceRepo.FindByAllianceId(request.Alliance.Id)
+		logger.Infof("Checking alliance: %d", request.Alliance.ID)
+		err = db.Select("COUNT(*)").
+			From("alliances").
+			Where(sq.Eq{"id": request.Alliance.ID}).
+			QueryRow().Scan(&count)
+		if err != nil {
+			logger.Error(err)
+			return nil, err
+		}
 
-		if alliance == nil {
-			alliance = &model.Alliance{
-				AllianceId:     request.Alliance.Id,
-				AllianceName:   request.Alliance.Name,
-				AllianceTicker: request.Alliance.Ticker,
-			}
-			err = repository.AllianceRepo.Save(alliance)
-
+		if count == 0 {
+			logger.Infof("Alliance not found, adding to db: %d", request.Alliance.ID)
+			_, err = db.Insert("alliances").
+				Columns("id", "name", "ticker").
+				Values(request.Alliance.ID, request.Alliance.Name, request.Alliance.Ticker).
+				Query()
 			if err != nil {
-				return
+				logger.Error(err)
+				return nil, err
+			}
+		}
+
+		err = db.Select("COUNT(*)").
+			From("roles").
+			Where(sq.Eq{"name": request.Alliance.Name}).
+			QueryRow().Scan(&count)
+		if err != nil {
+			logger.Error(err)
+			return nil, err
+		}
+
+		if count == 0 {
+			_, err = db.Insert("roles").
+				Columns("name", "role_nick").
+				Values(request.Alliance.Name, request.Alliance.Ticker).
+				Query()
+			if err != nil {
+				logger.Error(err)
+				return nil, err
 			}
 		}
 	}
 
-	corporation := repository.CorporationRepo.FindByCorporationId(request.Corporation.Id)
+	// ===========================================================================================
+	// Get Corporation
 
-	if corporation == nil {
-		corporation = &model.Corporation{
-			CorporationId:     request.Corporation.Id,
-			CorporationName:   request.Corporation.Name,
-			CorporationTicker: request.Corporation.Ticker,
+	err = db.Select("COUNT(*)").
+		From("corporations").
+		Where(sq.Eq{"id": request.Corporation.ID}).
+		QueryRow().Scan(&count)
+	if err != nil {
+		logger.Error(err)
+		return nil, err
+	}
+
+	if count == 0 {
+		logger.Infof("Corporation not found, adding to db: %d", request.Corporation.ID)
+		if request.Alliance == nil {
+			_, err = db.Insert("corporations").
+				Columns("id", "name", "ticker").
+				Values(request.Corporation.ID, request.Corporation.Name, request.Corporation.Ticker).
+				Query()
+		} else {
+			_, err = db.Insert("corporations").
+				Columns("id", "name", "ticker", "alliance_id").
+				Values(request.Corporation.ID, request.Corporation.Name, request.Corporation.Ticker, request.Alliance.ID).
+				Query()
 		}
-
-		if alliance != nil {
-			corporation.AllianceId = &request.Alliance.Id
-			corporation.Alliance = *alliance
-		}
-
-		err = repository.CorporationRepo.Save(corporation)
-
 		if err != nil {
-			return
+			logger.Error(err)
+			return nil, err
 		}
 	}
 
-	character := repository.CharacterRepo.FindByCharacterId(request.Character.Id)
+	role, err := roles.GetRoles(false, &request.Corporation.Ticker, logger, db)
+	if err != nil {
+		logger.Error(err)
+		return nil, err
+	}
 
-	if character == nil {
-		character = &model.Character{
-			CharacterId:   request.Character.Id,
-			CharacterName: request.Character.Name,
-			Token:         request.Token,
-			CorporationId: request.Corporation.Id,
-			Corporation:   *corporation,
-		}
-		err = repository.CharacterRepo.Save(character)
+	if len(role) == 0 {
+		roles.Add(false, false, request.Corporation.Ticker, request.Corporation.Name, "discord", "auth-web", logger, db, nsq)
+	}
 
+	// ===========================================================================================
+	// Get character
+
+	err = db.Select("COUNT(*)").
+		From("characters").
+		Where(sq.Eq{"id": request.Character.ID}).
+		QueryRow().Scan(&count)
+	if err != nil {
+		logger.Error(err)
+		return nil, err
+	}
+
+	if count == 0 {
+		logger.Infof("Character not found, adding to db: %d", request.Character.ID)
+		_, err = db.Insert("characters").
+			Columns("id", "name", "token", "corporation_id").
+			Values(request.Character.ID, request.Character.Name, request.Token, request.Corporation.ID).
+			Query()
 		if err != nil {
-			return
+			logger.Error(err)
+			return nil, err
 		}
 	}
 
@@ -74,15 +138,67 @@ func Create(_ context.Context, request *abaeve_auth.AuthCreateRequest) (response
 	rand.Read(b)
 	authCode := hex.EncodeToString(b)
 
-	err = repository.AuthenticationCodeRepo.Save(character, authCode)
-
+	_, err = db.Insert("authentication_codes").
+		Columns("character_id", "code").
+		Values(request.Character.ID, authCode).
+		Query()
 	if err != nil {
-		return
+		logger.Error(err)
+		return nil, err
 	}
 
-	response = &abaeve_auth.AuthCreateResponse{}
-	response.AuthenticationCode = authCode
-	response.Success = true
+	return &authCode, nil
+}
 
-	return
+func Confirm(authCode, sender string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+	var (
+		err         error
+		characterID int
+		name        string
+		used        bool
+	)
+
+	err = db.Select("character_id", "used").
+		From("authentication_codes").
+		Where(sq.Eq{"code": authCode}).
+		QueryRow().Scan(&characterID, &used)
+	if err != nil {
+		logger.Error(err)
+		return common.SendError(fmt.Sprintf("Error getting authentication code: %s", authCode))
+	}
+
+	if used {
+		return common.SendError(fmt.Sprintf("Auth code already used: %s", authCode))
+	}
+
+	err = db.Select("name").
+		From("characters").
+		Where(sq.Eq{"id": characterID}).
+		QueryRow().Scan(&name)
+	if err != nil {
+		logger.Error(err)
+		return common.SendError(fmt.Sprintf("Error getting character name: %d", characterID))
+	}
+
+	_, err = db.Update("authentication_codes").
+		Set("used", true).
+		Query()
+	if err != nil {
+		logger.Error(err)
+		return common.SendError("Error updating auth code used")
+	}
+
+	_, err = db.Insert("user_character_map").
+		Values(sender, characterID).
+		Query()
+	if err != nil {
+		// I don't love this but I can't find a better way right now
+		if err.(*pq.Error).Code == "23505" {
+			return common.SendError("User already authenticated")
+		}
+		logger.Error(err)
+		return common.SendError("Error linking user with character")
+	}
+
+	return common.SendSuccess(fmt.Sprintf("<@%s> **Success**: %s has been successfully authed.", sender, name))
 }

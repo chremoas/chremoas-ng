@@ -50,7 +50,6 @@ func (m Member) HandleMessage(msg *nsq.Message) error {
 		Join("role_filters ON filters.id = role_filters.filter").
 		Join("roles ON role_filters.role = roles.id").
 		Where(sq.Eq{"filter_membership.user_id": body.Member}).
-		Where(sq.Eq{"filters.namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		m.logger.Errorf("error updating member `%s`: %s", body.Member, err)

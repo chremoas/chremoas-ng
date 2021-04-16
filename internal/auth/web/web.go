@@ -3,33 +3,37 @@ package web
 import (
 	"context"
 	"crypto/rand"
+	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/antihax/goesi"
 	"github.com/antihax/goesi/esi"
 	"github.com/astaxie/beego/session"
 	"github.com/chremoas/chremoas-ng/internal/auth"
-	abaeve_auth "github.com/chremoas/chremoas-ng/internal/auth-srv/proto"
 	"github.com/dimfeld/httptreemux"
 	"github.com/gregjones/httpcache"
+	"github.com/nsqio/go-nsq"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 const (
 	name = "auth"
 )
 
+//go:embed static/* templates/*
+var content embed.FS
+
 var (
 	globalSessions *session.Manager
 	apiClient      *goesi.APIClient
 	authenticator  *goesi.SSOAuthenticator
-	templates      = template.New("")
 )
 
 type ResultModel struct {
@@ -39,11 +43,14 @@ type ResultModel struct {
 	Name       string
 }
 
-type Web string
+type Web struct {
+	logger    *zap.SugaredLogger
+	db        *sq.StatementBuilderType
+	templates *template.Template
+	nsq       *nsq.Producer
+}
 
-func New() (*Web, error) {
-	var web Web
-
+func New(logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) (*Web, error) {
 	//Setup our required globals.
 	globalSessions, _ = session.NewManager("memory", &session.ManagerConfig{CookieName: "gosessionid", EnableSetCookie: true, Gclifetime: 600})
 	go globalSessions.GC()
@@ -65,49 +72,52 @@ func New() (*Web, error) {
 	)
 
 	//Initialize my templates
-	for _, path := range AssetNames() {
-		bytes, err := Asset(path)
-		if err != nil {
-			log.Printf("Unable to parse: path=%s, err=%s", path, err)
-			return nil, fmt.Errorf("Unable to parse: path=%s, err=%s", path, err)
-		}
-		templates.New(path).Parse(string(bytes))
+	templates := template.New("auth-web")
+	_, err := templates.ParseFS(content, "templates/*.html")
+	if err != nil {
+		logger.Errorf("Error parsing templates: %s", err)
+		return nil, err
 	}
 
-	return &web, nil
+	return &Web{logger: logger, db: db, templates: templates, nsq: nsq}, nil
 }
 
-func (w Web) Auth() *httptreemux.ContextMux {
+func (web Web) Auth() *httptreemux.ContextMux {
 	mux := httptreemux.NewContextMux()
 
-	mux.Handle(http.MethodGet, "/ready", readiness)
-	mux.Handle(http.MethodGet, "/static/*path", serveFiles)
-	mux.Handle(http.MethodGet, "/", middleware(handleIndex))
-	mux.Handle(http.MethodGet, "/login", middleware(handleEveLogin))
-	mux.Handle(http.MethodGet, viper.GetString("oauth.callBackUrl"), middleware(handleEveCallback))
+	mux.Handle(http.MethodGet, "/ready", web.readiness)
+	mux.Handle(http.MethodGet, "/static/*path", web.serveFiles)
+	mux.Handle(http.MethodGet, "/", middleware(web.handleIndex))
+	mux.Handle(http.MethodGet, "/login", middleware(web.handleEveLogin))
+	mux.Handle(http.MethodGet, viper.GetString("oauth.callBackUrl"), middleware(web.handleEveCallback))
 
 	return mux
 }
 
-func serveFiles(_ http.ResponseWriter, _ *http.Request) {
-	http.StripPrefix("/static/",
-		http.FileServer(assetFS()))
+func (web Web) serveFiles(w http.ResponseWriter, r *http.Request) {
+	http.FileServer(http.FS(content)).ServeHTTP(w, r)
 }
 
-func readiness(w http.ResponseWriter, _ *http.Request) {
+func (web Web) readiness(w http.ResponseWriter, _ *http.Request) {
 	status := struct {
 		Status string
 	}{
 		Status: "OK",
 	}
-	json.NewEncoder(w).Encode(status)
+	err := json.NewEncoder(w).Encode(status)
+	if err != nil {
+		web.logger.Errorf("Error encoding status: %s", err)
+	}
 }
 
-func handleIndex(w http.ResponseWriter, _ *http.Request) {
-	templates.ExecuteTemplate(w, "templates/index.html", nil)
+func (web Web) handleIndex(w http.ResponseWriter, _ *http.Request) {
+	err := web.templates.ExecuteTemplate(w, "index.html", nil)
+	if err != nil {
+		web.logger.Error("Error executing index: %s", err)
+	}
 }
 
-func handleEveLogin(w http.ResponseWriter, r *http.Request) {
+func (web Web) handleEveLogin(w http.ResponseWriter, r *http.Request) {
 	// Get the users session
 	sess, _ := globalSessions.SessionStart(w, r)
 
@@ -116,11 +126,17 @@ func handleEveLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Generate a random 16 byte state.
 	b := make([]byte, 16)
-	rand.Read(b)
+	_, err := rand.Read(b)
+	if err != nil {
+		web.logger.Error("Error generating rangom string: %s", err)
+	}
 	state := base64.URLEncoding.EncodeToString(b)
 
 	// Save the state to the session to validate with the response.
-	sess.Set("state", state)
+	err = sess.Set("state", state)
+	if err != nil {
+		web.logger.Errorf("Error setting state: %s", err)
+	}
 
 	// Build the authorize URL
 	//TODO: This is where we'd set extra needed scopes
@@ -130,7 +146,7 @@ func handleEveLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirectUrl, http.StatusTemporaryRedirect)
 }
 
-func handleEveCallback(w http.ResponseWriter, r *http.Request) {
+func (web Web) handleEveCallback(w http.ResponseWriter, r *http.Request) {
 	sess, _ := globalSessions.SessionStart(w, r)
 	if sess == nil {
 		fmt.Print("No session, redirecting to /\n")
@@ -138,14 +154,14 @@ func handleEveCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	internalAuthCode, err := doAuth(w, r, sess)
+	internalAuthCode, err := web.doAuth(w, r, sess)
 	if err != nil {
 		//TODO: Make another template for errors specifically for this endpoint
 		fmt.Printf("Received an error from doAuth: (%s)\n", err)
 		return
 	}
 
-	templates.ExecuteTemplate(w, "templates/authd.html",
+	err = web.templates.ExecuteTemplate(w, "authd.html",
 		&ResultModel{
 			Title:      "Authd Up",
 			Auth:       *internalAuthCode,
@@ -153,9 +169,12 @@ func handleEveCallback(w http.ResponseWriter, r *http.Request) {
 			Name:       name,
 		},
 	)
+	if err != nil {
+		web.logger.Errorf("Error executing authd template: %s", err)
+	}
 }
 
-func doAuth(w http.ResponseWriter, r *http.Request, sess session.Store) (*string, error) {
+func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store) (*string, error) {
 	state := r.FormValue("state")
 	code := r.FormValue("code")
 	stateValidate := sess.Get("state")
@@ -212,14 +231,14 @@ func doAuth(w http.ResponseWriter, r *http.Request, sess session.Store) (*string
 
 	//Auth internally, this is the source of the bot's auth code.
 	//We know we'll have a corp and a character, we're not sure if the corp is in an alliance.
-	request := &abaeve_auth.AuthCreateRequest{
-		Corporation: &abaeve_auth.Corporation{
-			Id:     int64(character.CorporationId),
+	request := &auth.CreateRequest{
+		Corporation: &auth.Corporation{
+			ID:     int64(character.CorporationId),
 			Name:   corporation.Name,
 			Ticker: corporation.Ticker,
 		},
-		Character: &abaeve_auth.Character{
-			Id:   int64(verifyReponse.CharacterID),
+		Character: &auth.Character{
+			ID:   int64(verifyReponse.CharacterID),
 			Name: character.Name,
 		},
 		Token: code,
@@ -228,25 +247,19 @@ func doAuth(w http.ResponseWriter, r *http.Request, sess session.Store) (*string
 	}
 
 	if corporation.AllianceId != 0 {
-		request.Alliance = &abaeve_auth.Alliance{
+		request.Alliance = &auth.Alliance{
 			//TODO: Damn, why did I put int64 here?  At least I can upcast...
-			Id:     int64(corporation.AllianceId),
+			ID:     int64(corporation.AllianceId),
 			Name:   alliance.Name,
 			Ticker: alliance.Ticker,
 		}
 	}
 
-	response, err := auth.Create(context.Background(), request)
-
-	fmt.Printf("%v\n", response)
+	authCode, err := auth.Create(context.Background(), request, web.logger, web.db, web.nsq)
 
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("Had an issue authing internally: (%s)", err))
 	}
 
-	if !response.Success {
-		return nil, errors.New("received a non-specific error from the internal auth server, please contact your administrator")
-	}
-
-	return &response.AuthenticationCode, nil
+	return authCode, nil
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
+	"github.com/chremoas/chremoas-ng/internal/auth"
 )
 
 const authHelpStr = `
@@ -34,6 +35,6 @@ func (c Command) doAuth(s *discordgo.Session, m *discordgo.Message, ctx *mux.Con
 		return fmt.Sprintf("```%s```", authHelpStr)
 
 	default:
-		return fmt.Sprintf("```%s```", authHelpStr)
+		return auth.Confirm(cmdStr[1], m.Author.ID, c.logger, c.db)
 	}
 }

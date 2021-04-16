@@ -19,14 +19,10 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
-	"github.com/chremoas/chremoas-ng/internal/auth-srv/repository"
 	"github.com/chremoas/chremoas-ng/internal/auth/web"
-	"github.com/chremoas/chremoas-ng/internal/common"
-	"github.com/chremoas/chremoas-ng/internal/discord/members"
-	"github.com/chremoas/chremoas-ng/internal/discord/roles"
+	queue2 "github.com/chremoas/chremoas-ng/internal/queue"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
-	"github.com/nsqio/go-nsq"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -44,6 +40,15 @@ func main() {
 		err    error
 		logger = log.New()
 	)
+
+	// Print out a fancy logo!
+	fmt.Printf(`
+    _________ .__                                       
+    \_   ___ \|  |_________  _____   _________    ______
+    /    \  \/|  |  \_  __ \/     \ /  _ \__  \  /  ___/
+    \     \___|   Y  \  | \/  Y Y  (  <_> ) __ \_\___ \ 
+     \______  /___|  /__|  |__|_|  /\____(____  /____  >
+            \/     \/            \/ %-9s \/     \/`+"\n\n", Version)
 
 	// =========================================================================
 	// Setup the configuration
@@ -80,36 +85,12 @@ func main() {
 	}()
 
 	// =========================================================================
-	// Start auth-web Service
+	// Setup DB connection
 
-	logger.Info("main: Initializing auth-web support")
-
-	// Make a channel to listen for an interrupt or terminate signal from the OS.
-	// Use a buffered channel because the signal package requires it.
-	shutdown := make(chan os.Signal, 1)
-	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
-
-	authWeb, err := web.New()
+	db, err := NewDB(logger)
 	if err != nil {
-		logger.Fatalf("Error starting authWeb: %s", err)
+		logger.Fatalf("error opening connection to PostgreSQL: %s\n", err)
 	}
-
-	api := http.Server{
-		Addr:         "0.0.0.0:3100",
-		Handler:      authWeb.Auth(),
-		ReadTimeout:  time.Second * 5,
-		WriteTimeout: time.Second * 5,
-	}
-
-	// Make a channel to listen for errors coming from the listener. Use a
-	// buffered channel so the goroutine can exit if we don't collect this error.
-	serverErrors := make(chan error, 1)
-
-	// Start the service listening for requests.
-	go func() {
-		logger.Infof("main: auth-web listening on %s", api.Addr)
-		serverErrors <- api.ListenAndServe()
-	}()
 
 	// =========================================================================
 	// Start the discord session
@@ -134,72 +115,34 @@ func main() {
 		panic("Can't load help router something is very, very wrong")
 	}
 
-	// Print out a fancy logo!
-	fmt.Printf(`
-    _________ .__                                       
-    \_   ___ \|  |_________  _____   _________    ______
-    /    \  \/|  |  \_  __ \/     \ /  _ \__  \  /  ___/
-    \     \___|   Y  \  | \/  Y Y  (  <_> ) __ \_\___ \ 
-     \______  /___|  /__|  |__|_|  /\____(____  /____  >
-            \/     \/            \/ %-9s \/     \/`+"\n\n", Version)
-
-	// =========================================================================
-	// Setup DB connection
-
-	db, err := NewDB(logger)
-	if err != nil {
-		logger.Fatalf("error opening connection to PostgreSQL: %s\n", err)
-	}
-
-	// Old GORM crud that I hope to get rid of one day
-	err = repository.Setup(viper.GetString("database.driver"), common.NewConnectionString())
-
 	// =========================================================================
 	// Setup NSQ
 
-	queue := nsq.NewConfig()
-	queueAddr := fmt.Sprintf("%s:%d", viper.GetString("queue.host"), viper.GetInt("queue.port"))
+	workers := queue2.New(Session, logger, db)
 
 	// Setup NSQ producer for the commands to use
-	producer, err := nsq.NewProducer(queueAddr, queue)
+	producer, err := workers.ProducerQueue()
 	if err != nil {
-		logger.Fatalf("error setting up queue producer: %s\n", err)
+		logger.Fatalf("error setting up producer queue: %s\n", err)
 	}
 	defer producer.Stop()
-	if err = producer.Ping(); err != nil {
-		logger.Fatalf("error connecting to the queue: %s\n", err)
-	}
 
 	// Setup the Role Consumer handler
-	roleConsumer, err := nsq.NewConsumer(common.GetTopic("role"), "discordGateway", queue)
+	roleConsumer, err := workers.RoleConsumer()
 	if err != nil {
 		logger.Fatalf("error setting up role queue consumer: %s\n", err)
 	}
 	defer roleConsumer.Stop()
 
-	// Add Role NSQ handler
-	roleConsumer.AddHandler(roles.New(logger, Session, db))
-
-	err = roleConsumer.ConnectToNSQLookupd("10.42.1.30:4161")
-	if err != nil {
-		logger.Fatal(err)
-	}
-
 	// Setup the Member Consumer handler
-	memberConsumer, err := nsq.NewConsumer(common.GetTopic("member"), "discordGateway", queue)
+	memberConsumer, err := workers.MemberConsumer()
 	if err != nil {
 		logger.Fatalf("error setting up member queue consumer: %s\n", err)
 	}
 	defer memberConsumer.Stop()
 
-	// Add Role NSQ handler
-	memberConsumer.AddHandler(members.New(logger, Session, db))
-
-	err = memberConsumer.ConnectToNSQLookupd("10.42.1.30:4161")
-	if err != nil {
-		logger.Fatal(err)
-	}
-
+	// =========================================================================
+	// Setup commands
 	c := commands.New(logger, db, producer)
 
 	commandList := []struct {
@@ -228,6 +171,38 @@ func main() {
 	if err != nil {
 		logger.Fatalf("error opening connection to Discord: %s\n", err)
 	}
+
+	// =========================================================================
+	// Start auth-web Service
+
+	logger.Info("main: Initializing auth-web support")
+
+	// Make a channel to listen for an interrupt or terminate signal from the OS.
+	// Use a buffered channel because the signal package requires it.
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+
+	authWeb, err := web.New(logger, db, producer)
+	if err != nil {
+		logger.Fatalf("Error starting authWeb: %s", err)
+	}
+
+	api := http.Server{
+		Addr:         "0.0.0.0:3100",
+		Handler:      authWeb.Auth(),
+		ReadTimeout:  time.Second * 5,
+		WriteTimeout: time.Second * 5,
+	}
+
+	// Make a channel to listen for errors coming from the listener. Use a
+	// buffered channel so the goroutine can exit if we don't collect this error.
+	serverErrors := make(chan error, 1)
+
+	// Start the service listening for requests.
+	go func() {
+		logger.Infof("main: auth-web listening on %s", api.Addr)
+		serverErrors <- api.ListenAndServe()
+	}()
 
 	// =========================================================================
 	// Main loop
@@ -260,8 +235,7 @@ func main() {
 
 func NewDB(logger *zap.SugaredLogger) (*sq.StatementBuilderType, error) {
 	var (
-		err       error
-		namespace = viper.GetString("namespace")
+		err error
 	)
 
 	//ignoredRoles = viper.GetStringSlice("bot.ignoredRoles")
@@ -292,8 +266,9 @@ func NewDB(logger *zap.SugaredLogger) (*sq.StatementBuilderType, error) {
 	// Ensure required permissions exist in the database
 	var (
 		requiredPermissions = map[string]string{
-			"role_admins": "Role Admins",
-			"sig_admins":  "SIG Admins",
+			"role_admins":   "Role Admins",
+			"sig_admins":    "SIG Admins",
+			"server_admins": "Server Admins",
 		}
 		id int
 	)
@@ -302,7 +277,6 @@ func NewDB(logger *zap.SugaredLogger) (*sq.StatementBuilderType, error) {
 		err = db.Select("id").
 			From("permissions").
 			Where(sq.Eq{"name": k}).
-			Where(sq.Eq{"namespace": namespace}).
 			QueryRow().Scan(&id)
 
 		switch err {
@@ -311,8 +285,8 @@ func NewDB(logger *zap.SugaredLogger) (*sq.StatementBuilderType, error) {
 		case sql.ErrNoRows:
 			logger.Infof("%s NOT found, creating", k)
 			err = db.Insert("permissions").
-				Columns("namespace", "name", "description").
-				Values(namespace, k, v).
+				Columns("name", "description").
+				Values(k, v).
 				Suffix("RETURNING \"id\"").
 				QueryRow().Scan(&id)
 			if err != nil {

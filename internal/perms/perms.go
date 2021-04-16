@@ -8,7 +8,6 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/lib/pq"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
 
@@ -21,7 +20,6 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 
 	rows, err := db.Select("name", "description").
 		From("permissions").
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		logger.Error(err)
@@ -58,8 +56,8 @@ func Add(name, description, author string, logger *zap.SugaredLogger, db *sq.Sta
 	}
 
 	_, err := db.Insert("permissions").
-		Columns("namespace", "name", "description").
-		Values(viper.GetString("namespace"), name, description).
+		Columns("name", "description").
+		Values(name, description).
 		Query()
 	if err != nil {
 		// I don't love this but I can't find a better way right now
@@ -85,7 +83,6 @@ func Delete(name, author string, logger *zap.SugaredLogger, db *sq.StatementBuil
 
 	_, err := db.Delete("permissions").
 		Where(sq.Eq{"name": name}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error deleting permission: %s", err)
@@ -106,7 +103,6 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 		From("permission_membership").
 		Join("permissions ON permission_membership.permission = permissions.id").
 		Where(sq.Eq{"permissions.name": name}).
-		Where(sq.Eq{"permissions.namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error getting permission membership list: %s", err)
@@ -153,7 +149,6 @@ func AddMember(user, permission, author string, logger *zap.SugaredLogger, db *s
 	err := db.Select("id").
 		From("permissions").
 		Where(sq.Eq{"name": permission}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permissionID: %s", err)
@@ -162,8 +157,8 @@ func AddMember(user, permission, author string, logger *zap.SugaredLogger, db *s
 	}
 
 	_, err = db.Insert("permission_membership").
-		Columns("namespace", "permission", "user_id").
-		Values(viper.GetString("namespace"), permissionID, userID).
+		Columns("permission", "user_id").
+		Values(permissionID, userID).
 		Query()
 	if err != nil {
 		// I don't love this but I can't find a better way right now
@@ -198,7 +193,6 @@ func RemoveMember(user, permission, author string, logger *zap.SugaredLogger, db
 	err := db.Select("id").
 		From("permissions").
 		Where(sq.Eq{"name": permission}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permisionID: %s", err)
@@ -209,7 +203,6 @@ func RemoveMember(user, permission, author string, logger *zap.SugaredLogger, db
 	_, err = db.Delete("permission_membership").
 		Where(sq.Eq{"permission": permissionID}).
 		Where(sq.Eq{"user_id": userID}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error deleting permission: %s", err)
@@ -236,7 +229,6 @@ func UserPerms(user string, logger *zap.SugaredLogger, db *sq.StatementBuilderTy
 		From("permissions").
 		Join("permission_membership ON permission_membership.permission = permissions.id").
 		Where(sq.Eq{"permission_membership.user_id": userID}).
-		Where(sq.Eq{"permissions.namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error getting user perms: %s", err)
@@ -263,28 +255,24 @@ func CanPerform(authorID, permission string, logger *zap.SugaredLogger, db *sq.S
 		permissionID int
 	)
 
-	//authorID := strings.Split(author, ":")
-	//if len(authorID) < 2 {
-	//	logger.Infof("User %s doesn't have %s", author, permission)
-	//	return false
-	//}
+	// This is super jank and I don't like it, need to come up with a better way.
+	if authorID == "auth-web" {
+		return true
+	}
 
 	err := db.Select("id").
 		From("permissions").
 		Where(sq.Eq{"name": permission}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permisionID: %s", err)
 		logger.Error(newErr)
 		return false
 	}
-
 	err = db.Select("COUNT(*)").
 		From("permission_membership").
 		Where(sq.Eq{"user_id": authorID}).
 		Where(sq.Eq{"permission": permissionID}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&count)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permission count: %s", err)

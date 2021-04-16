@@ -14,31 +14,32 @@ const (
 
 type Payload struct {
 	Action Action          `json:"action"`
-	Role   *discordgo.Role `json:"data"`
-	Filter *Filter         `json:"filter"`
-	Member string          `json:"member"`
+	Role   *discordgo.Role `json:"role,omitempty"`
+	Filter *Filter         `json:"filter,omitempty"`
+	Member string          `json:"member,omitempty"`
 }
 
 // Filter is the filter data structure
 type Filter struct {
-	Name        string `db:"name"`
-	Description string `db:"description"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 // TODO: Find a better place for these now that they aren't a part of the payload
 
 // Role is the role data structure
 type Role struct {
-	Color       int32  `db:"color"`
-	Hoist       bool   `db:"hoist"`
-	Joinable    bool   `db:"joinable"`
-	Managed     bool   `db:"managed"`
-	Mentionable bool   `db:"mentionable"`
-	Name        string `db:"name"`
-	Permissions int32  `db:"permissions"`
-	Position    int32  `db:"position"`
-	ShortName   string `db:"role_nick"`
-	Sig         bool   `db:"sig"`
-	Sync        bool   `db:"sync"`
-	Type        string `db:"chat_type"`
+	ID          int64  `json:"id,omitempty"`
+	Color       int32  `json:"color,omitempty"`
+	Hoist       bool   `json:"hoist,omitempty"`
+	Joinable    bool   `json:"joinable,omitempty"`
+	Managed     bool   `json:"managed,omitempty"`
+	Mentionable bool   `json:"mentionable,omitempty"`
+	Name        string `json:"name"`
+	Permissions int32  `json:"permissions,omitempty"`
+	Position    int32  `json:"position,omitempty"`
+	ShortName   string `json:"role_nick"`
+	Sig         bool   `json:"sig,omitempty"`
+	Sync        bool   `json:"sync,omitempty"`
+	Type        string `json:"chat_type"`
 }

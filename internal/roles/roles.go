@@ -13,7 +13,6 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/perms"
 	"github.com/lib/pq"
 	"github.com/nsqio/go-nsq"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
 	"github.com/chremoas/chremoas-ng/internal/common"
@@ -117,7 +116,6 @@ func Members(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementB
 		Join("roles ON role_filters.role = roles.id").
 		Where(sq.Eq{"role_filters.role": id}).
 		Where(sq.Eq{"roles.sig": sig}).
-		Where(sq.Eq{"filter_membership.namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		logger.Error(err)
@@ -151,8 +149,7 @@ func GetRoles(sig bool, shortName *string, logger *zap.SugaredLogger, db *sq.Sta
 	q := db.Select("color", "hoist", "joinable", "managed", "mentionable", "name", "permissions",
 		"position", "role_nick", "sig", "sync").
 		Where(sq.Eq{"sig": sig}).
-		From("roles").
-		Where(sq.Eq{"namespace": viper.GetString("namespace")})
+		From("roles")
 
 	if shortName != nil {
 		q = q.Where(sq.Eq{"role_nick": shortName})
@@ -210,7 +207,6 @@ func getRoleID(name string, db *sq.StatementBuilderType) (int, error) {
 	err = db.Select("id").
 		From("roles").
 		Where(sq.Eq{"role_nick": name}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&id)
 
 	return id, err
@@ -231,7 +227,6 @@ func ListUserRoles(sig bool, userID string, logger *zap.SugaredLogger, db *sq.St
 		Join("roles ON role_filters.role = roles.id").
 		Where(sq.Eq{"filter_membership.user_id": userID}).
 		Where(sq.Eq{"roles.sig": sig}).
-		Where(sq.Eq{"filters.namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		logger.Error(err)
@@ -318,8 +313,8 @@ func Add(sig, joinable bool, shortName, name, chatType, author string, logger *z
 
 	// need to pass in joinable at some point
 	err := db.Insert("roles").
-		Columns("namespace", "sig", "joinable", "name", "role_nick", "chat_type").
-		Values(viper.GetString("namespace"), sig, joinable, name, shortName, chatType).
+		Columns("sig", "joinable", "name", "role_nick", "chat_type").
+		Values(sig, joinable, name, shortName, chatType).
 		Suffix("RETURNING \"id\"").
 		QueryRow().Scan(&roleID)
 	if err != nil {
@@ -353,8 +348,8 @@ func Add(sig, joinable bool, shortName, name, chatType, author string, logger *z
 
 	// Associate new filter with new role
 	_, err = db.Insert("role_filters").
-		Columns("namespace", "role", "filter").
-		Values(viper.GetString("namespace"), roleID, filterID).
+		Columns("role", "filter").
+		Values(roleID, filterID).
 		Query()
 	if err != nil {
 		logger.Error(err)
@@ -369,6 +364,9 @@ func Add(sig, joinable bool, shortName, name, chatType, author string, logger *z
 	if err != nil {
 		fmt.Println("error:", err)
 	}
+
+	logger.Infof("b: %s", b)
+
 
 	err = nsq.PublishAsync(common.GetTopic("role"), b, nil)
 	if err != nil {
@@ -393,7 +391,6 @@ func Destroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *
 		From("roles").
 		Where(sq.Eq{"role_nick": shortName}).
 		Where(sq.Eq{"sig": sig}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&chatID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -406,7 +403,6 @@ func Destroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *
 	rows, err := db.Delete("roles").
 		Where(sq.Eq{"role_nick": shortName}).
 		Where(sq.Eq{"sig": sig}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		logger.Error(err)
@@ -427,7 +423,6 @@ func Destroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *
 
 	_, err = db.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		logger.Error(err)
@@ -436,7 +431,6 @@ func Destroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *
 
 	_, err = db.Delete("role_filters").
 		Where(sq.Eq{"role": roleID}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		Query()
 	if err != nil {
 		logger.Error(err)
@@ -492,7 +486,6 @@ func Update(sig bool, shortName, key, value, author string, logger *zap.SugaredL
 		From("roles").
 		Where(sq.Eq{"role_nick": shortName}).
 		Where(sq.Eq{"sig": sig}).
-		Where(sq.Eq{"namespace": viper.GetString("namespace")}).
 		QueryRow().Scan(&chatID)
 	if err != nil {
 		if err == sql.ErrNoRows {
