@@ -3,11 +3,13 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/chremoas/chremoas-ng/internal/common"
+	"github.com/chremoas/chremoas-ng/internal/filters"
 	"github.com/chremoas/chremoas-ng/internal/roles"
 	"github.com/lib/pq"
 	"github.com/nsqio/go-nsq"
@@ -65,6 +67,16 @@ func Create(_ context.Context, request *CreateRequest, logger *zap.SugaredLogger
 				logger.Error(err)
 				return nil, err
 			}
+		}
+
+		role, err := roles.GetRoles(false, &request.Alliance.Ticker, logger, db)
+		if err != nil {
+			logger.Error(err)
+			return nil, err
+		}
+
+		if len(role) == 0 {
+			roles.Add(false, false, request.Alliance.Ticker, request.Alliance.Name, "discord", "auth-web", logger, db, nsq)
 		}
 	}
 
@@ -150,12 +162,15 @@ func Create(_ context.Context, request *CreateRequest, logger *zap.SugaredLogger
 	return &authCode, nil
 }
 
-func Confirm(authCode, sender string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func Confirm(authCode, sender string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var (
-		err         error
-		characterID int
-		name        string
-		used        bool
+		err           error
+		characterID   int
+		corporationID int
+		allianceID    sql.NullInt64
+		ticker        string
+		name          string
+		used          bool
 	)
 
 	err = db.Select("character_id", "used").
@@ -171,10 +186,10 @@ func Confirm(authCode, sender string, logger *zap.SugaredLogger, db *sq.Statemen
 		return common.SendError(fmt.Sprintf("Auth code already used: %s", authCode))
 	}
 
-	err = db.Select("name").
+	err = db.Select("name", "corporation_id").
 		From("characters").
 		Where(sq.Eq{"id": characterID}).
-		QueryRow().Scan(&name)
+		QueryRow().Scan(&name, &corporationID)
 	if err != nil {
 		logger.Error(err)
 		return common.SendError(fmt.Sprintf("Error getting character name: %d", characterID))
@@ -199,6 +214,30 @@ func Confirm(authCode, sender string, logger *zap.SugaredLogger, db *sq.Statemen
 		logger.Error(err)
 		return common.SendError("Error linking user with character")
 	}
+
+	// get corp ticker
+	err = db.Select("ticker", "alliance_id").
+		From("corporations").
+		Where(sq.Eq{"id": corporationID}).
+		QueryRow().Scan(&ticker, &allianceID)
+	if err != nil {
+		logger.Error(err)
+		return common.SendError("Error updating auth code used")
+	}
+
+	filters.AddMember(roles.Role, sender, ticker, "auth-web", logger, db, nsq)
+
+	// get alliance ticker if there is an alliance
+	err = db.Select("ticker").
+		From("corporations").
+		Where(sq.Eq{"id": corporationID}).
+		QueryRow().Scan(&ticker)
+	if err != nil {
+		logger.Error(err)
+		return common.SendError("Error updating auth code used")
+	}
+
+	filters.AddMember(roles.Role, sender, ticker, "auth-web", logger, db, nsq)
 
 	return common.SendSuccess(fmt.Sprintf("<@%s> **Success**: %s has been successfully authed.", sender, name))
 }

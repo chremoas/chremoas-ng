@@ -35,6 +35,6 @@ func (c Command) doAuth(s *discordgo.Session, m *discordgo.Message, ctx *mux.Con
 		return fmt.Sprintf("```%s```", authHelpStr)
 
 	default:
-		return auth.Confirm(cmdStr[1], m.Author.ID, c.logger, c.db)
+		return auth.Confirm(cmdStr[1], m.Author.ID, c.logger, c.db, c.nsq)
 	}
 }
