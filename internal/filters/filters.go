@@ -143,8 +143,10 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 func AddMember(sig bool, userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var filterID int
 
-	if !perms.CanPerform(author, "role_admins", logger, db) {
-		return common.SendError("User doesn't have permission to this command")
+	if author != "sig-cmd" {
+		if !perms.CanPerform(author, "role_admins", logger, db) {
+			return common.SendError("User doesn't have permission to this command")
+		}
 	}
 
 	err := db.Select("id").
@@ -185,8 +187,10 @@ func RemoveMember(sig bool, userID, filter, author string, logger *zap.SugaredLo
 		deleted  bool
 	)
 
-	if !perms.CanPerform(author, "role_admins", logger, db) {
-		return common.SendError("User doesn't have permission to this command")
+	if author != "sig-cmd" {
+		if !perms.CanPerform(author, "role_admins", logger, db) {
+			return common.SendError("User doesn't have permission to this command")
+		}
 	}
 
 	err := db.Select("id").

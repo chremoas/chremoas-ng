@@ -8,7 +8,7 @@ type Action string
 
 const (
 	Create Action = "create"
-	Delete Action = "Delete"
+	Delete Action = "delete"
 	Update Action = "update"
 )
 

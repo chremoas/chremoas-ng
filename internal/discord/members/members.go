@@ -31,8 +31,12 @@ func (m Member) HandleMessage(msg *nsq.Message) error {
 	var role string
 	var roles []string
 
+	m.logger.Info("Started members message handling")
+	defer m.logger.Info("Completed members message handling")
+
 	if len(msg.Body) == 0 {
 		// Returning nil will automatically send a FIN command to NSQ to mark the message as processed.
+		m.logger.Info("message body was empty")
 		return nil
 	}
 	var body payloads.Payload
@@ -41,8 +45,6 @@ func (m Member) HandleMessage(msg *nsq.Message) error {
 		m.logger.Errorf("error unmarshalling payload: %s", err)
 		return err
 	}
-
-	// we don't switch on Action because there is only one action, update.
 
 	rows, err := m.db.Select("roles.chat_id").
 		From("filters").
@@ -66,10 +68,51 @@ func (m Member) HandleMessage(msg *nsq.Message) error {
 		roles = append(roles, role)
 	}
 
-	err = m.session.GuildMemberEdit(m.guildID, body.Member, roles)
+	member, err := m.session.GuildMember(m.guildID, body.Member)
 	if err != nil {
-		m.logger.Errorf("Error updating user %s: %s", body.Member, err)
+		m.logger.Errorf("error getting guild member: %s", err)
 	}
 
-	return err
+	removeRoles := compare(member.Roles, roles)
+	if len(removeRoles) > 0 {
+		m.logger.Infof("Removing roles from user %s: %s", body.Member, removeRoles)
+	}
+	for _, role = range removeRoles {
+		err = m.session.GuildMemberRoleRemove(m.guildID, body.Member, role)
+		if err != nil {
+			m.logger.Errorf("Error removing role %s from user %s: %s", role, body.Member, err)
+		}
+	}
+
+	addRoles := compare(roles, member.Roles)
+	if len(addRoles) > 0 {
+		m.logger.Infof("Adding roles to user %s: %s", body.Member, addRoles)
+	}
+	for _, role = range addRoles {
+		err = m.session.GuildMemberRoleAdd(m.guildID, body.Member, role)
+		if err != nil {
+			m.logger.Errorf("Error adding role %s to user %s: %s", role, body.Member, err)
+		}
+	}
+
+	//m.logger.Infof("Editing member %s: %s", body.Member, roles)
+	//err = m.session.GuildMemberEdit(m.guildID, body.Member, roles)
+	//if err != nil {
+	//	m.logger.Errorf("Error updating user %s: %s", body.Member, err)
+	//}
+
+	return nil
+}
+
+// compare compares two string returning what the first one has that the second one doesn't
+func compare(a, b []string) []string {
+	for i := len(a) - 1; i >= 0; i-- {
+		for _, vD := range b {
+			if a[i] == vD {
+				a = append(a[:i], a[i+1:]...)
+				break
+			}
+		}
+	}
+	return a
 }

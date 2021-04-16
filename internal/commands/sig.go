@@ -159,10 +159,37 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 		}
 		return roles.ListUserRoles(roles.Sig, common.ExtractUserId(cmdStr[2]), c.logger, c.db)
 
+	case "filter":
+		if len(cmdStr) < 3 {
+			return "Usage: subcommands are: list, add and remove"
+		}
+
+		switch cmdStr[2] {
+		case "list":
+			if len(cmdStr) < 4 {
+				return "Usage: !role filter list <role>"
+			}
+			return roles.ListFilters(roles.Sig, cmdStr[3], c.logger, c.db)
+
+		case "add":
+			if len(cmdStr) < 5 {
+				return "Usage: !role filter add <filter> <role>"
+			}
+			return roles.AddFilter(roles.Sig, cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
+
+		case "remove":
+			if len(cmdStr) < 5 {
+				return "Usage: !role filter remove <filter> <role>"
+			}
+			return roles.RemoveFilter(roles.Sig, cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
+		}
+
 	case "help":
 		return fmt.Sprintf("```%s```", sigHelpStr)
 
 	default:
 		return fmt.Sprintf("```%s```", sigHelpStr)
 	}
+
+	return "Something I don't know"
 }

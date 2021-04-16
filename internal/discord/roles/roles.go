@@ -58,6 +58,15 @@ func (r Role) HandleMessage(m *nsq.Message) error {
 }
 
 func (r Role) create(role *discordgo.Role) error {
+	// Check and see if this role has been created in discored or not
+	rList, err := r.session.GuildRoles(r.guildID)
+	for _, checkRole := range rList {
+		if checkRole.Name == role.Name {
+			r.logger.Infof("Role already exists in Discord: %s", role.Name)
+			return nil
+		}
+	}
+
 	// Only one thing should write to discord at a time
 	r.logger.Info("role.create() acquiring lock")
 	r.session.Lock()

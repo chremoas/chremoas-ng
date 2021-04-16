@@ -43,7 +43,7 @@ CREATE TABLE authentication_codes
 
 CREATE TABLE user_character_map
 (
-    chat_id   VARCHAR(255) UNIQUE NOT NULL,
+    chat_id   VARCHAR(255) NOT NULL,
     character_id BIGINT REFERENCES characters (id),
     PRIMARY KEY (chat_id, character_id)
 );

@@ -365,9 +365,6 @@ func Add(sig, joinable bool, shortName, name, chatType, author string, logger *z
 		fmt.Println("error:", err)
 	}
 
-	logger.Infof("b: %s", b)
-
-
 	err = nsq.PublishAsync(common.GetTopic("role"), b, nil)
 	if err != nil {
 		fmt.Println("error:", err)
@@ -551,4 +548,140 @@ func queueUpdate(chatID int, action payloads.Action, logger *zap.SugaredLogger, 
 	if err != nil {
 		logger.Errorf("error publishing message: %s", err)
 	}
+}
+
+func ListFilters(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+	var (
+		buffer bytes.Buffer
+		filter string
+		results bool
+	)
+
+	rows, err := db.Select("filters.name").
+		From("filters").
+		Join("role_filters ON role_filters.filter = filters.id").
+		Join("roles ON roles.id = role_filters.role").
+		Where(sq.Eq{"roles.role_nick": shortName}).
+		Where(sq.Eq{"roles.sig": sig}).
+		Query()
+	if err != nil {
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error fetching filters: %s", err))
+	}
+
+	for rows.Next() {
+		if !results {
+			buffer.WriteString(fmt.Sprintf("Filters for %s\n", shortName))
+			results = true
+		}
+		err = rows.Scan(&filter)
+		if err != nil {
+			logger.Error(err)
+			return common.SendFatal(fmt.Sprintf("error scanning row filters: %s", err))
+		}
+
+		buffer.WriteString(fmt.Sprintf("\t%s\n", filter))
+	}
+
+	if results {
+		return fmt.Sprintf("```%s```", buffer.String())
+	} else {
+		return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], shortName))
+	}
+}
+
+func AddFilter(sig bool, filter, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	var (
+		err error
+		filterID int
+		roleID   int
+	)
+
+	if !perms.CanPerform(author, adminType[sig], logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
+
+	err = db.Select("id").
+		From("filters").
+		Where(sq.Eq{"name": filter}).
+		QueryRow().Scan(&filterID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
+		}
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error fetching filter id: %s", err))
+	}
+
+	err = db.Select("id").
+		From("roles").
+		Where(sq.Eq{"role_nick": shortName}).
+		Where(sq.Eq{"sig": sig}).
+		QueryRow().Scan(&roleID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
+		}
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
+	}
+
+	_, err = db.Insert("role_filters").
+		Columns("role", "filter").
+		Values(roleID, filterID).
+		Query()
+	if err != nil {
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error inserting role_filter: %s", err))
+	}
+
+	return common.SendSuccess(fmt.Sprintf("Added filter %s to role %s", filter, shortName))
+}
+
+func RemoveFilter(sig bool, filter, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	var (
+		err error
+		filterID int
+		roleID   int
+	)
+
+	if !perms.CanPerform(author, adminType[sig], logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
+
+	err = db.Select("id").
+		From("filters").
+		Where(sq.Eq{"name": filter}).
+		QueryRow().Scan(&filterID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
+		}
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error fetching filter id: %s", err))
+	}
+
+	err = db.Select("id").
+		From("roles").
+		Where(sq.Eq{"role_nick": shortName}).
+		Where(sq.Eq{"sig": sig}).
+		QueryRow().Scan(&roleID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
+		}
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
+	}
+
+	_, err = db.Delete("role_filters").
+		Where(sq.Eq{"role": roleID}).
+		Where(sq.Eq{"filter": filterID}).
+		Query()
+	if err != nil {
+		logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error deleting role_filter: %s", err))
+	}
+
+	return common.SendSuccess(fmt.Sprintf("Removed filter %s from role %s", filter, shortName))
 }

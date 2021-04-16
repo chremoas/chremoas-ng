@@ -74,7 +74,7 @@ func (s Sig) Join() string {
 		return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", s.sig))
 	}
 
-	return s.Add()
+	return filters.AddMember(roles.Sig, s.userID, s.sig, "sig-cmd", s.logger, s.db, s.nsq)
 }
 
 func (s Sig) Leave() string {
@@ -82,5 +82,5 @@ func (s Sig) Leave() string {
 		return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", s.sig))
 	}
 
-	return s.Remove()
+	return filters.RemoveMember(roles.Sig, s.userID, s.sig, "sig-cmd", s.logger, s.db, s.nsq)
 }

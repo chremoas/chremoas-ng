@@ -49,26 +49,6 @@ func Create(_ context.Context, request *CreateRequest, logger *zap.SugaredLogger
 			}
 		}
 
-		err = db.Select("COUNT(*)").
-			From("roles").
-			Where(sq.Eq{"name": request.Alliance.Name}).
-			QueryRow().Scan(&count)
-		if err != nil {
-			logger.Error(err)
-			return nil, err
-		}
-
-		if count == 0 {
-			_, err = db.Insert("roles").
-				Columns("name", "role_nick").
-				Values(request.Alliance.Name, request.Alliance.Ticker).
-				Query()
-			if err != nil {
-				logger.Error(err)
-				return nil, err
-			}
-		}
-
 		role, err := roles.GetRoles(false, &request.Alliance.Ticker, logger, db)
 		if err != nil {
 			logger.Error(err)
@@ -164,13 +144,14 @@ func Create(_ context.Context, request *CreateRequest, logger *zap.SugaredLogger
 
 func Confirm(authCode, sender string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var (
-		err           error
-		characterID   int
-		corporationID int
-		allianceID    sql.NullInt64
-		ticker        string
-		name          string
-		used          bool
+		err            error
+		characterID    int
+		corporationID  int
+		allianceID     sql.NullInt64
+		corpTicker     string
+		allianceTicker string
+		name           string
+		used           bool
 	)
 
 	err = db.Select("character_id", "used").
@@ -219,25 +200,27 @@ func Confirm(authCode, sender string, logger *zap.SugaredLogger, db *sq.Statemen
 	err = db.Select("ticker", "alliance_id").
 		From("corporations").
 		Where(sq.Eq{"id": corporationID}).
-		QueryRow().Scan(&ticker, &allianceID)
+		QueryRow().Scan(&corpTicker, &allianceID)
 	if err != nil {
 		logger.Error(err)
 		return common.SendError("Error updating auth code used")
 	}
 
-	filters.AddMember(roles.Role, sender, ticker, "auth-web", logger, db, nsq)
+	filters.AddMember(roles.Role, sender, corpTicker, "auth-web", logger, db, nsq)
 
-	// get alliance ticker if there is an alliance
-	err = db.Select("ticker").
-		From("corporations").
-		Where(sq.Eq{"id": corporationID}).
-		QueryRow().Scan(&ticker)
-	if err != nil {
-		logger.Error(err)
-		return common.SendError("Error updating auth code used")
+	if allianceID.Valid {
+		// get alliance ticker if there is an alliance
+		err = db.Select("ticker").
+			From("alliances").
+			Where(sq.Eq{"id": allianceID}).
+			QueryRow().Scan(&allianceTicker)
+		if err != nil {
+			logger.Error(err)
+			return common.SendError("Error updating auth code used")
+		}
+
+		filters.AddMember(roles.Role, sender, allianceTicker, "auth-web", logger, db, nsq)
 	}
-
-	filters.AddMember(roles.Role, sender, ticker, "auth-web", logger, db, nsq)
 
 	return common.SendSuccess(fmt.Sprintf("<@%s> **Success**: %s has been successfully authed.", sender, name))
 }
