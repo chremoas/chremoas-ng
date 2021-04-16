@@ -24,9 +24,6 @@ Subcommands:
     set: Set role key
     list members: List Role members
     list membership: List user Roles
-	filter list: list filters associated with role
-	filter add: add filter to role
-	filter remove: remove filter from role
 `
 
 // This function will be called (due to AddHandler above) every time a new
@@ -67,31 +64,6 @@ func (c Command) doRole(s *discordgo.Session, m *discordgo.Message, ctx *mux.Con
 				return roles.ListUserRoles(roles.Role, m.Author.ID, c.logger, c.db)
 			}
 			return roles.ListUserRoles(roles.Role, common.ExtractUserId(cmdStr[2]), c.logger, c.db)
-		}
-
-	case "filter":
-		if len(cmdStr) < 3 {
-			return "Usage: subcommands are: list, add and remove"
-		}
-
-		switch cmdStr[2] {
-		case "list":
-			if len(cmdStr) < 4 {
-				return "Usage: !role filter list <role>"
-			}
-			return roles.ListFilters(roles.Role, cmdStr[3], c.logger, c.db)
-
-		case "add":
-			if len(cmdStr) < 5 {
-				return "Usage: !role filter add <filter> <role>"
-			}
-			return roles.AddFilter(roles.Role, cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
-
-		case "remove":
-			if len(cmdStr) < 5 {
-				return "Usage: !role filter remove <filter> <role>"
-			}
-			return roles.RemoveFilter(roles.Role, cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
 		}
 
 	case "create":

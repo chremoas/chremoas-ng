@@ -4,11 +4,10 @@ CREATE TABLE filters
 (
     id          BIGSERIAL PRIMARY KEY NOT NULL,
     name        VARCHAR(32)           NOT NULL,
-    description VARCHAR(256)          NOT NULL,
-    sig         BOOL DEFAULT FALSE
+    description VARCHAR(256)          NOT NULL
 );
 
-CREATE UNIQUE INDEX filters_uindex ON filters (name, sig);
+CREATE UNIQUE INDEX filters_uindex ON filters (name);
 
 CREATE TABLE filter_membership
 (

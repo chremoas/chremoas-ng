@@ -57,8 +57,8 @@ func Add(name, description string, sig bool, author string, logger *zap.SugaredL
 	}
 
 	err := db.Insert("filters").
-		Columns("name", "description", "sig").
-		Values(name, description, sig).
+		Columns("name", "description").
+		Values(name, description).
 		Suffix("RETURNING \"id\"").
 		QueryRow().Scan(&id)
 	if err != nil {
@@ -83,7 +83,6 @@ func Delete(name string, sig bool, author string, logger *zap.SugaredLogger, db 
 
 	rows, err := db.Delete("filters").
 		Where(sq.Eq{"name": name}).
-		Where(sq.Eq{"sig": sig}).
 		Suffix("RETURNING \"id\"").
 		Query()
 	if err != nil {
@@ -140,7 +139,7 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 	return buffer.String()
 }
 
-func AddMember(sig bool, userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func AddMember(userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var filterID int
 
 	if author != "sig-cmd" {
@@ -152,7 +151,6 @@ func AddMember(sig bool, userID, filter, author string, logger *zap.SugaredLogge
 	err := db.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
-		Where(sq.Eq{"sig": sig}).
 		QueryRow().Scan(&filterID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning filterID: %s", err)
@@ -181,7 +179,7 @@ func AddMember(sig bool, userID, filter, author string, logger *zap.SugaredLogge
 	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, filter))
 }
 
-func RemoveMember(sig bool, userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func RemoveMember(userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var (
 		filterID int
 		deleted  bool
@@ -196,7 +194,6 @@ func RemoveMember(sig bool, userID, filter, author string, logger *zap.SugaredLo
 	err := db.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
-		Where(sq.Eq{"sig": sig}).
 		QueryRow().Scan(&filterID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning filterID: %s", err)

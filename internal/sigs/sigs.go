@@ -59,14 +59,14 @@ func (s Sig) Add() string {
 	if !perms.CanPerform(s.author, "sig_admins", s.logger, s.db) {
 		return common.SendError("User not authorized")
 	}
-	return filters.AddMember(roles.Sig, s.userID, s.sig, s.author, s.logger, s.db, s.nsq)
+	return filters.AddMember(s.userID, s.sig, s.author, s.logger, s.db, s.nsq)
 }
 
 func (s Sig) Remove() string {
 	if !perms.CanPerform(s.author, "sig_admins", s.logger, s.db) {
 		return common.SendError("User not authorized")
 	}
-	return filters.RemoveMember(roles.Sig, s.userID, s.sig, s.author, s.logger, s.db, s.nsq)
+	return filters.RemoveMember(s.userID, s.sig, s.author, s.logger, s.db, s.nsq)
 }
 
 func (s Sig) Join() string {
@@ -74,7 +74,7 @@ func (s Sig) Join() string {
 		return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", s.sig))
 	}
 
-	return filters.AddMember(roles.Sig, s.userID, s.sig, "sig-cmd", s.logger, s.db, s.nsq)
+	return filters.AddMember(s.userID, s.sig, "sig-cmd", s.logger, s.db, s.nsq)
 }
 
 func (s Sig) Leave() string {
@@ -82,5 +82,5 @@ func (s Sig) Leave() string {
 		return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", s.sig))
 	}
 
-	return filters.RemoveMember(roles.Sig, s.userID, s.sig, "sig-cmd", s.logger, s.db, s.nsq)
+	return filters.RemoveMember(s.userID, s.sig, "sig-cmd", s.logger, s.db, s.nsq)
 }

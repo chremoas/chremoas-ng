@@ -18,6 +18,8 @@ Usage: !sig <subcommand> <arguments>
 
 Subcommands:
     list: List all SIGs
+    list members: List SIG members
+    list membership: List user SIGs
     create: Add SIGs
     destroy: Delete SIGs
     info: Get SIG info
@@ -26,8 +28,9 @@ Subcommands:
     remove: Remove user from SIG
     join: Join SIG
     leave: Leave SIG
-    list_members: List SIG members
-    list_sigs: List user SIGs
+	filter list: list filters associated with role
+	filter add: add filter to role
+	filter remove: remove filter from role
 `
 
 // This function will be called (due to AddHandler above) every time a new
@@ -49,12 +52,26 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 
 	switch cmdStr[1] {
 	case "list":
-		var all bool
-
-		if len(cmdStr) > 2 && cmdStr[2] == "all" {
-			all = true
+		if len(cmdStr) < 3 {
+			return roles.List(roles.Sig, false, c.logger, c.db)
 		}
-		return roles.List(roles.Sig, all, c.logger, c.db)
+
+		switch cmdStr[2] {
+		case "all":
+			return roles.List(roles.Sig, true, c.logger, c.db)
+
+		case "members":
+			if len(cmdStr) < 4 {
+				return "Usage: !role list members <role_name>"
+			}
+			return roles.Members(roles.Sig, cmdStr[2], c.logger, c.db)
+
+		case "membership":
+			if len(cmdStr) < 4 {
+				return roles.ListUserRoles(roles.Role, m.Author.ID, c.logger, c.db)
+			}
+			return roles.ListUserRoles(roles.Role, common.ExtractUserId(cmdStr[2]), c.logger, c.db)
+		}
 
 	case "create":
 		if len(cmdStr) < 5 {

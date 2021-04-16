@@ -206,7 +206,7 @@ func Confirm(authCode, sender string, logger *zap.SugaredLogger, db *sq.Statemen
 		return common.SendError("Error updating auth code used")
 	}
 
-	filters.AddMember(roles.Role, sender, corpTicker, "auth-web", logger, db, nsq)
+	filters.AddMember(sender, corpTicker, "auth-web", logger, db, nsq)
 
 	if allianceID.Valid {
 		// get alliance ticker if there is an alliance
@@ -219,7 +219,7 @@ func Confirm(authCode, sender string, logger *zap.SugaredLogger, db *sq.Statemen
 			return common.SendError("Error updating auth code used")
 		}
 
-		filters.AddMember(roles.Role, sender, allianceTicker, "auth-web", logger, db, nsq)
+		filters.AddMember(sender, allianceTicker, "auth-web", logger, db, nsq)
 	}
 
 	return common.SendSuccess(fmt.Sprintf("<@%s> **Success**: %s has been successfully authed.", sender, name))
