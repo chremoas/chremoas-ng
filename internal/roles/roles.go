@@ -113,7 +113,7 @@ func Members(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementB
 	rows, err := db.Select("user_id").
 		From("filter_membership").
 		InnerJoin("role_filters USING (filter)").
-		Join("roles ON role_filters.role = roles.id").
+		InnerJoin("roles ON role_filters.role = roles.id").
 		Where(sq.Eq{"role_filters.role": id}).
 		Where(sq.Eq{"roles.sig": sig}).
 		Query()
@@ -340,7 +340,6 @@ func Add(sig, joinable bool, shortName, name, chatType, author string, logger *z
 	filterResponse, filterID := filters.Add(
 		shortName,
 		fmt.Sprintf("Auto-created filter for %s %s", roleType[sig], shortName),
-		sig,
 		author,
 		logger,
 		db,
@@ -416,7 +415,7 @@ func Destroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *
 	}
 
 	// We now need to create the default filter for this role
-	filterResponse, filterID := filters.Delete(shortName, sig, author, logger, db)
+	filterResponse, filterID := filters.Delete(shortName, author, logger, db)
 
 	_, err = db.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).

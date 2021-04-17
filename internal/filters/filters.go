@@ -49,7 +49,7 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Add(name, description string, sig bool, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
+func Add(name, description string, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
 	var id int
 
 	if !perms.CanPerform(author, "role_admins", logger, db) {
@@ -74,7 +74,7 @@ func Add(name, description string, sig bool, author string, logger *zap.SugaredL
 	return common.SendSuccess(fmt.Sprintf("Created filter `%s`", name)), id
 }
 
-func Delete(name string, sig bool, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
+func Delete(name string, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
 	var id int
 
 	if !perms.CanPerform(author, "role_admins", logger, db) {
