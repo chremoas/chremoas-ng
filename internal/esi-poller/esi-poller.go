@@ -114,7 +114,7 @@ func (aep *authEsiPoller) updateOrDeleteAlliances() error {
 			return err
 		}
 
-		response, _, err = aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), int32(alliance.ID), nil)
+		response, _, err = aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), alliance.ID, nil)
 		if err != nil {
 			aep.logger.Errorf("Error calling GetAlliancesAllianceId: %s", err)
 			aep.logger.Infof("response=%v error=%s", response, err)
@@ -154,14 +154,14 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() error {
 			return err
 		}
 
-		response, _, err = aep.esiClient.ESI.CorporationApi.GetCorporationsCorporationId(context.Background(), int32(corporation.ID), nil)
+		response, _, err = aep.esiClient.ESI.CorporationApi.GetCorporationsCorporationId(context.Background(), corporation.ID, nil)
 		if err != nil {
 			aep.logger.Errorf("Error calling GetCorporationsCorporationId: %s", err)
 			aep.logger.Infof("response=%v error=%s", response, err)
 			return err
 		}
 
-		if corporation.Name != response.Name || corporation.Ticker != response.Ticker || corporation.AllianceID != int64(response.AllianceId) {
+		if corporation.Name != response.Name || corporation.Ticker != response.Ticker || corporation.AllianceID != response.AllianceId {
 			aep.upsertCorporation(corporation.ID, response.AllianceId, response.Name, response.Ticker)
 		}
 		err = aep.checkAndUpdateCorpsAllianceIfNecessary(corporation, response)
@@ -198,14 +198,14 @@ func (aep *authEsiPoller) updateOrDeleteCharacters() error {
 			return err
 		}
 
-		response, _, err = aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(context.Background(), int32(character.ID), nil)
+		response, _, err = aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(context.Background(), character.ID, nil)
 		if err != nil {
 			aep.logger.Errorf("Error calling GetCharactersCharacterId: %s", err)
 			aep.logger.Infof("response=%v error=%s", response, err)
 			return err
 		}
 
-		if character.Name != response.Name || character.CorporationID != int64(response.CorporationId) {
+		if character.Name != response.Name || character.CorporationID != response.CorporationId {
 			aep.upsertCharacter(character.ID, response.CorporationId, response.Name)
 		}
 	}
@@ -224,7 +224,7 @@ func (aep *authEsiPoller) checkAndUpdateCorpsAllianceIfNecessary(authCorporation
 
 	aep.logger.Infof("ESI Poller: Updating corporations alliance for %s with allianceId %d\n", esiCorporation.Name, esiCorporation.AllianceId)
 
-	if authCorporation.AllianceID != int64(esiCorporation.AllianceId) {
+	if authCorporation.AllianceID != esiCorporation.AllianceId {
 		response, _, err = aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), esiCorporation.AllianceId, nil)
 		if err != nil {
 			aep.logger.Errorf("Error calling GetAlliancesAllianceId: %s", err)
@@ -232,7 +232,7 @@ func (aep *authEsiPoller) checkAndUpdateCorpsAllianceIfNecessary(authCorporation
 			return err
 		}
 
-		aep.upsertAlliance(int64(esiCorporation.AllianceId), response.Name, response.Ticker)
+		aep.upsertAlliance(esiCorporation.AllianceId, response.Name, response.Ticker)
 	}
 
 	return nil
@@ -242,7 +242,7 @@ func (aep *authEsiPoller) Stop() {
 	aep.ticker.Stop()
 }
 
-func (aep *authEsiPoller) upsertAlliance(allianceID int64, name, ticker string) {
+func (aep *authEsiPoller) upsertAlliance(allianceID int32, name, ticker string) {
 	var err error
 
 	aep.logger.Infof("ESI Poller: Updating alliance: %d", allianceID)
@@ -256,7 +256,7 @@ func (aep *authEsiPoller) upsertAlliance(allianceID int64, name, ticker string) 
 	}
 }
 
-func (aep *authEsiPoller) upsertCorporation(corporationID int64, allianceID int32, name, ticker string) {
+func (aep *authEsiPoller) upsertCorporation(corporationID, allianceID int32, name, ticker string) {
 	var err error
 
 	aep.logger.Infof("ESI Poller: Updating alliance: %d", corporationID)
@@ -270,7 +270,7 @@ func (aep *authEsiPoller) upsertCorporation(corporationID int64, allianceID int3
 	}
 }
 
-func (aep *authEsiPoller) upsertCharacter(characterID int64, corporationID int32, name string) {
+func (aep *authEsiPoller) upsertCharacter(characterID, corporationID int32, name string) {
 	var err error
 
 	aep.logger.Infof("ESI Poller: Updating alliance: %d", characterID)
