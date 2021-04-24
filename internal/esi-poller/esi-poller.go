@@ -7,9 +7,7 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/antihax/goesi"
 	"github.com/antihax/goesi/esi"
-	"github.com/chremoas/auth-srv/proto"
 	"github.com/chremoas/chremoas-ng/internal/auth"
-	"github.com/chremoas/esi-srv/proto"
 	"github.com/gregjones/httpcache"
 	"go.uber.org/zap"
 	"golang.org/x/net/context"
@@ -123,22 +121,8 @@ func (aep *authEsiPoller) updateOrDeleteAlliances() error {
 			return err
 		}
 
-		// this may come back as an error now? Need to figure that out
-		//if response. == nil {
-		//	aep.logger.Infof("ESI Poller: Removing alliance: %s", alliance)
-		//	aep.entityAdminClient.AllianceUpdate(context.Background(), &abaeve_auth.AllianceAdminRequest{
-		//		Alliance:  alliance,
-		//		Operation: abaeve_auth.EntityOperation_REMOVE,
-		//	})
 		if alliance.Name != response.Name || alliance.Ticker != response.Ticker {
-			aep.logger.Infof("ESI Poller: Updating alliance: %d", alliance.ID)
-			_, err = aep.db.Update("alliances").
-				Set("name", response.Name).
-				Set("ticket", response.Ticker).
-				Query()
-			if err != nil {
-				aep.logger.Errorf("ESI Poller: Error updating alliance: %d", alliance.ID)
-			}
+			aep.upsertAlliance(alliance.ID, response.Name, response.Ticker)
 		}
 	}
 
@@ -177,23 +161,8 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() error {
 			return err
 		}
 
-		// this may come back as an error now? Need to figure that out
-		//if response. == nil {
-		//	aep.logger.Infof("ESI Poller: Removing alliance: %s", alliance)
-		//	aep.entityAdminClient.AllianceUpdate(context.Background(), &abaeve_auth.AllianceAdminRequest{
-		//		Alliance:  alliance,
-		//		Operation: abaeve_auth.EntityOperation_REMOVE,
-		//	})
 		if corporation.Name != response.Name || corporation.Ticker != response.Ticker || corporation.AllianceID != int64(response.AllianceId) {
-			aep.logger.Infof("ESI Poller: Updating alliance: %d", corporation.ID)
-			_, err = aep.db.Update("corporations").
-				Set("name", response.Name).
-				Set("ticket", response.Ticker).
-				Set("alliance_id", response.AllianceId).
-				Query()
-			if err != nil {
-				aep.logger.Errorf("ESI Poller: Error updating alliance: %d", corporation.ID)
-			}
+			aep.upsertCorporation(corporation.ID, response.AllianceId, response.Name, response.Ticker)
 		}
 		err = aep.checkAndUpdateCorpsAllianceIfNecessary(corporation, response)
 		if err != nil {
@@ -236,28 +205,9 @@ func (aep *authEsiPoller) updateOrDeleteCharacters() error {
 			return err
 		}
 
-		// this may come back as an error now? Need to figure that out
-		//if response. == nil {
-		//	aep.logger.Infof("ESI Poller: Removing alliance: %s", alliance)
-		//	aep.entityAdminClient.AllianceUpdate(context.Background(), &abaeve_auth.AllianceAdminRequest{
-		//		Alliance:  alliance,
-		//		Operation: abaeve_auth.EntityOperation_REMOVE,
-		//	})
 		if character.Name != response.Name || character.CorporationID != int64(response.CorporationId) {
-			aep.logger.Infof("ESI Poller: Updating alliance: %d", character.ID)
-			_, err = aep.db.Update("corporations").
-				Set("name", response.Name).
-				Set("corporation_id", response.CorporationId).
-				Query()
-			if err != nil {
-				aep.logger.Errorf("ESI Poller: Error updating alliance: %d", character.ID)
-			}
+			aep.upsertCharacter(character.ID, response.CorporationId, response.Name)
 		}
-		// I don't think we really need to do this here, it'll get updated when we check corps
-		//err = aep.checkAndUpdateCorpsAllianceIfNecessary(corporation, response)
-		//if err != nil {
-		//	aep.logger.Errorf("Error updating %d's alliance: %s", corporation.ID, err)
-		//}
 	}
 
 	return nil
@@ -273,37 +223,16 @@ func (aep *authEsiPoller) checkAndUpdateCorpsAllianceIfNecessary(authCorporation
 	}
 
 	aep.logger.Infof("ESI Poller: Updating corporations alliance for %s with allianceId %d\n", esiCorporation.Name, esiCorporation.AllianceId)
-	allErrors := ""
 
 	if authCorporation.AllianceID != int64(esiCorporation.AllianceId) {
 		response, _, err = aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), esiCorporation.AllianceId, nil)
-		newAllianceResponse, err := aep.allianceClient.GetAllianceById(context.Background(), &chremoas_esi.GetAllianceByIdRequest{
-			Id: esiCorporation.AllianceId,
-		})
 		if err != nil {
-			allErrors += err.Error() + "\n"
+			aep.logger.Errorf("Error calling GetAlliancesAllianceId: %s", err)
+			aep.logger.Infof("response=%v error=%s", response, err)
+			return err
 		}
 
-		aep.authAllianceMap[esiCorporation.AllianceId] = &abaeve_auth.Alliance{
-			Id:     int64(esiCorporation.AllianceId),
-			Name:   newAllianceResponse.Alliance.Name,
-			Ticker: newAllianceResponse.Alliance.Ticker,
-		}
-
-		aep.esiAllianceMap[int64(esiCorporation.AllianceId)] = newAllianceResponse.Alliance
-
-		aep.logger.Infof("ESI Poller: Updating alliance: %s", aep.authAllianceMap[esiCorporation.AllianceId])
-		_, err = aep.entityAdminClient.AllianceUpdate(context.Background(), &abaeve_auth.AllianceAdminRequest{
-			Alliance:  aep.authAllianceMap[esiCorporation.AllianceId],
-			Operation: abaeve_auth.EntityOperation_ADD_OR_UPDATE,
-		})
-		if err != nil {
-			allErrors += err.Error() + "\n"
-		}
-	}
-
-	if len(allErrors) > 0 {
-		return errors.New(allErrors)
+		aep.upsertAlliance(int64(esiCorporation.AllianceId), response.Name, response.Ticker)
 	}
 
 	return nil
@@ -311,4 +240,46 @@ func (aep *authEsiPoller) checkAndUpdateCorpsAllianceIfNecessary(authCorporation
 
 func (aep *authEsiPoller) Stop() {
 	aep.ticker.Stop()
+}
+
+func (aep *authEsiPoller) upsertAlliance(allianceID int64, name, ticker string) {
+	var err error
+
+	aep.logger.Infof("ESI Poller: Updating alliance: %d", allianceID)
+	_, err = aep.db.Insert("alliances").
+		Columns("id", "name", "ticker").
+		Values(allianceID, name, ticker).
+		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?", name, ticker).
+		Query()
+	if err != nil {
+		aep.logger.Errorf("ESI Poller: Error updating alliance: %d", allianceID)
+	}
+}
+
+func (aep *authEsiPoller) upsertCorporation(corporationID int64, allianceID int32, name, ticker string) {
+	var err error
+
+	aep.logger.Infof("ESI Poller: Updating alliance: %d", corporationID)
+	_, err = aep.db.Insert("corporations").
+		Columns("id", "name", "ticker", "alliance_id").
+		Values(corporationID, name, ticker, allianceID).
+		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?, alliance_id=?", name, ticker, allianceID).
+		Query()
+	if err != nil {
+		aep.logger.Errorf("ESI Poller: Error updating alliance: %d", corporationID)
+	}
+}
+
+func (aep *authEsiPoller) upsertCharacter(characterID int64, corporationID int32, name string) {
+	var err error
+
+	aep.logger.Infof("ESI Poller: Updating alliance: %d", characterID)
+	_, err = aep.db.Insert("characters").
+		Columns("id", "name", "corporation_id").
+		Values(characterID, name, corporationID).
+		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, corporation_id=?", name, corporationID).
+		Query()
+	if err != nil {
+		aep.logger.Errorf("ESI Poller: Error updating alliance: %d", characterID)
+	}
 }
