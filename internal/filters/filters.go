@@ -2,8 +2,10 @@ package filters
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/chremoas/chremoas-ng/internal/common"
@@ -148,11 +150,22 @@ func AddMember(userID, filter, author string, logger *zap.SugaredLogger, db *sq.
 		}
 	}
 
-	err := db.Select("id").
+	_, err := strconv.Atoi(userID)
+	if err != nil {
+		if !common.IsDiscordUser(userID) {
+			return common.SendError("second argument must be a discord user")
+		}
+		userID = common.ExtractUserId(userID)
+	}
+
+	err = db.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
 		QueryRow().Scan(&filterID)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
+		}
 		newErr := fmt.Errorf("error scanning filterID: %s", err)
 		logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
@@ -191,7 +204,15 @@ func RemoveMember(userID, filter, author string, logger *zap.SugaredLogger, db *
 		}
 	}
 
-	err := db.Select("id").
+	_, err := strconv.Atoi(userID)
+	if err != nil {
+		if !common.IsDiscordUser(userID) {
+			return common.SendError("second argument must be a discord user")
+		}
+		userID = common.ExtractUserId(userID)
+	}
+
+	err = db.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
 		QueryRow().Scan(&filterID)

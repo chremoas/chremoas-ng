@@ -68,9 +68,9 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 
 		case "membership":
 			if len(cmdStr) < 4 {
-				return roles.ListUserRoles(roles.Role, m.Author.ID, c.logger, c.db)
+				return roles.ListUserRoles(roles.Sig, m.Author.ID, c.logger, c.db)
 			}
-			return roles.ListUserRoles(roles.Role, common.ExtractUserId(cmdStr[3]), c.logger, c.db)
+			return roles.ListUserRoles(roles.Sig, common.ExtractUserId(cmdStr[3]), c.logger, c.db)
 
 		default:
 			return fmt.Sprintf("```%s```", sigHelpStr)

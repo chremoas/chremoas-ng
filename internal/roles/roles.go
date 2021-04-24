@@ -90,166 +90,44 @@ func Types() string {
 	return buffer.String()
 }
 
-// Members lists all userIDs that match all the filters for a role. I'm not sure if we need to care about
-// sig or not here just yet.
+// Members lists all userIDs that match all the filters for a role.
 func Members(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var (
-		buffer bytes.Buffer
-		err    error
-		id     int
-		userID int
-		count  int
+		buffer     bytes.Buffer
 	)
 
-	id, err = getRoleID(name, db)
+	members, err := GetRoleMembers(sig, name, logger, db)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], name))
-		}
-		logger.Error(err)
-		return common.SendError(fmt.Sprintf("error getting filter ID (%s): %s", name, err.Error()))
+		return common.SendError(fmt.Sprintf("error getting member list: %s", err))
 	}
 
-	rows, err := db.Select("user_id").
-		From("filter_membership").
-		InnerJoin("role_filters USING (filter)").
-		InnerJoin("roles ON role_filters.role = roles.id").
-		Where(sq.Eq{"role_filters.role": id}).
-		Where(sq.Eq{"roles.sig": sig}).
-		Query()
-	if err != nil {
-		logger.Error(err)
-		return common.SendError(err.Error())
-	}
-
-	for rows.Next() {
-		err = rows.Scan(&userID)
-		if err != nil {
-			return common.SendError(fmt.Sprintf("error scanning user_id (%s): %s", name, err.Error()))
-		}
-
-		buffer.WriteString(fmt.Sprintf("\t%d\n", userID))
-		count += 1
-	}
-
-	if count == 0 {
+	if len(members) == 0 {
 		return common.SendError(fmt.Sprintf("No members in: %s", name))
 	}
 
-	return fmt.Sprintf("```%d members in %s:\n%s```", count, name, buffer.String())
-}
-
-// GetRoles goes and fetches all the roles of type sig/role. If shortname is set only one role is fetched.
-func GetRoles(sig bool, shortName *string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) ([]payloads.Role, error) {
-	var (
-		rs        []payloads.Role
-		charTotal int
-	)
-
-	q := db.Select("color", "hoist", "joinable", "managed", "mentionable", "name", "permissions",
-		"position", "role_nick", "sig", "sync").
-		Where(sq.Eq{"sig": sig}).
-		From("roles")
-
-	if shortName != nil {
-		q = q.Where(sq.Eq{"role_nick": shortName})
+	for _, userID := range members {
+		buffer.WriteString(fmt.Sprintf("\t%d\n", userID))
 	}
 
-	rows, err := q.Query()
-	if err != nil {
-		newErr := fmt.Errorf("error getting %ss: %s", roleType[sig], err)
-		logger.Error(newErr)
-		return nil, newErr
-	}
-	defer func() {
-		if err = rows.Close(); err != nil {
-			logger.Error(err)
-		}
-	}()
-
-	var role payloads.Role
-	for rows.Next() {
-		err = rows.Scan(
-			&role.Color,
-			&role.Hoist,
-			&role.Joinable,
-			&role.Managed,
-			&role.Mentionable,
-			&role.Name,
-			&role.Permissions,
-			&role.Position,
-			&role.ShortName,
-			&role.Sig,
-			&role.Sync,
-		)
-		if err != nil {
-			newErr := fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
-			logger.Error(newErr)
-			return nil, newErr
-		}
-		charTotal += len(role.ShortName) + len(role.Name) + 15 // Guessing on bool excess
-		rs = append(rs, role)
-	}
-
-	if charTotal >= 2000 {
-		return nil, fmt.Errorf("too many %ss (exceeds Discord 2k character limit)", roleType[sig])
-	}
-
-	return rs, nil
-}
-
-func getRoleID(name string, db *sq.StatementBuilderType) (int, error) {
-	var (
-		err error
-		id  int
-	)
-
-	err = db.Select("id").
-		From("roles").
-		Where(sq.Eq{"role_nick": name}).
-		QueryRow().Scan(&id)
-
-	return id, err
+	return fmt.Sprintf("```%d member(s) in %s:\n%s```", len(members), name, buffer.String())
 }
 
 func ListUserRoles(sig bool, userID string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var (
-		name      string
-		shortName string
 		buffer    bytes.Buffer
-		count     int
 	)
 
-	rows, err := db.Select("roles.role_nick", "roles.name").
-		From("filters").
-		Join("filter_membership ON filters.id = filter_membership.filter").
-		Join("role_filters ON filters.id = role_filters.filter").
-		Join("roles ON role_filters.role = roles.id").
-		Where(sq.Eq{"filter_membership.user_id": userID}).
-		Where(sq.Eq{"roles.sig": sig}).
-		Query()
+	roles, err := GetUserRoles(sig, userID, logger, db)
 	if err != nil {
-		logger.Error(err)
-		return common.SendError(fmt.Sprintf("error getting user %ss (%s): %s", roleType[sig], userID, err))
-	}
-	defer func() {
-		if err = rows.Close(); err != nil {
-			logger.Error(err)
-		}
-	}()
-
-	for rows.Next() {
-		err = rows.Scan(&shortName, &name)
-		if err != nil {
-			return common.SendError(fmt.Sprintf("error scanning %s for userID (%s): %s", roleType[sig], userID, err))
-		}
-
-		buffer.WriteString(fmt.Sprintf("%s - %s", shortName, name))
-		count += 1
+		return common.SendError(fmt.Sprintf("error getting user roles: %s", err))
 	}
 
-	if count == 0 {
+	if len(roles) == 0 {
 		return common.SendError(fmt.Sprintf("User has no %ss: <@%s>", roleType[sig], userID))
+	}
+
+	for _, role := range roles {
+		buffer.WriteString(fmt.Sprintf("%s - %s\n", role.ShortName, role.Name))
 	}
 
 	return fmt.Sprintf("```%s```", buffer.String())
@@ -438,15 +316,6 @@ func Destroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *
 	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Destroyed %s `%s`", roleType[sig], shortName)))
 }
 
-func validListItem(a string, list []string) bool {
-	for _, b := range list {
-		if b == a {
-			return true
-		}
-	}
-	return false
-}
-
 func Update(sig bool, shortName, key, value, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var chatID int
 
@@ -529,30 +398,10 @@ func Update(sig bool, shortName, key, value, author string, logger *zap.SugaredL
 	return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], shortName))
 }
 
-func queueUpdate(chatID int, action payloads.Action, logger *zap.SugaredLogger, nsq *nsq.Producer) {
-	payload := payloads.Payload{
-		Action: action,
-		Role: &discordgo.Role{
-			ID: fmt.Sprintf("%d", chatID),
-		},
-	}
-
-	b, err := json.Marshal(payload)
-	if err != nil {
-		logger.Errorf("error marshalling json for queue: %s", err)
-	}
-
-	logger.Debug("Submitting role queue message")
-	err = nsq.PublishAsync(common.GetTopic("role"), b, nil)
-	if err != nil {
-		logger.Errorf("error publishing message: %s", err)
-	}
-}
-
 func ListFilters(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var (
-		buffer bytes.Buffer
-		filter string
+		buffer  bytes.Buffer
+		filter  string
 		results bool
 	)
 
@@ -591,7 +440,7 @@ func ListFilters(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.S
 
 func AddFilter(sig bool, filter, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var (
-		err error
+		err      error
 		filterID int
 		roleID   int
 	)
@@ -639,7 +488,7 @@ func AddFilter(sig bool, filter, shortName, author string, logger *zap.SugaredLo
 
 func RemoveFilter(sig bool, filter, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var (
-		err error
+		err      error
 		filterID int
 		roleID   int
 	)

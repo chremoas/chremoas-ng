@@ -36,7 +36,7 @@ type Character struct {
 	Name          string     `db:"name" json:"name"`
 	InsertedAt    *time.Time `db:"inserted_at" json:"insertedAt"`
 	UpdatedAt     *time.Time `db:"updated_at" json:"updatedAt"`
-	CorporationId int64      `db:"corporation_id" json:"corporationId"`
+	CorporationID int64      `db:"corporation_id" json:"corporationId"`
 	Token         string     `db:"token" json:"token"`
 }
 
