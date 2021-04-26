@@ -11,6 +11,7 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
+	"github.com/chremoas/chremoas-ng/internal/roles"
 	"github.com/lib/pq"
 	"github.com/nsqio/go-nsq"
 	"go.uber.org/zap"
@@ -198,7 +199,7 @@ func RemoveMember(userID, filter, author string, logger *zap.SugaredLogger, db *
 		deleted  bool
 	)
 
-	if author != "sig-cmd" {
+	if author != "sig-cmd" && author != roles.PollerUser {
 		if !perms.CanPerform(author, "role_admins", logger, db) {
 			return common.SendError("User doesn't have permission to this command")
 		}

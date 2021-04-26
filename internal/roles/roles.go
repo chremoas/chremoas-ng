@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
@@ -28,8 +29,9 @@ var (
 )
 
 const (
-	Role = false
-	Sig  = true
+	Role       = false
+	Sig        = true
+	PollerUser = "esi-poller"
 )
 
 var roleType = map[bool]string{Role: "role", Sig: "sig"}
@@ -93,7 +95,7 @@ func Types() string {
 // Members lists all userIDs that match all the filters for a role.
 func Members(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var (
-		buffer     bytes.Buffer
+		buffer bytes.Buffer
 	)
 
 	members, err := GetRoleMembers(sig, name, logger, db)
@@ -114,7 +116,7 @@ func Members(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementB
 
 func ListUserRoles(sig bool, userID string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var (
-		buffer    bytes.Buffer
+		buffer bytes.Buffer
 	)
 
 	roles, err := GetUserRoles(sig, userID, logger, db)
@@ -319,7 +321,7 @@ func Destroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *
 func Update(sig bool, shortName, key, value, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var chatID int
 
-	if !perms.CanPerform(author, adminType[sig], logger, db) {
+	if author != PollerUser && !perms.CanPerform(author, adminType[sig], logger, db) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
@@ -343,7 +345,7 @@ func Update(sig bool, shortName, key, value, author string, logger *zap.SugaredL
 		}
 	}
 
-	if !validListItem(key, roleKeys) {
+	if author != PollerUser && !validListItem(key, roleKeys) {
 		return common.SendError(fmt.Sprintf("`%s` isn't a valid Role Key", key))
 	}
 
@@ -364,7 +366,7 @@ func Update(sig bool, shortName, key, value, author string, logger *zap.SugaredL
 	}
 
 	_, err = db.Update("roles").
-		Set(key, value).
+		Set(strings.ToLower(key), value).
 		Where(sq.Eq{"chat_id": chatID}).
 		Where(sq.Eq{"sig": sig}).
 		Query()
