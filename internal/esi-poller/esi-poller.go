@@ -188,11 +188,12 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() error {
 		// TODO: changing the role name breaks discord roles, need to handle that
 		if corporation.Name != response.Name || corporation.Ticker != response.Ticker || corporation.AllianceID != response.AllianceId {
 			aep.upsertCorporation(corporation.ID, response.AllianceId, response.Name, response.Ticker)
-			if corporation.Ticker != response.Ticker {
-				roles.Update(roles.Role, corporation.Ticker, "role_nick", response.Ticker, roles.PollerUser, aep.logger, aep.db, aep.nsq)
-			}
 			if corporation.Name != response.Name {
 				roles.Update(roles.Role, corporation.Ticker, "name", response.Name, roles.PollerUser, aep.logger, aep.db, aep.nsq)
+			}
+
+			if corporation.Ticker != response.Ticker {
+				roles.Update(roles.Role, corporation.Ticker, "role_nick", response.Ticker, roles.PollerUser, aep.logger, aep.db, aep.nsq)
 			}
 
 			// Alliance has changed. Need to remove all members from the old alliance and add them to the new alliance.
