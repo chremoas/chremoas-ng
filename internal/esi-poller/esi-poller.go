@@ -19,7 +19,7 @@ import (
 
 type AuthEsiPoller interface {
 	Start()
-	Poll() error
+	Poll()
 	Stop()
 }
 
@@ -51,17 +51,9 @@ func (aep *authEsiPoller) Start() {
 
 	aep.logger.Info("ESI Poller: Starting polling loop")
 	go func() {
-		err := aep.Poll()
-		if err != nil {
-			//TODO: Replace with logger object
-			aep.logger.Errorf("ESI Poller: Received an error while polling: %s", err)
-		}
+		aep.Poll()
 		for range aep.ticker.C {
-			err := aep.Poll()
-			if err != nil {
-				//TODO: Replace with logger object
-				aep.logger.Errorf("ESI Poller: Received an error while polling: %s", err)
-			}
+			aep.Poll()
 		}
 	}()
 }
@@ -72,46 +64,29 @@ func (aep *authEsiPoller) Stop() {
 
 // Poll currently starts at alliances and works it's way down to characters.  It then walks back up at the corporation
 // level and character level if alliance/corporation membership has changed from the last poll.
-func (aep *authEsiPoller) Poll() error {
-	allErrors := ""
-
+func (aep *authEsiPoller) Poll() {
 	aep.logger.Info("ESI Poller: Calling updateOrDeleteAlliances()")
-	err := aep.updateOrDeleteAlliances()
-	if err != nil {
-		allErrors += err.Error() + "\n"
-	}
+	aep.updateOrDeleteAlliances()
 
 	aep.logger.Info("ESI Poller: Calling updateOrDeleteCorporations()")
-	err = aep.updateOrDeleteCorporations()
-	if err != nil {
-		allErrors += err.Error() + "\n"
-	}
+	aep.updateOrDeleteCorporations()
 
 	aep.logger.Info("ESI Poller: Calling updateOrDeleteCharacters()")
-	err = aep.updateOrDeleteCharacters()
-	if err != nil {
-		allErrors += err.Error() + "\n"
-	}
-
-	if len(allErrors) > 0 {
-		return errors.New(allErrors)
-	}
-
-	return nil
+	aep.updateOrDeleteCharacters()
 }
 
-func (aep *authEsiPoller) updateOrDeleteAlliances() error {
+func (aep *authEsiPoller) updateOrDeleteAlliances() {
 	var (
 		err      error
 		alliance auth.Alliance
-		response esi.GetAlliancesAllianceIdOk
 	)
 
 	rows, err := aep.db.Select("id", "name", "ticker").
 		From("alliances").
 		Query()
 	if err != nil {
-		return err
+		aep.logger.Errorf("Error getting alliance list from db: %s", err)
+		return
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
@@ -122,33 +97,29 @@ func (aep *authEsiPoller) updateOrDeleteAlliances() error {
 	for rows.Next() {
 		err = rows.Scan(&alliance.ID, &alliance.Name, &alliance.Ticker)
 		if err != nil {
-			return err
+			aep.logger.Errorf("Error scanning alliance values: %s", err)
+			return
 		}
 
-		response, _, err = aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), alliance.ID, nil)
+		_, _, err = aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), alliance.ID, nil)
 		if err != nil {
+			if aep.notFound(err) == nil {
+				aep.logger.Infof("Deleting alliance: %d", alliance.ID)
+				_, err = aep.db.Delete("alliances").
+					Where(sq.Eq{"id": alliance.ID}).
+					Query()
+				if err != nil {
+					aep.logger.Errorf("Error deleting alliance: %s", err)
+				}
+				continue
+			}
+
 			aep.logger.Errorf("Error calling GetAlliancesAllianceId: %s", err)
-			aep.logger.Infof("response=%v error=%s", response, err)
-			return err
-		}
-
-		// TODO: changing the role name breaks discord roles, need to handle that
-		if alliance.Name != response.Name || alliance.Ticker != response.Ticker {
-			aep.upsertAlliance(alliance.ID, response.Name, response.Ticker)
-			if alliance.Name != response.Name {
-				roles.Update(roles.Role, alliance.Ticker, "name", response.Name, roles.PollerUser, aep.logger, aep.db, aep.nsq)
-			}
-
-			if alliance.Ticker != response.Ticker {
-				roles.Update(roles.Role, alliance.Ticker, "role_nick", response.Ticker, roles.PollerUser, aep.logger, aep.db, aep.nsq)
-			}
 		}
 	}
-
-	return nil
 }
 
-func (aep *authEsiPoller) updateOrDeleteCorporations() error {
+func (aep *authEsiPoller) updateOrDeleteCorporations() {
 	var (
 		err         error
 		corporation auth.Corporation
@@ -159,7 +130,8 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() error {
 		From("corporations").
 		Query()
 	if err != nil {
-		return err
+		aep.logger.Errorf("Error getting corporation list from db: %s", err)
+		return
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
@@ -170,14 +142,24 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() error {
 	for rows.Next() {
 		err = rows.Scan(&corporation.ID, &corporation.Name, &corporation.Ticker, &corporation.AllianceID)
 		if err != nil {
-			return err
+			aep.logger.Errorf("Error scanning corporation values: %s", err)
+			return
 		}
 
 		response, _, err = aep.esiClient.ESI.CorporationApi.GetCorporationsCorporationId(context.Background(), corporation.ID, nil)
 		if err != nil {
+			if aep.notFound(err) == nil {
+				aep.logger.Infof("Deleting corporation: %d", corporation.ID)
+				_, err = aep.db.Delete("corporations").
+					Where(sq.Eq{"id": corporation.ID}).
+					Query()
+				if err != nil {
+					aep.logger.Errorf("Error deleting corporation: %s", err)
+				}
+				continue
+			}
+
 			aep.logger.Errorf("Error calling GetCorporationsCorporationId: %s", err)
-			aep.logger.Infof("response=%v error=%s", response, err)
-			return err
 		}
 
 		err = aep.checkAndUpdateCorpsAllianceIfNecessary(corporation, response)
@@ -185,29 +167,119 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() error {
 			aep.logger.Errorf("Error updating %d's alliance: %s", corporation.ID, err)
 		}
 
-		// TODO: changing the role name breaks discord roles, need to handle that
-		if corporation.Name != response.Name || corporation.Ticker != response.Ticker || corporation.AllianceID != response.AllianceId {
-			aep.upsertCorporation(corporation.ID, response.AllianceId, response.Name, response.Ticker)
-			if corporation.Name != response.Name {
-				roles.Update(roles.Role, corporation.Ticker, "name", response.Name, roles.PollerUser, aep.logger, aep.db, aep.nsq)
-			}
-
-			if corporation.Ticker != response.Ticker {
-				roles.Update(roles.Role, corporation.Ticker, "role_nick", response.Ticker, roles.PollerUser, aep.logger, aep.db, aep.nsq)
+		// Corp has switched alliance
+		if corporation.AllianceID != response.AllianceId {
+			_, err = aep.db.Update("corporations").
+				Set("alliance_id", response.AllianceId).
+				Query()
+			if err != nil {
+				aep.logger.Errorf("Error updating alliance for corp: %s", err)
 			}
 
 			// Alliance has changed. Need to remove all members from the old alliance and add them to the new alliance.
-			if corporation.AllianceID != response.AllianceId {
-				// If there is an old alliance remove corp member from it
-				if corporation.AllianceID != 0 {
-					aep.removeCorpMembers(response.Ticker, corporation.AllianceID)
-				}
-
-				// If there is a new alliance add corp member to it
-				if response.AllianceId != 0 {
-					aep.addCorpMembers(response.Ticker, response.AllianceId)
-				}
+			// If there is an old alliance remove corp members from it
+			if corporation.AllianceID != 0 {
+				aep.removeCorpMembers(response.Ticker, corporation.AllianceID)
 			}
+
+			// If there is a new alliance add corp members to it
+			if response.AllianceId != 0 {
+				aep.addCorpMembers(response.Ticker, response.AllianceId)
+			}
+		}
+	}
+}
+
+func (aep *authEsiPoller) updateOrDeleteCharacters() {
+	var (
+		err       error
+		character auth.Character
+		response  esi.GetCharactersCharacterIdOk
+	)
+
+	rows, err := aep.db.Select("id", "name", "corporation_id").
+		From("characters").
+		Query()
+	if err != nil {
+		aep.logger.Errorf("Error getting character list from the db: %s", err)
+		return
+	}
+	defer func() {
+		if err = rows.Close(); err != nil {
+			aep.logger.Error(err)
+		}
+	}()
+
+	for rows.Next() {
+		err = rows.Scan(&character.ID, &character.Name, &character.CorporationID)
+		if err != nil {
+			aep.logger.Errorf("Error scanning character values: %s", err)
+			return
+		}
+
+		response, _, err = aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(context.Background(), character.ID, nil)
+		if err != nil {
+			if aep.notFound(err) == nil {
+				aep.logger.Infof("Deleting character: %d", character.ID)
+				_, err = aep.db.Delete("characters").
+					Where(sq.Eq{"id": character.ID}).
+					Query()
+				if err != nil {
+					aep.logger.Errorf("Error deleting character: %s", err)
+				}
+				continue
+			}
+
+			aep.logger.Errorf("Error calling GetCharactersCharacterId: %s", err)
+		}
+
+		if character.CorporationID != response.CorporationId {
+			_, err = aep.db.Update("characters").
+				Set("corporation_id", response.CorporationId).
+				Query()
+			if err != nil {
+				aep.logger.Errorf("Error updating character: %s", err)
+			}
+		}
+	}
+}
+
+func (aep *authEsiPoller) checkAndUpdateCorpsAllianceIfNecessary(authCorporation auth.Corporation, esiCorporation esi.GetCorporationsCorporationIdOk) error {
+	var (
+		err      error
+		response esi.GetAlliancesAllianceIdOk
+		count    int32
+	)
+
+	if esiCorporation.AllianceId == 0 {
+		return nil
+	}
+
+	aep.logger.Infof("ESI Poller: Updating corporation's alliance for %s with allianceId %d\n", esiCorporation.Name, esiCorporation.AllianceId)
+
+	if authCorporation.AllianceID != esiCorporation.AllianceId {
+		response, _, err = aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), esiCorporation.AllianceId, nil)
+		if err != nil {
+			aep.logger.Errorf("Error calling GetAlliancesAllianceId: %s", err)
+			return err
+		}
+
+		aep.upsertAlliance(esiCorporation.AllianceId, response.Name, response.Ticker)
+
+		err := aep.db.Select("count(id)").
+			From("roles").
+			Where(sq.Eq{"role_nick": response.Ticker}).
+			Where(sq.Eq{"sig": roles.Role}).
+			QueryRow().Scan(&count)
+		if err != nil {
+			aep.logger.Errorf("error getting count of alliances by name: %s", err)
+			return err
+		}
+
+		if count == 0 {
+			roles.Add(roles.Role, false, response.Ticker, response.Name, "discord", roles.PollerUser, aep.logger, aep.db, aep.nsq)
+		} else {
+			roles.Update(roles.Role, response.Ticker, "role_nick", response.Ticker, roles.PollerUser, aep.logger, aep.db, aep.nsq)
 		}
 	}
 
@@ -260,89 +332,6 @@ func (aep *authEsiPoller) removeCorpMembers(corpTicker string, allianceID int32)
 	}
 }
 
-func (aep *authEsiPoller) updateOrDeleteCharacters() error {
-	var (
-		err       error
-		character auth.Character
-		response  esi.GetCharactersCharacterIdOk
-	)
-
-	rows, err := aep.db.Select("id", "name", "corporation_id").
-		From("characters").
-		Query()
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err = rows.Close(); err != nil {
-			aep.logger.Error(err)
-		}
-	}()
-
-	for rows.Next() {
-		err = rows.Scan(&character.ID, &character.Name, &character.CorporationID)
-		if err != nil {
-			return err
-		}
-
-		response, _, err = aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(context.Background(), character.ID, nil)
-		if err != nil {
-			aep.logger.Errorf("Error calling GetCharactersCharacterId: %s", err)
-			aep.logger.Infof("response=%v error=%s", response, err)
-			return err
-		}
-
-		if character.Name != response.Name || character.CorporationID != response.CorporationId {
-			aep.upsertCharacter(character.ID, response.CorporationId, response.Name)
-		}
-	}
-
-	return nil
-}
-
-func (aep *authEsiPoller) checkAndUpdateCorpsAllianceIfNecessary(authCorporation auth.Corporation, esiCorporation esi.GetCorporationsCorporationIdOk) error {
-	var (
-		err      error
-		response esi.GetAlliancesAllianceIdOk
-		count    int32
-	)
-
-	if esiCorporation.AllianceId == 0 {
-		return nil
-	}
-
-	aep.logger.Infof("ESI Poller: Updating corporation's alliance for %s with allianceId %d\n", esiCorporation.Name, esiCorporation.AllianceId)
-
-	if authCorporation.AllianceID != esiCorporation.AllianceId {
-		response, _, err = aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), esiCorporation.AllianceId, nil)
-		if err != nil {
-			aep.logger.Errorf("Error calling GetAlliancesAllianceId: %s", err)
-			aep.logger.Infof("response=%v error=%s", response, err)
-			return err
-		}
-
-		aep.upsertAlliance(esiCorporation.AllianceId, response.Name, response.Ticker)
-
-		err := aep.db.Select("count(id)").
-			From("roles").
-			Where(sq.Eq{"role_nick": response.Ticker}).
-			Where(sq.Eq{"sig": roles.Role}).
-			QueryRow().Scan(&count)
-		if err != nil {
-			aep.logger.Errorf("error getting count of alliances by name: %s", err)
-			return err
-		}
-
-		if count == 0 {
-			roles.Add(roles.Role, false, response.Ticker, response.Name, "discord", roles.PollerUser, aep.logger, aep.db, aep.nsq)
-		} else {
-			roles.Update(roles.Role, response.Ticker, "role_nick", response.Ticker, roles.PollerUser, aep.logger, aep.db, aep.nsq)
-		}
-	}
-
-	return nil
-}
-
 func (aep *authEsiPoller) upsertAlliance(allianceID int32, name, ticker string) {
 	var err error
 
@@ -357,30 +346,29 @@ func (aep *authEsiPoller) upsertAlliance(allianceID int32, name, ticker string) 
 	}
 }
 
-func (aep *authEsiPoller) upsertCorporation(corporationID, allianceID int32, name, ticker string) {
-	var err error
-
-	aep.logger.Infof("ESI Poller: Updating alliance: %d", corporationID)
-	_, err = aep.db.Insert("corporations").
-		Columns("id", "name", "ticker", "alliance_id").
-		Values(corporationID, name, ticker, allianceID).
-		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?, alliance_id=?", name, ticker, allianceID).
-		Query()
-	if err != nil {
-		aep.logger.Errorf("ESI Poller: Error updating alliance: %d", corporationID)
+func (aep *authEsiPoller) notFound(err error) error {
+	if err == nil {
+		return errors.New("object found")
 	}
-}
 
-func (aep *authEsiPoller) upsertCharacter(characterID, corporationID int32, name string) {
-	var err error
-
-	aep.logger.Infof("ESI Poller: Updating alliance: %d", characterID)
-	_, err = aep.db.Insert("characters").
-		Columns("id", "name", "corporation_id").
-		Values(characterID, name, corporationID).
-		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, corporation_id=?", name, corporationID).
-		Query()
-	if err != nil {
-		aep.logger.Errorf("ESI Poller: Error updating alliance: %d", characterID)
+	switch err.(type) {
+	case esi.GenericSwaggerError:
+		switch err.(esi.GenericSwaggerError).Model().(type) {
+		case esi.GetAlliancesAllianceIdNotFound:
+			aep.logger.Debug("Alliance not found")
+			return nil
+		case esi.GetCorporationsCorporationIdNotFound:
+			aep.logger.Debug("Corporation not found")
+			return nil
+		case esi.GetCharactersCharacterIdNotFound:
+			aep.logger.Debug("Character not found")
+			return nil
+		default:
+			aep.logger.Errorf("API Error: %s", err)
+			return err
+		}
+	default:
+		aep.logger.Errorf("Other Error: %s", err)
+		return err
 	}
 }
