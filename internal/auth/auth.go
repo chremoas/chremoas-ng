@@ -56,7 +56,7 @@ func Create(_ context.Context, request *CreateRequest, logger *zap.SugaredLogger
 		}
 
 		if len(role) == 0 {
-			roles.Add(false, false, request.Alliance.Ticker, request.Alliance.Name, "discord", "auth-web", logger, db, nsq)
+			roles.Add(false, false, request.Alliance.Ticker, request.Alliance.Name, "discord", logger, db, nsq)
 		}
 	}
 
@@ -98,7 +98,7 @@ func Create(_ context.Context, request *CreateRequest, logger *zap.SugaredLogger
 	}
 
 	if len(role) == 0 {
-		roles.Add(false, false, request.Corporation.Ticker, request.Corporation.Name, "discord", "auth-web", logger, db, nsq)
+		roles.Add(false, false, request.Corporation.Ticker, request.Corporation.Name, "discord", logger, db, nsq)
 	}
 
 	// ===========================================================================================
@@ -206,7 +206,7 @@ func Confirm(authCode, sender string, logger *zap.SugaredLogger, db *sq.Statemen
 		return common.SendError("Error updating auth code used")
 	}
 
-	filters.AddMember(sender, corpTicker, "auth-web", logger, db, nsq)
+	filters.AddMember(sender, corpTicker, logger, db, nsq)
 
 	if allianceID.Valid {
 		// get alliance ticker if there is an alliance
@@ -219,7 +219,7 @@ func Confirm(authCode, sender string, logger *zap.SugaredLogger, db *sq.Statemen
 			return common.SendError("Error updating auth code used")
 		}
 
-		filters.AddMember(sender, allianceTicker, "auth-web", logger, db, nsq)
+		filters.AddMember(sender, allianceTicker, logger, db, nsq)
 	}
 
 	return common.SendSuccess(fmt.Sprintf("<@%s> **Success**: %s has been successfully authed.", sender, name))

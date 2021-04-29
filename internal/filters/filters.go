@@ -11,7 +11,6 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
-	"github.com/chremoas/chremoas-ng/internal/roles"
 	"github.com/lib/pq"
 	"github.com/nsqio/go-nsq"
 	"go.uber.org/zap"
@@ -52,13 +51,16 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Add(name, description string, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
-	var id int
-
+func AuthedAdd(name, description string, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
 	if !perms.CanPerform(author, "role_admins", logger, db) {
 		return common.SendError("User doesn't have permission to this command"), -1
 	}
 
+	return Add(name, description, logger, db)
+}
+
+func Add(name, description string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
+	var id int
 	err := db.Insert("filters").
 		Columns("name", "description").
 		Values(name, description).
@@ -77,12 +79,16 @@ func Add(name, description string, author string, logger *zap.SugaredLogger, db 
 	return common.SendSuccess(fmt.Sprintf("Created filter `%s`", name)), id
 }
 
-func Delete(name string, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
-	var id int
-
+func AuthedDelete(name string, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
 	if !perms.CanPerform(author, "role_admins", logger, db) {
 		return common.SendError("User doesn't have permission to this command"), -1
 	}
+
+	return Delete(name, logger, db)
+}
+
+func Delete(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
+	var id int
 
 	rows, err := db.Delete("filters").
 		Where(sq.Eq{"name": name}).
@@ -106,7 +112,7 @@ func Delete(name string, author string, logger *zap.SugaredLogger, db *sq.Statem
 	return common.SendSuccess(fmt.Sprintf("Deleted filter `%s`", name)), id
 }
 
-func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var (
 		count, userID int
 		buffer        bytes.Buffer
@@ -142,14 +148,16 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 	return buffer.String()
 }
 
-func AddMember(userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	var filterID int
-
-	if author != "sig-cmd" {
-		if !perms.CanPerform(author, "role_admins", logger, db) {
-			return common.SendError("User doesn't have permission to this command")
-		}
+func AuthedAddMember(userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	if !perms.CanPerform(author, "role_admins", logger, db) {
+		return common.SendError("User doesn't have permission to this command")
 	}
+
+	return AddMember(userID, filter, logger, db, nsq)
+}
+
+func AddMember(userID, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	var filterID int
 
 	_, err := strconv.Atoi(userID)
 	if err != nil {
@@ -193,17 +201,19 @@ func AddMember(userID, filter, author string, logger *zap.SugaredLogger, db *sq.
 	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, filter))
 }
 
-func RemoveMember(userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func AuthedRemoveMember(userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	if !perms.CanPerform(author, "role_admins", logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
+
+	return RemoveMember(userID, filter, logger, db, nsq)
+}
+
+func RemoveMember(userID, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var (
 		filterID int
 		deleted  bool
 	)
-
-	if author != "sig-cmd" && author != roles.PollerUser {
-		if !perms.CanPerform(author, "role_admins", logger, db) {
-			return common.SendError("User doesn't have permission to this command")
-		}
-	}
 
 	_, err := strconv.Atoi(userID)
 	if err != nil {

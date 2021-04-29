@@ -20,6 +20,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
 	"github.com/chremoas/chremoas-ng/internal/auth/web"
+	esi_poller "github.com/chremoas/chremoas-ng/internal/esi-poller"
 	queue2 "github.com/chremoas/chremoas-ng/internal/queue"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -78,7 +79,7 @@ func main() {
 	logger.Info("main: Initializing debugging support")
 
 	go func() {
-		logger.Info("main: Debug Listening %s", "0.0.0.0:4000")
+		logger.Infof("main: Debug Listening %s", "0.0.0.0:4000")
 		if err = http.ListenAndServe("0.0.0.0:4000", http.DefaultServeMux); err != nil {
 			logger.Errorf("main: Debug Listener closed: %v", err)
 		}
@@ -203,6 +204,13 @@ func main() {
 		logger.Infof("main: auth-web listening on %s", api.Addr)
 		serverErrors <- api.ListenAndServe()
 	}()
+
+	// =========================================================================
+	// Start the ESI Poller thread.
+	userAgent := "chremoas-esi-srv Ramdar Chinken on TweetFleet Slack https://github.com/chremoas/chremoas-ng"
+	esiPoller := esi_poller.New(userAgent, logger, db, producer)
+	esiPoller.Start()
+	defer esiPoller.Stop()
 
 	// =========================================================================
 	// Main loop

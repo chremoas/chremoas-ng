@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"database/sql"
 	"time"
 )
 
@@ -18,12 +19,12 @@ type Alliance struct {
 }
 
 type Corporation struct {
-	ID         int32      `db:"id" json:"id"`
-	Name       string     `db:"name" json:"name"`
-	AllianceID int32      `db:"alliance_id" json:"allianceId"`
-	InsertedAt *time.Time `db:"inserted_at" json:"insertedAt"`
-	UpdatedAt  *time.Time `db:"updated_at" json:"updatedAt"`
-	Ticker     string     `db:"ticker" json:"ticker"`
+	ID         int32         `db:"id" json:"id"`
+	Name       string        `db:"name" json:"name"`
+	AllianceID sql.NullInt32 `db:"alliance_id" json:"allianceId"`
+	InsertedAt *time.Time    `db:"inserted_at" json:"insertedAt"`
+	UpdatedAt  *time.Time    `db:"updated_at" json:"updatedAt"`
+	Ticker     string        `db:"ticker" json:"ticker"`
 }
 
 type Character struct {

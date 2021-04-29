@@ -233,12 +233,12 @@ func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store
 	//We know we'll have a corp and a character, we're not sure if the corp is in an alliance.
 	request := &auth.CreateRequest{
 		Corporation: &auth.Corporation{
-			ID:     int64(character.CorporationId),
+			ID:     character.CorporationId,
 			Name:   corporation.Name,
 			Ticker: corporation.Ticker,
 		},
 		Character: &auth.Character{
-			ID:   int64(verifyReponse.CharacterID),
+			ID:   verifyReponse.CharacterID,
 			Name: character.Name,
 		},
 		Token: code,
@@ -249,7 +249,7 @@ func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store
 	if corporation.AllianceId != 0 {
 		request.Alliance = &auth.Alliance{
 			//TODO: Damn, why did I put int64 here?  At least I can upcast...
-			ID:     int64(corporation.AllianceId),
+			ID:     corporation.AllianceId,
 			Name:   alliance.Name,
 			Ticker: alliance.Ticker,
 		}

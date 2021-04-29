@@ -32,7 +32,7 @@ func (c Command) Perms(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 }
 
 func (c Command) doPerms(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) string {
-	c.logger.Infof("Recieved: %s", m.Content)
+	c.logger.Infof("Received: %s", m.Content)
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {

@@ -59,6 +59,7 @@ func (aep *authEsiPoller) Start() {
 }
 
 func (aep *authEsiPoller) Stop() {
+	aep.logger.Info("Stopping ESI Poller")
 	aep.ticker.Stop()
 }
 
@@ -100,6 +101,8 @@ func (aep *authEsiPoller) updateOrDeleteAlliances() {
 			aep.logger.Errorf("Error scanning alliance values: %s", err)
 			return
 		}
+
+		aep.logger.Debugf("Checking alliance: %s (%d)", alliance.Name, alliance.ID)
 
 		_, _, err = aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), alliance.ID, nil)
 		if err != nil {
@@ -146,6 +149,8 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() {
 			return
 		}
 
+		aep.logger.Debugf("Checking corporation: %s (%d)", corporation.Name, corporation.ID)
+
 		response, _, err = aep.esiClient.ESI.CorporationApi.GetCorporationsCorporationId(context.Background(), corporation.ID, nil)
 		if err != nil {
 			if aep.notFound(err) == nil {
@@ -168,7 +173,7 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() {
 		}
 
 		// Corp has switched alliance
-		if corporation.AllianceID != response.AllianceId {
+		if corporation.AllianceID.Int32 != response.AllianceId {
 			_, err = aep.db.Update("corporations").
 				Set("alliance_id", response.AllianceId).
 				Query()
@@ -178,8 +183,8 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() {
 
 			// Alliance has changed. Need to remove all members from the old alliance and add them to the new alliance.
 			// If there is an old alliance remove corp members from it
-			if corporation.AllianceID != 0 {
-				aep.removeCorpMembers(response.Ticker, corporation.AllianceID)
+			if corporation.AllianceID.Int32 != 0 {
+				aep.removeCorpMembers(response.Ticker, corporation.AllianceID.Int32)
 			}
 
 			// If there is a new alliance add corp members to it
@@ -216,6 +221,8 @@ func (aep *authEsiPoller) updateOrDeleteCharacters() {
 			aep.logger.Errorf("Error scanning character values: %s", err)
 			return
 		}
+
+		aep.logger.Debugf("Checking character: %s (%d)", character.Name, character.ID)
 
 		response, _, err = aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(context.Background(), character.ID, nil)
 		if err != nil {
@@ -257,7 +264,9 @@ func (aep *authEsiPoller) checkAndUpdateCorpsAllianceIfNecessary(authCorporation
 
 	aep.logger.Infof("ESI Poller: Updating corporation's alliance for %s with allianceId %d\n", esiCorporation.Name, esiCorporation.AllianceId)
 
-	if authCorporation.AllianceID != esiCorporation.AllianceId {
+	if authCorporation.AllianceID.Int32 != esiCorporation.AllianceId {
+		aep.logger.Debugf("Updating alliance (cascade): %s (%d)", authCorporation.Name, authCorporation.AllianceID)
+
 		response, _, err = aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), esiCorporation.AllianceId, nil)
 		if err != nil {
 			aep.logger.Errorf("Error calling GetAlliancesAllianceId: %s", err)
@@ -277,9 +286,9 @@ func (aep *authEsiPoller) checkAndUpdateCorpsAllianceIfNecessary(authCorporation
 		}
 
 		if count == 0 {
-			roles.Add(roles.Role, false, response.Ticker, response.Name, "discord", roles.PollerUser, aep.logger, aep.db, aep.nsq)
+			roles.Add(roles.Role, false, response.Ticker, response.Name, "discord", aep.logger, aep.db, aep.nsq)
 		} else {
-			roles.Update(roles.Role, response.Ticker, "role_nick", response.Ticker, roles.PollerUser, aep.logger, aep.db, aep.nsq)
+			roles.Update(roles.Role, response.Ticker, "role_nick", response.Ticker, aep.logger, aep.db, aep.nsq)
 		}
 	}
 
@@ -305,7 +314,7 @@ func (aep *authEsiPoller) addCorpMembers(corpTicker string, allianceID int32) {
 	}
 
 	for member := range members {
-		filters.AddMember(fmt.Sprintf("%d", member), allianceTicker, roles.PollerUser, aep.logger, aep.db, aep.nsq)
+		filters.AddMember(fmt.Sprintf("%d", member), allianceTicker, aep.logger, aep.db, aep.nsq)
 	}
 }
 
@@ -328,7 +337,7 @@ func (aep *authEsiPoller) removeCorpMembers(corpTicker string, allianceID int32)
 	}
 
 	for member := range members {
-		filters.RemoveMember(fmt.Sprintf("%d", member), allianceTicker, roles.PollerUser, aep.logger, aep.db, aep.nsq)
+		filters.RemoveMember(fmt.Sprintf("%d", member), allianceTicker, aep.logger, aep.db, aep.nsq)
 	}
 }
 

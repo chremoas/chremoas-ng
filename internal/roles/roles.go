@@ -29,9 +29,8 @@ var (
 )
 
 const (
-	Role       = false
-	Sig        = true
-	PollerUser = "esi-poller"
+	Role = false
+	Sig  = true
 )
 
 var roleType = map[bool]string{Role: "role", Sig: "sig"}
@@ -93,10 +92,12 @@ func Types() string {
 }
 
 // Members lists all userIDs that match all the filters for a role.
-func Members(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func ListMembers(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var (
 		buffer bytes.Buffer
 	)
+
+	logger.Debugf("Listing members for %s: %s", roleType[sig], name)
 
 	members, err := GetRoleMembers(sig, name, logger, db)
 	if err != nil {
@@ -167,12 +168,16 @@ func Info(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.Statemen
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Add(sig, joinable bool, shortName, name, chatType, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	var roleID int
-
+func AuthedAdd(sig, joinable bool, shortName, name, chatType, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	if !perms.CanPerform(author, adminType[sig], logger, db) {
 		return common.SendError("User doesn't have permission to this command")
 	}
+
+	return Add(sig, joinable, shortName, name, chatType, logger, db, nsq)
+}
+
+func Add(sig, joinable bool, shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	var roleID int
 
 	// Type, Name and ShortName are required so let's check for those
 	if len(chatType) == 0 {
@@ -220,7 +225,6 @@ func Add(sig, joinable bool, shortName, name, chatType, author string, logger *z
 	filterResponse, filterID := filters.Add(
 		shortName,
 		fmt.Sprintf("Auto-created filter for %s %s", roleType[sig], shortName),
-		author,
 		logger,
 		db,
 	)
@@ -252,12 +256,16 @@ func Add(sig, joinable bool, shortName, name, chatType, author string, logger *z
 	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Created %s `%s`", roleType[sig], shortName)))
 }
 
-func Destroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	var chatID, roleID int
-
+func AuthedDestroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	if !perms.CanPerform(author, adminType[sig], logger, db) {
 		return common.SendError("User doesn't have permission to this command")
 	}
+
+	return Destroy(sig, shortName, logger, db, nsq)
+}
+
+func Destroy(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	var chatID, roleID int
 
 	if len(shortName) == 0 {
 		return common.SendError("short name is required")
@@ -295,7 +303,7 @@ func Destroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *
 	}
 
 	// We now need to create the default filter for this role
-	filterResponse, filterID := filters.Delete(shortName, author, logger, db)
+	filterResponse, filterID := filters.Delete(shortName, logger, db)
 
 	_, err = db.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).
@@ -318,12 +326,20 @@ func Destroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *
 	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Destroyed %s `%s`", roleType[sig], shortName)))
 }
 
-func Update(sig bool, shortName, key, value, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	var chatID int
-
-	if author != PollerUser && !perms.CanPerform(author, adminType[sig], logger, db) {
+func AuthedUpdate(sig bool, shortName, key, value, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	if !perms.CanPerform(author, adminType[sig], logger, db) {
 		return common.SendError("User doesn't have permission to this command")
 	}
+
+	if !validListItem(key, roleKeys) {
+		return common.SendError(fmt.Sprintf("`%s` isn't a valid Role Key", key))
+	}
+
+	return Update(sig, shortName, key, value, logger, db, nsq)
+}
+
+func Update(sig bool, shortName, key, value string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	var chatID int
 
 	// ShortName, Key and Value are required so let's check for those
 	if len(shortName) == 0 {
@@ -343,10 +359,6 @@ func Update(sig bool, shortName, key, value, author string, logger *zap.SugaredL
 			i, _ := strconv.ParseInt(value[1:], 16, 64)
 			value = strconv.Itoa(int(i))
 		}
-	}
-
-	if author != PollerUser && !validListItem(key, roleKeys) {
-		return common.SendError(fmt.Sprintf("`%s` isn't a valid Role Key", key))
 	}
 
 	err := db.Select("chat_id").
@@ -440,16 +452,20 @@ func ListFilters(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.S
 	}
 }
 
-func AddFilter(sig bool, filter, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func AuthedAddFilter(sig bool, filter, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	if !perms.CanPerform(author, adminType[sig], logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
+
+	return AddFilter(sig, filter, shortName, logger, db, nsq)
+}
+
+func AddFilter(sig bool, filter, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var (
 		err      error
 		filterID int
 		roleID   int
 	)
-
-	if !perms.CanPerform(author, adminType[sig], logger, db) {
-		return common.SendError("User doesn't have permission to this command")
-	}
 
 	err = db.Select("id").
 		From("filters").
@@ -488,16 +504,20 @@ func AddFilter(sig bool, filter, shortName, author string, logger *zap.SugaredLo
 	return common.SendSuccess(fmt.Sprintf("Added filter %s to role %s", filter, shortName))
 }
 
-func RemoveFilter(sig bool, filter, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func AuthedRemoveFilter(sig bool, filter, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+	if !perms.CanPerform(author, adminType[sig], logger, db) {
+		return common.SendError("User doesn't have permission to this command")
+	}
+
+	return RemoveFilter(sig, filter, shortName, logger, db, nsq)
+}
+
+func RemoveFilter(sig bool, filter, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
 	var (
 		err      error
 		filterID int
 		roleID   int
 	)
-
-	if !perms.CanPerform(author, adminType[sig], logger, db) {
-		return common.SendError("User doesn't have permission to this command")
-	}
 
 	err = db.Select("id").
 		From("filters").

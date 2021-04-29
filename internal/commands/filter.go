@@ -31,7 +31,7 @@ func (c Command) Filter(s *discordgo.Session, m *discordgo.Message, ctx *mux.Con
 }
 
 func (c Command) doFilter(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) string {
-	c.logger.Infof("Recieved: %s", m.Content)
+	c.logger.Infof("Received: %s", m.Content)
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {
@@ -46,33 +46,33 @@ func (c Command) doFilter(s *discordgo.Session, m *discordgo.Message, ctx *mux.C
 		if len(cmdStr) < 4 {
 			return "Usage: !filter create <filter_name> <filter_description>"
 		}
-		f, _ := filters.Add(cmdStr[2], strings.Join(cmdStr[3:], " "), m.Author.ID, c.logger, c.db)
+		f, _ := filters.AuthedAdd(cmdStr[2], strings.Join(cmdStr[3:], " "), m.Author.ID, c.logger, c.db)
 		return f
 
 	case "destroy":
 		if len(cmdStr) < 3 {
 			return "Usage: !role destroy <filter_name>"
 		}
-		f, _ := filters.Delete(cmdStr[2], m.Author.ID, c.logger, c.db)
+		f, _ := filters.AuthedDelete(cmdStr[2], m.Author.ID, c.logger, c.db)
 		return f
 
 	case "add":
 		if len(cmdStr) < 4 {
 			return "Usage: !filter add <user> <filter_name>"
 		}
-		return filters.AddMember(cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db, c.nsq)
+		return filters.AuthedAddMember(cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db, c.nsq)
 
 	case "remove":
 		if len(cmdStr) < 4 {
 			return "Usage: !filter remove <user> <filter_name>"
 		}
-		return filters.RemoveMember(cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db, c.nsq)
+		return filters.AuthedRemoveMember(cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db, c.nsq)
 
 	case "list_members":
 		if len(cmdStr) < 3 {
 			return "Usage: !role list_members <role_name>"
 		}
-		return filters.Members(cmdStr[2], c.logger, c.db)
+		return filters.ListMembers(cmdStr[2], c.logger, c.db)
 
 	case "help":
 		return fmt.Sprintf("```%s```", filterHelpStr)

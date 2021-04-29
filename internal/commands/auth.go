@@ -23,7 +23,7 @@ func (c Command) Auth(s *discordgo.Session, m *discordgo.Message, ctx *mux.Conte
 }
 
 func (c Command) doAuth(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) string {
-	c.logger.Infof("Recieved: %s", m.Content)
+	c.logger.Infof("Received: %s", m.Content)
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {

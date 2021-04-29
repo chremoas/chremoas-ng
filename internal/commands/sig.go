@@ -43,7 +43,7 @@ func (c Command) Sig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Contex
 }
 
 func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) string {
-	c.logger.Infof("Recieved: %s", m.Content)
+	c.logger.Infof("Received: %s", m.Content)
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {
@@ -64,12 +64,17 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 			if len(cmdStr) < 4 {
 				return "Usage: !role list members <role_name>"
 			}
-			return roles.Members(roles.Sig, cmdStr[3], c.logger, c.db)
+			return roles.ListMembers(roles.Sig, cmdStr[3], c.logger, c.db)
 
 		case "membership":
 			if len(cmdStr) < 4 {
 				return roles.ListUserRoles(roles.Sig, m.Author.ID, c.logger, c.db)
 			}
+
+			if !common.IsDiscordUser(cmdStr[3]) {
+				return common.SendError("member name must be a discord user")
+			}
+
 			return roles.ListUserRoles(roles.Sig, common.ExtractUserId(cmdStr[3]), c.logger, c.db)
 
 		default:
@@ -84,14 +89,14 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 			if err != nil {
 				return common.SendError(fmt.Sprintf("Error parsing joinable `%s` is not a bool value", cmdStr[3]))
 			}
-			return roles.Add(roles.Sig, joinable, cmdStr[2], strings.Join(cmdStr[4:], " "), "discord", m.Author.ID, c.logger, c.db, c.nsq)
+			return roles.AuthedAdd(roles.Sig, joinable, cmdStr[2], strings.Join(cmdStr[4:], " "), "discord", m.Author.ID, c.logger, c.db, c.nsq)
 		}
 
 	case "destroy":
 		if len(cmdStr) < 3 {
 			return "Usage: !sig destroy <sig_name>"
 		}
-		return roles.Destroy(roles.Sig, cmdStr[2], m.Author.ID, c.logger, c.db, c.nsq)
+		return roles.AuthedDestroy(roles.Sig, cmdStr[2], m.Author.ID, c.logger, c.db, c.nsq)
 
 	case "info":
 		if len(cmdStr) < 3 {
@@ -103,7 +108,7 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 		if len(cmdStr) < 5 {
 			return "Usage: !sig set <sig_name> <key> <value>"
 		}
-		return roles.Update(roles.Sig, cmdStr[2], cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
+		return roles.AuthedUpdate(roles.Sig, cmdStr[2], cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
 
 	case "add":
 		var (
@@ -171,11 +176,15 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 		if len(cmdStr) < 3 {
 			return "Usage: !sig list_members <sig_name>"
 		}
-		return roles.Members(roles.Sig, cmdStr[2], c.logger, c.db)
+		return roles.ListMembers(roles.Sig, cmdStr[2], c.logger, c.db)
 
 	case "list_sigs":
 		if len(cmdStr) < 3 {
 			return roles.ListUserRoles(roles.Sig, m.Author.ID, c.logger, c.db)
+		}
+
+		if !common.IsDiscordUser(cmdStr[2]) {
+			return common.SendError("member name must be a discord user")
 		}
 		return roles.ListUserRoles(roles.Sig, common.ExtractUserId(cmdStr[2]), c.logger, c.db)
 
@@ -195,13 +204,13 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 			if len(cmdStr) < 5 {
 				return "Usage: !role filter add <filter> <role>"
 			}
-			return roles.AddFilter(roles.Sig, cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
+			return roles.AuthedAddFilter(roles.Sig, cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
 
 		case "remove":
 			if len(cmdStr) < 5 {
 				return "Usage: !role filter remove <filter> <role>"
 			}
-			return roles.RemoveFilter(roles.Sig, cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
+			return roles.AuthedRemoveFilter(roles.Sig, cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
 		}
 
 	case "help":
