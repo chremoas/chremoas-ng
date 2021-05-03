@@ -65,7 +65,7 @@ func GetRoleMembers(sig bool, name string, logger *zap.SugaredLogger, db *sq.Sta
 		filterList []int
 	)
 
-	rows, err := db.Select("role_filters.id").
+	rows, err := db.Select("role_filters.filter").
 		From("role_filters").
 		InnerJoin("roles ON role_filters.role = roles.id").
 		Where(sq.Eq{"sig": sig}).

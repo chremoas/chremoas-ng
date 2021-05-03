@@ -91,7 +91,7 @@ func Types() string {
 	return buffer.String()
 }
 
-// Members lists all userIDs that match all the filters for a role.
+// ListMembers lists all userIDs that match all the filters for a role.
 func ListMembers(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, discord *discordgo.Session) string {
 	var (
 		buffer bytes.Buffer
