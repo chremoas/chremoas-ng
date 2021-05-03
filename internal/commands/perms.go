@@ -18,8 +18,8 @@ Subcommands:
     destroy: Delete Permission
     add: Add user to permission group
     remove: Remove user from permission group
-    list_users: List users in a permission group
-    list_user_perms: List all the permissions a user has
+    list users: List users in a permission group
+    list perms: List all the permissions a user has
 `
 
 // This function will be called (due to AddHandler above) every time a new
@@ -41,7 +41,26 @@ func (c Command) doPerms(s *discordgo.Session, m *discordgo.Message, ctx *mux.Co
 
 	switch cmdStr[1] {
 	case "list":
-		return perms.List(c.logger, c.db)
+		if len(cmdStr) < 3 {
+			return perms.List(c.logger, c.db)
+		}
+
+		switch cmdStr[2] {
+		case "users":
+			if len(cmdStr) < 4 {
+				return "Usage: !perms list users <permission>"
+			}
+			return perms.Members(cmdStr[3], c.logger, c.db)
+
+		case "perms":
+			if len(cmdStr) < 4 {
+				return "Usage: !perms list user_perms <user>"
+			}
+			return perms.UserPerms(cmdStr[3], c.logger, c.db)
+
+		default:
+			return "Usage: !perms list user_perms <user>"
+		}
 
 	case "create":
 		if len(cmdStr) < 4 {
@@ -66,18 +85,6 @@ func (c Command) doPerms(s *discordgo.Session, m *discordgo.Message, ctx *mux.Co
 			return "Usage: !perms remove <user> <permission>"
 		}
 		return perms.RemoveMember(cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db)
-
-	case "list_users":
-		if len(cmdStr) < 3 {
-			return "Usage: !perms list_users <permission>"
-		}
-		return perms.Members(cmdStr[2], c.logger, c.db)
-
-	case "list_user_perms":
-		if len(cmdStr) < 3 {
-			return "Usage: !perms list_user_perms <user>"
-		}
-		return perms.UserPerms(cmdStr[2], c.logger, c.db)
 
 	case "help":
 		return fmt.Sprintf("```%s```", permsHelpStr)

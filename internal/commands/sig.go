@@ -172,22 +172,6 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 	case "types":
 		return roles.Types()
 
-	case "list_members":
-		if len(cmdStr) < 3 {
-			return "Usage: !sig list_members <sig_name>"
-		}
-		return roles.ListMembers(roles.Sig, cmdStr[2], c.logger, c.db)
-
-	case "list_sigs":
-		if len(cmdStr) < 3 {
-			return roles.ListUserRoles(roles.Sig, m.Author.ID, c.logger, c.db)
-		}
-
-		if !common.IsDiscordUser(cmdStr[2]) {
-			return common.SendError("member name must be a discord user")
-		}
-		return roles.ListUserRoles(roles.Sig, common.ExtractUserId(cmdStr[2]), c.logger, c.db)
-
 	case "filter":
 		if len(cmdStr) < 3 {
 			return "Usage: subcommands are: list, add and remove"
@@ -211,6 +195,9 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 				return "Usage: !role filter remove <filter> <role>"
 			}
 			return roles.AuthedRemoveFilter(roles.Sig, cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
+
+		default:
+			return "Usage: !role filter list <role>"
 		}
 
 	case "help":
@@ -219,6 +206,4 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 	default:
 		return fmt.Sprintf("```%s```", sigHelpStr)
 	}
-
-	return "Something I don't know"
 }

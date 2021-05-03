@@ -69,6 +69,9 @@ func (c Command) doRole(s *discordgo.Session, m *discordgo.Message, ctx *mux.Con
 			}
 
 			return roles.ListUserRoles(roles.Role, common.ExtractUserId(cmdStr[3]), c.logger, c.db)
+
+		default:
+			return "Usage: !role list members <role_name>"
 		}
 
 	case "create":
@@ -107,6 +110,4 @@ func (c Command) doRole(s *discordgo.Session, m *discordgo.Message, ctx *mux.Con
 	default:
 		return fmt.Sprintf("```%s```", roleHelpStr)
 	}
-
-	return "Something I don't know"
 }

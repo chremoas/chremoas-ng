@@ -18,7 +18,7 @@ Subcommands:
     destroy: Delete Filter
     add: Add Filter Member
     remove: Remove Filter Member
-    list_members: List all Filter Members
+    list members: List all Filter Members
 `
 
 // This function will be called (due to AddHandler above) every time a new
@@ -40,7 +40,20 @@ func (c Command) doFilter(s *discordgo.Session, m *discordgo.Message, ctx *mux.C
 
 	switch cmdStr[1] {
 	case "list":
-		return filters.List(c.logger, c.db)
+		if len(cmdStr) < 3 {
+			return filters.List(c.logger, c.db)
+		}
+
+		switch cmdStr[2] {
+		case "members":
+			if len(cmdStr) < 4 {
+				return "Usage: !role list members <role_name>"
+			}
+			return filters.ListMembers(cmdStr[3], c.logger, c.db)
+
+		default:
+			return "Usage: !role list members <role_name>"
+		}
 
 	case "create":
 		if len(cmdStr) < 4 {
@@ -67,12 +80,6 @@ func (c Command) doFilter(s *discordgo.Session, m *discordgo.Message, ctx *mux.C
 			return "Usage: !filter remove <user> <filter_name>"
 		}
 		return filters.AuthedRemoveMember(cmdStr[2], cmdStr[3], m.Author.ID, c.logger, c.db, c.nsq)
-
-	case "list_members":
-		if len(cmdStr) < 3 {
-			return "Usage: !role list_members <role_name>"
-		}
-		return filters.ListMembers(cmdStr[2], c.logger, c.db)
 
 	case "help":
 		return fmt.Sprintf("```%s```", filterHelpStr)
