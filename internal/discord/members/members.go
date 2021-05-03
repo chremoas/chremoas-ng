@@ -95,12 +95,6 @@ func (m Member) HandleMessage(msg *nsq.Message) error {
 		}
 	}
 
-	//m.logger.Infof("Editing member %s: %s", body.Member, roles)
-	//err = m.session.GuildMemberEdit(m.guildID, body.Member, roles)
-	//if err != nil {
-	//	m.logger.Errorf("Error updating user %s: %s", body.Member, err)
-	//}
-
 	return nil
 }
 

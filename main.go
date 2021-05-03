@@ -96,19 +96,19 @@ func main() {
 	// =========================================================================
 	// Start the discord session
 
-	Session, err := discordgo.New("Bot " + viper.GetString("bot.token"))
+	session, err := discordgo.New("Bot " + viper.GetString("bot.token"))
 	if err != nil {
 		logger.Fatalf("Error starting session: %s", err)
 	}
 
-	Session.Identify.Intents = discordgo.IntentsGuildMessages
+	session.Identify.Intents = discordgo.IntentsGuildMessages
 
 	Router := mux.New()
 	Router.Prefix = "!"
 
 	// Register the mux OnMessageCreate handler that listens for and processes
 	// all messages received.
-	Session.AddHandler(Router.OnMessageCreate)
+	session.AddHandler(Router.OnMessageCreate)
 
 	// Register the build-in help command.
 	_, err = Router.Route("help", "Display this message.", Router.Help)
@@ -119,7 +119,7 @@ func main() {
 	// =========================================================================
 	// Setup NSQ
 
-	workers := queue2.New(Session, logger, db)
+	workers := queue2.New(session, logger, db)
 
 	// Setup NSQ producer for the commands to use
 	producer, err := workers.ProducerQueue()
@@ -144,7 +144,7 @@ func main() {
 
 	// =========================================================================
 	// Setup commands
-	c := commands.New(logger, db, producer)
+	c := commands.New(logger, db, producer, session)
 
 	commandList := []struct {
 		command string
@@ -168,7 +168,7 @@ func main() {
 	}
 
 	// Open a websocket connection to Discord
-	err = Session.Open()
+	err = session.Open()
 	if err != nil {
 		logger.Fatalf("error opening connection to Discord: %s\n", err)
 	}
@@ -230,13 +230,19 @@ func main() {
 
 		// Asking listener to shutdown and shed load.
 		if err = api.Shutdown(ctx); err != nil {
-			api.Close()
+			err = api.Close()
+			if err != nil {
+				logger.Fatalf("Error stopping API: %s", err)
+			}
 			logger.Fatalf("could not stop server gracefully: %s", err)
 		}
 	}
 
 	// Clean up
-	Session.Close()
+	err = session.Close()
+	if err != nil {
+		logger.Fatalf("Error closing discord session: %s", err)
+	}
 
 	// Exit Normally.
 }

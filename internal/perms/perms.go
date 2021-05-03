@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/lib/pq"
@@ -93,7 +94,7 @@ func Delete(name, author string, logger *zap.SugaredLogger, db *sq.StatementBuil
 	return common.SendSuccess(fmt.Sprintf("Deleted permission `%s`", name))
 }
 
-func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, discord *discordgo.Session) string {
 	var (
 		count, userID int
 		buffer        bytes.Buffer
@@ -118,7 +119,7 @@ func Members(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType
 			logger.Error(newErr)
 			return common.SendFatal(newErr.Error())
 		}
-		buffer.WriteString(fmt.Sprintf("\t<@%d>\n", userID))
+		buffer.WriteString(fmt.Sprintf("\t<@%s>\n", common.GetUsername(userID, discord)))
 		count += 1
 	}
 

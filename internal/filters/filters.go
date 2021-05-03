@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
@@ -112,7 +113,7 @@ func Delete(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType)
 	return common.SendSuccess(fmt.Sprintf("Deleted filter `%s`", name)), id
 }
 
-func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, discord *discordgo.Session) string {
 	var (
 		count, userID int
 		buffer        bytes.Buffer
@@ -137,7 +138,7 @@ func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilder
 			logger.Error(newErr)
 			return common.SendFatal(newErr.Error())
 		}
-		buffer.WriteString(fmt.Sprintf("\t<@%d>\n", userID))
+		buffer.WriteString(fmt.Sprintf("\t%s\n", common.GetUsername(userID, discord)))
 		count += 1
 	}
 

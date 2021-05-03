@@ -50,7 +50,7 @@ func (c Command) doPerms(s *discordgo.Session, m *discordgo.Message, ctx *mux.Co
 			if len(cmdStr) < 4 {
 				return "Usage: !perms list users <permission>"
 			}
-			return perms.Members(cmdStr[3], c.logger, c.db)
+			return perms.ListMembers(cmdStr[3], c.logger, c.db, c.discord)
 
 		case "perms":
 			if len(cmdStr) < 4 {

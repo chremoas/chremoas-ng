@@ -64,7 +64,7 @@ func (c Command) doSig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 			if len(cmdStr) < 4 {
 				return "Usage: !role list members <role_name>"
 			}
-			return roles.ListMembers(roles.Sig, cmdStr[3], c.logger, c.db)
+			return roles.ListMembers(roles.Sig, cmdStr[3], c.logger, c.db, c.discord)
 
 		case "membership":
 			if len(cmdStr) < 4 {

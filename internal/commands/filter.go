@@ -49,7 +49,7 @@ func (c Command) doFilter(s *discordgo.Session, m *discordgo.Message, ctx *mux.C
 			if len(cmdStr) < 4 {
 				return "Usage: !role list members <role_name>"
 			}
-			return filters.ListMembers(cmdStr[3], c.logger, c.db)
+			return filters.ListMembers(cmdStr[3], c.logger, c.db, c.discord)
 
 		default:
 			return "Usage: !role list members <role_name>"

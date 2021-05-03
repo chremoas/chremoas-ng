@@ -92,7 +92,7 @@ func Types() string {
 }
 
 // Members lists all userIDs that match all the filters for a role.
-func ListMembers(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func ListMembers(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, discord *discordgo.Session) string {
 	var (
 		buffer bytes.Buffer
 	)
@@ -109,7 +109,7 @@ func ListMembers(sig bool, name string, logger *zap.SugaredLogger, db *sq.Statem
 	}
 
 	for _, userID := range members {
-		buffer.WriteString(fmt.Sprintf("\t%d\n", userID))
+		buffer.WriteString(fmt.Sprintf("\t%s\n", common.GetUsername(userID, discord)))
 	}
 
 	return fmt.Sprintf("```%d member(s) in %s:\n%s```", len(members), name, buffer.String())
