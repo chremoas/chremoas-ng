@@ -31,7 +31,19 @@ Subcommands:
 func (c Command) Role(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
 	_, err := s.ChannelMessageSend(m.ChannelID, c.doRole(s, m, ctx))
 	if err != nil {
-		c.logger.Errorf("Error sending command: %s", err)
+		switch v := err.(type) {
+		case *discordgo.RESTError:
+			fmt.Printf("Response: %v\n", v.Response)
+			fmt.Printf("Message: %v\n", v.Message)
+			fmt.Printf("Request: %v\n", v.Request)
+			fmt.Printf("ResponseBody: %v\n", v.ResponseBody)
+		default:
+			fmt.Printf("2Response: %v\n", err.(discordgo.RESTError).Response)
+			fmt.Printf("2Message: %v\n", err.(discordgo.RESTError).Message)
+			fmt.Printf("2Request: %v\n", err.(discordgo.RESTError).Request)
+			fmt.Printf("2ResponseBody: %v\n", err.(discordgo.RESTError).ResponseBody)
+			//c.logger.Errorf("Error sending command: %s", v)
+		}
 	}
 }
 
