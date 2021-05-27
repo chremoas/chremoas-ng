@@ -13,6 +13,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20190719114852-fd7a80b32e1f // indirect
 	github.com/dimfeld/httptreemux v5.0.1+incompatible
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
+	github.com/git-chglog/git-chglog v0.14.2
 	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/google/uuid v1.1.1 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79
@@ -27,6 +28,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.7.1
 	go.uber.org/zap v1.16.0
+	golang.org/x/net v0.0.0-20210220033124-5f55cee0dc0d
 	sigs.k8s.io/yaml v1.1.0 // indirect
 )
 
