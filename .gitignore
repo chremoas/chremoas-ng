@@ -28,7 +28,8 @@ dist
 /RELEASE_CHANGELOG.md
 
 # configurations
-release.yaml
+# this catches the workflow need to look at that
+#release.yaml
 
 # Creds
 credentials
