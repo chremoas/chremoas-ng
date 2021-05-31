@@ -82,7 +82,7 @@ jobs:
     env:
       GOPATH: ${{ github.workspace }}
       GO111MODULE: on
-      KO_DOCKER_REPO: docker.io/embano1
+      KO_DOCKER_REPO: docker.io/chremoas
 
     steps:
       - name: Set up Go
