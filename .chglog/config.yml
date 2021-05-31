@@ -2,7 +2,7 @@ style: github
 template: CHANGELOG.tpl.md
 info:
   title: CHANGELOG
-  repository_url: https://github.com/embano1/ci-demo-app
+  repository_url: https://github.com/chremoas/chremoas-ng
 options:
   commits:
     filters:
