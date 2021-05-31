@@ -1,6 +1,25 @@
 
+<a name="v0.0.3"></a>
+## [Release v0.0.3](https://github.com/chremoas/chremoas-ng/compare/v0.0.2...v0.0.3)
+
+> Release Date: 2021-05-31
+
+### 📖 Commits
+
+- [534a3d1]	Oops, overlooked two more spots to change
+- [8e32bbd]	Oops, overlooked two more spots to change
+
+<a name="v0.0.2"></a>
+## [Release v0.0.2](https://github.com/chremoas/chremoas-ng/compare/v0.0.1...v0.0.2)
+
+> Release Date: 2021-05-31
+
+### 📖 Commits
+
+- [7a1fd9c]	missed that path needing to be changed
+
 <a name="v0.0.1"></a>
-## [Release v0.0.1](https://github.com/embano1/ci-demo-app/compare/release-0.0.1...v0.0.1)
+## [Release v0.0.1](https://github.com/chremoas/chremoas-ng/compare/release-0.0.1...v0.0.1)
 
 > Release Date: 2021-05-31
 
