@@ -1,0 +1,11 @@
+version: '3'
+services:
+  chremoas-ng:
+    image: "chremoas/chremoas-ng:latest"
+    restart: always
+    environment:
+      CONSUL: 10.42.1.30:8500
+      MICRO_REGISTRY_ADDRESS: 10.42.1.30:8500
+      MICRO_CLIENT_REQUEST_TIMEOUT: 5m
+      MICRO_REGISTRY: consul
+      CONFIG_NAMESPACE: chremoas-aba

@@ -70,7 +70,9 @@ func (m Member) HandleMessage(msg *nsq.Message) error {
 
 	member, err := m.session.GuildMember(m.guildID, body.Member)
 	if err != nil {
-		m.logger.Errorf("error getting guild member: %s", err)
+		m.logger.Errorf("error getting guild member '%s': %s", body.Member, err)
+		// ditch the message
+		return nil
 	}
 
 	removeRoles := compare(member.Roles, roles)
