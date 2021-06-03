@@ -1,6 +1,7 @@
 package esi_poller
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -182,10 +183,17 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() {
 
 		// Corp has switched alliance
 		if corporation.AllianceID.Int32 != response.AllianceId {
-			rows, err = aep.db.Update("corporations").
-				Set("alliance_id", response.AllianceId).
-				Where(sq.Eq{"id": corporation.ID}).
-				Query()
+			if response.AllianceId == 0 {
+				rows, err = aep.db.Update("corporations").
+					Set("alliance_id", response.AllianceId).
+					Where(sq.Eq{"id": sql.NullInt32{}}).
+					Query()
+			} else {
+				rows, err = aep.db.Update("corporations").
+					Set("alliance_id", response.AllianceId).
+					Where(sq.Eq{"id": corporation.ID}).
+					Query()
+			}
 			if err != nil {
 				aep.logger.Errorf("Error updating alliance '%d' for corp '%s': %s", response.AllianceId, corporation.Name, err)
 			}
