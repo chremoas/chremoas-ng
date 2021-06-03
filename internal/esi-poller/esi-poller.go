@@ -176,9 +176,10 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() {
 		if corporation.AllianceID.Int32 != response.AllianceId {
 			_, err = aep.db.Update("corporations").
 				Set("alliance_id", response.AllianceId).
+				Where(sq.Eq{"id": corporation.ID}).
 				Query()
 			if err != nil {
-				aep.logger.Errorf("Error updating alliance for corp: %s", err)
+				aep.logger.Errorf("Error updating alliance '%d' for corp '%s': %s", response.AllianceId, corporation.Name, err)
 			}
 
 			// Alliance has changed. Need to remove all members from the old alliance and add them to the new alliance.
