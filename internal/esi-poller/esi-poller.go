@@ -108,11 +108,15 @@ func (aep *authEsiPoller) updateOrDeleteAlliances() {
 		if err != nil {
 			if aep.notFound(err) == nil {
 				aep.logger.Infof("Deleting alliance: %d", alliance.ID)
-				_, err = aep.db.Delete("alliances").
+				rows, err = aep.db.Delete("alliances").
 					Where(sq.Eq{"id": alliance.ID}).
 					Query()
 				if err != nil {
 					aep.logger.Errorf("Error deleting alliance: %s", err)
+				}
+				err = rows.Close()
+				if err != nil {
+					aep.logger.Errorf("Error closing DB: %s", err)
 				}
 				continue
 			}
@@ -155,11 +159,15 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() {
 		if err != nil {
 			if aep.notFound(err) == nil {
 				aep.logger.Infof("Deleting corporation: %d", corporation.ID)
-				_, err = aep.db.Delete("corporations").
+				rows, err = aep.db.Delete("corporations").
 					Where(sq.Eq{"id": corporation.ID}).
 					Query()
 				if err != nil {
 					aep.logger.Errorf("Error deleting corporation: %s", err)
+				}
+				err = rows.Close()
+				if err != nil {
+					aep.logger.Errorf("Error closing DB: %s", err)
 				}
 				continue
 			}
@@ -174,12 +182,16 @@ func (aep *authEsiPoller) updateOrDeleteCorporations() {
 
 		// Corp has switched alliance
 		if corporation.AllianceID.Int32 != response.AllianceId {
-			_, err = aep.db.Update("corporations").
+			rows, err = aep.db.Update("corporations").
 				Set("alliance_id", response.AllianceId).
 				Where(sq.Eq{"id": corporation.ID}).
 				Query()
 			if err != nil {
 				aep.logger.Errorf("Error updating alliance '%d' for corp '%s': %s", response.AllianceId, corporation.Name, err)
+			}
+			err = rows.Close()
+			if err != nil {
+				aep.logger.Errorf("Error closing DB: %s", err)
 			}
 
 			// Alliance has changed. Need to remove all members from the old alliance and add them to the new alliance.
@@ -229,11 +241,15 @@ func (aep *authEsiPoller) updateOrDeleteCharacters() {
 		if err != nil {
 			if aep.notFound(err) == nil {
 				aep.logger.Infof("Deleting character: %d", character.ID)
-				_, err = aep.db.Delete("characters").
+				rows, err = aep.db.Delete("characters").
 					Where(sq.Eq{"id": character.ID}).
 					Query()
 				if err != nil {
 					aep.logger.Errorf("Error deleting character: %s", err)
+				}
+				err = rows.Close()
+				if err != nil {
+					aep.logger.Errorf("Error closing DB: %s", err)
 				}
 				continue
 			}
@@ -242,11 +258,15 @@ func (aep *authEsiPoller) updateOrDeleteCharacters() {
 		}
 
 		if character.CorporationID != response.CorporationId {
-			_, err = aep.db.Update("characters").
+			rows, err = aep.db.Update("characters").
 				Set("corporation_id", response.CorporationId).
 				Query()
 			if err != nil {
 				aep.logger.Errorf("Error updating character: %s", err)
+			}
+			err = rows.Close()
+			if err != nil {
+				aep.logger.Errorf("Error closing DB: %s", err)
 			}
 		}
 	}
@@ -276,7 +296,7 @@ func (aep *authEsiPoller) checkAndUpdateCorpsAllianceIfNecessary(authCorporation
 
 		aep.upsertAlliance(esiCorporation.AllianceId, response.Name, response.Ticker)
 
-		err := aep.db.Select("count(id)").
+		err = aep.db.Select("count(id)").
 			From("roles").
 			Where(sq.Eq{"role_nick": response.Ticker}).
 			Where(sq.Eq{"sig": roles.Role}).
@@ -346,13 +366,17 @@ func (aep *authEsiPoller) upsertAlliance(allianceID int32, name, ticker string) 
 	var err error
 
 	aep.logger.Infof("ESI Poller: Updating alliance: %d", allianceID)
-	_, err = aep.db.Insert("alliances").
+	rows, err := aep.db.Insert("alliances").
 		Columns("id", "name", "ticker").
 		Values(allianceID, name, ticker).
 		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?", name, ticker).
 		Query()
 	if err != nil {
 		aep.logger.Errorf("ESI Poller: Error updating alliance: %d", allianceID)
+	}
+	err = rows.Close()
+	if err != nil {
+		aep.logger.Errorf("Error closing DB: %s", err)
 	}
 }
 
