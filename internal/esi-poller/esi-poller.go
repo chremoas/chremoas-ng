@@ -287,13 +287,13 @@ func (aep *authEsiPoller) checkAndUpdateCorpsAllianceIfNecessary(authCorporation
 		count    int32
 	)
 
-	if esiCorporation.AllianceId == 0 {
-		return nil
-	}
+	//if esiCorporation.AllianceId == 0 {
+	//	return nil
+	//}
 
-	aep.logger.Infof("ESI Poller: Updating corporation's alliance for %s with allianceId %d\n", esiCorporation.Name, esiCorporation.AllianceId)
 
 	if authCorporation.AllianceID.Int32 != esiCorporation.AllianceId {
+		aep.logger.Infof("ESI Poller: Updating corporation's alliance for %s with allianceId %d\n", esiCorporation.Name, esiCorporation.AllianceId)
 		aep.logger.Debugf("Updating alliance (cascade): %s (%d)", authCorporation.Name, authCorporation.AllianceID)
 
 		response, _, err = aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), esiCorporation.AllianceId, nil)

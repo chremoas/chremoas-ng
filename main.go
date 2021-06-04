@@ -24,6 +24,7 @@ import (
 	queue2 "github.com/chremoas/chremoas-ng/internal/queue"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/nsqio/go-nsq"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -119,7 +120,7 @@ func main() {
 	// =========================================================================
 	// Setup NSQ
 
-	workers := queue2.New(session, logger, db)
+	workers := queue2.New(session, logger, nsq.LogLevelError, db)
 
 	// Setup NSQ producer for the commands to use
 	producer, err := workers.ProducerQueue()

@@ -19,13 +19,14 @@ type Queue struct {
 	session   *discordgo.Session
 	logger    *zap.SugaredLogger
 	db        *sq.StatementBuilderType
+	logLevel  nsq.LogLevel
 }
 
-func New(session *discordgo.Session, logger *zap.SugaredLogger, db *sq.StatementBuilderType) Queue {
+func New(session *discordgo.Session, logger *zap.SugaredLogger, logLevel nsq.LogLevel, db *sq.StatementBuilderType) Queue {
 	queue := nsq.NewConfig()
 	queueAddr := fmt.Sprintf("%s:%d", viper.GetString("queue.host"), viper.GetInt("queue.port"))
 
-	return Queue{queue: queue, queueAddr: queueAddr, session: session, logger: logger, db: db}
+	return Queue{queue: queue, queueAddr: queueAddr, session: session, logger: logger, logLevel: logLevel, db: db}
 }
 
 func (queue Queue) ProducerQueue() (*nsq.Producer, error) {
@@ -48,6 +49,8 @@ func (queue Queue) RoleConsumer() (*nsq.Consumer, error) {
 		return nil, err
 	}
 
+	roleConsumer.SetLoggerLevel(queue.logLevel)
+
 	// Add Role NSQ handler
 	roleConsumer.AddHandler(roles.New(queue.logger, queue.session, queue.db))
 
@@ -65,6 +68,8 @@ func (queue Queue) MemberConsumer() (*nsq.Consumer, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	memberConsumer.SetLoggerLevel(queue.logLevel)
 
 	// Add Role NSQ handler
 	memberConsumer.AddHandler(members.New(queue.logger, queue.session, queue.db))
