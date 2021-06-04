@@ -19,7 +19,6 @@ import (
 
 func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	var (
-		count  int
 		buffer bytes.Buffer
 		filter payloads.Filter
 	)
@@ -42,10 +41,9 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 		}
 
 		buffer.WriteString(fmt.Sprintf("\t%s: %s\n", filter.Name, filter.Description))
-		count += 1
 	}
 
-	if count == 0 {
+	if buffer.Len() == 0 {
 		return common.SendError("No filters")
 	}
 
@@ -115,8 +113,8 @@ func Delete(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType)
 
 func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, discord *discordgo.Session) string {
 	var (
-		count, userID int
-		buffer        bytes.Buffer
+		userID int
+		buffer bytes.Buffer
 	)
 
 	rows, err := db.Select("user_id").
@@ -139,11 +137,14 @@ func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilder
 			return common.SendFatal(newErr.Error())
 		}
 		buffer.WriteString(fmt.Sprintf("\t%s\n", common.GetUsername(userID, discord)))
-		count += 1
 	}
 
-	if count == 0 {
+	if buffer.Len() == 0 {
 		return common.SendError(fmt.Sprintf("Filter has no members: %s", name))
+	}
+
+	if buffer.Len() > 2000 {
+		return common.SendError("too many filters (exceeds Discord 2k character limit)")
 	}
 
 	return buffer.String()
