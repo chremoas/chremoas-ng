@@ -47,6 +47,10 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 		return common.SendError("No filters")
 	}
 
+	if buffer.Len() > 2000 {
+		return common.SendError("too many filters (exceeds Discord 2k character limit)")
+	}
+
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
@@ -144,7 +148,7 @@ func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilder
 	}
 
 	if buffer.Len() > 2000 {
-		return common.SendError("too many filters (exceeds Discord 2k character limit)")
+		return common.SendError("too many filter members (exceeds Discord 2k character limit)")
 	}
 
 	return buffer.String()
