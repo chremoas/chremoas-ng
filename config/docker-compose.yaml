@@ -1,7 +1,7 @@
 version: '3'
 services:
   chremoas-ng:
-    image: ko.local/chremoas-ng:72121d31f2eee14a0b4d669c10011863e3508d72d243b40717addb89ff64af81
+    image: ko://github.com/chremoas/chremoas-ng
     restart: always
     environment:
       CONSUL: 10.42.1.30:8500
@@ -9,4 +9,3 @@ services:
       MICRO_CLIENT_REQUEST_TIMEOUT: 5m
       MICRO_REGISTRY: consul
       CONFIG_NAMESPACE: chremoas-aba
-

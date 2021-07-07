@@ -15,4 +15,4 @@ migrate-drop:
 	migrate -source file://sql/ --database postgres://chremoas_aba@10.42.1.30:5432/chremoas_aba drop
 
 docker-local:
-	KO_DOCKER_REPO=ko.local GOFLAGS="-ldflags=-X=main.buildCommit=$SHA8 -mod=vendor" ko publish ./ --platform=linux/amd64 --tags ${SHA8},dev-latest
+	KO_DOCKER_REPO=ko.local GOFLAGS="-ldflags=-X=main.buildCommit=$SHA8 -mod=vendor" ko resolve --platform=linux/amd64 --tags ${SHA8},dev-latest -Bf config/docker-compose.yaml | egrep -v "^$|\---" > docker-compose.yaml
