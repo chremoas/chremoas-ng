@@ -15,7 +15,6 @@ require (
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/git-chglog/git-chglog v0.14.2
 	github.com/gogo/protobuf v1.3.1 // indirect
-	github.com/google/uuid v1.1.1 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
 	github.com/jmoiron/sqlx v1.3.1

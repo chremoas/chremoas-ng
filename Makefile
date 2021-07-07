@@ -1,4 +1,4 @@
-SHA8 := $(shell git rev-parse --short HEAD)
+SHA8 = $(shell git rev-parse --short=8 main)
 
 build:
 	docker login
@@ -13,3 +13,6 @@ migrate:
 
 migrate-drop:
 	migrate -source file://sql/ --database postgres://chremoas_aba@10.42.1.30:5432/chremoas_aba drop
+
+docker-local:
+	KO_DOCKER_REPO=ko.local GOFLAGS="-ldflags=-X=main.buildCommit=$SHA8 -mod=vendor" ko publish ./ --platform=linux/amd64 --tags ${SHA8},dev-latest
