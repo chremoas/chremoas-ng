@@ -1,3 +1,9 @@
+SHA8 := $(shell git rev-parse --short HEAD)
+
+build:
+	docker login
+	KO_DOCKER_REPO="docker.io/chremoas" GOFLAGS="-ldflags=-X=main.buildCommit=${SHA8} -mod=vendor" ko resolve --platform=linux/amd64 --tags ${SHA8},latest-dev -BRf config/ > release.yaml
+
 tidy:
 	go mod tidy
 	go mod vendor

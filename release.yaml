@@ -1,0 +1,11 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: chremoas-ng
+spec:
+  template:
+    spec:
+      containers:
+        - image: docker.io/chremoas/chremoas-ng@sha256:26025d978fc6f3a6f663a084e211750ee7efb5cdc381cbab47af942769660125
+
+---
