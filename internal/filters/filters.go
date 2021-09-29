@@ -8,26 +8,23 @@ import (
 	"strconv"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
 	"github.com/lib/pq"
-	"github.com/nsqio/go-nsq"
-	"go.uber.org/zap"
 )
 
-func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func List(deps common.Dependencies) string {
 	var (
 		buffer bytes.Buffer
 		filter payloads.Filter
 	)
 
-	rows, err := db.Select("name", "description").
+	rows, err := deps.DB.Select("name", "description").
 		From("filters").
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(err.Error())
 	}
 
@@ -36,7 +33,7 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 		err = rows.Scan(&filter.Name, &filter.Description)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning filter row: %s", err)
-			logger.Error(newErr)
+			deps.Logger.Error(newErr)
 			return common.SendFatal(newErr.Error())
 		}
 
@@ -54,17 +51,17 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func AuthedAdd(name, description string, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
-	if !perms.CanPerform(author, "role_admins", logger, db) {
+func AuthedAdd(name, description string, author string, deps common.Dependencies) (string, int) {
+	if !perms.CanPerform(author, "role_admins", deps) {
 		return common.SendError("User doesn't have permission to this command"), -1
 	}
 
-	return Add(name, description, logger, db)
+	return Add(name, description, deps)
 }
 
-func Add(name, description string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
+func Add(name, description string, deps common.Dependencies) (string, int) {
 	var id int
-	err := db.Insert("filters").
+	err := deps.DB.Insert("filters").
 		Columns("name", "description").
 		Values(name, description).
 		Suffix("RETURNING \"id\"").
@@ -75,31 +72,31 @@ func Add(name, description string, logger *zap.SugaredLogger, db *sq.StatementBu
 			return common.SendError(fmt.Sprintf("filter `%s` already exists", name)), -1
 		}
 		newErr := fmt.Errorf("error inserting filter: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error()), -1
 	}
 
 	return common.SendSuccess(fmt.Sprintf("Created filter `%s`", name)), id
 }
 
-func AuthedDelete(name string, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
-	if !perms.CanPerform(author, "role_admins", logger, db) {
+func AuthedDelete(name string, author string, deps common.Dependencies) (string, int) {
+	if !perms.CanPerform(author, "role_admins", deps) {
 		return common.SendError("User doesn't have permission to this command"), -1
 	}
 
-	return Delete(name, logger, db)
+	return Delete(name, deps)
 }
 
-func Delete(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) (string, int) {
+func Delete(name string, deps common.Dependencies) (string, int) {
 	var id int
 
-	rows, err := db.Delete("filters").
+	rows, err := deps.DB.Delete("filters").
 		Where(sq.Eq{"name": name}).
 		Suffix("RETURNING \"id\"").
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error deleting filter: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error()), -1
 	}
 
@@ -107,7 +104,7 @@ func Delete(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType)
 		err = rows.Scan(&id)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning filters id: %s", err)
-			logger.Error(newErr)
+			deps.Logger.Error(newErr)
 			return common.SendFatal(newErr.Error()), -1
 		}
 	}
@@ -115,20 +112,20 @@ func Delete(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType)
 	return common.SendSuccess(fmt.Sprintf("Deleted filter `%s`", name)), id
 }
 
-func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, discord *discordgo.Session) string {
+func ListMembers(name string, deps common.Dependencies) string {
 	var (
 		userID int
 		buffer bytes.Buffer
 	)
 
-	rows, err := db.Select("user_id").
+	rows, err := deps.DB.Select("user_id").
 		From("filters").
 		Join("filter_membership ON filters.id = filter_membership.filter").
 		Where(sq.Eq{"filters.name": name}).
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error getting filter membership list: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
@@ -137,10 +134,10 @@ func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilder
 		err = rows.Scan(&userID)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning filter_membership userID: %s", err)
-			logger.Error(newErr)
+			deps.Logger.Error(newErr)
 			return common.SendFatal(newErr.Error())
 		}
-		buffer.WriteString(fmt.Sprintf("\t%s\n", common.GetUsername(userID, discord)))
+		buffer.WriteString(fmt.Sprintf("\t%s\n", common.GetUsername(userID, deps.Session)))
 	}
 
 	if buffer.Len() == 0 {
@@ -154,15 +151,15 @@ func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilder
 	return buffer.String()
 }
 
-func AuthedAddMember(userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	if !perms.CanPerform(author, "role_admins", logger, db) {
+func AuthedAddMember(userID, filter, author string, deps common.Dependencies) string {
+	if !perms.CanPerform(author, "role_admins", deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	return AddMember(userID, filter, logger, db, nsq)
+	return AddMember(userID, filter, deps)
 }
 
-func AddMember(userID, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func AddMember(userID, filter string, deps common.Dependencies) string {
 	var filterID int
 
 	_, err := strconv.Atoi(userID)
@@ -173,7 +170,7 @@ func AddMember(userID, filter string, logger *zap.SugaredLogger, db *sq.Statemen
 		userID = common.ExtractUserId(userID)
 	}
 
-	err = db.Select("id").
+	err = deps.DB.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
 		QueryRow().Scan(&filterID)
@@ -182,13 +179,13 @@ func AddMember(userID, filter string, logger *zap.SugaredLogger, db *sq.Statemen
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
 		}
 		newErr := fmt.Errorf("error scanning filterID: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
-	logger.Infof("Got userID:%s filterID:%d", userID, filterID)
+	deps.Logger.Infof("Got userID:%s filterID:%d", userID, filterID)
 
-	_, err = db.Insert("filter_membership").
+	_, err = deps.DB.Insert("filter_membership").
 		Columns("filter", "user_id").
 		Values(filterID, userID).
 		Query()
@@ -198,24 +195,24 @@ func AddMember(userID, filter string, logger *zap.SugaredLogger, db *sq.Statemen
 			return common.SendError(fmt.Sprintf("<@%s> already a member of `%s`", userID, filter))
 		}
 		newErr := fmt.Errorf("error inserting filter: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
-	queueUpdate(userID, logger, nsq)
+	QueueUpdate(userID, deps)
 
 	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, filter))
 }
 
-func AuthedRemoveMember(userID, filter, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	if !perms.CanPerform(author, "role_admins", logger, db) {
+func AuthedRemoveMember(userID, filter, author string, deps common.Dependencies) string {
+	if !perms.CanPerform(author, "role_admins", deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	return RemoveMember(userID, filter, logger, db, nsq)
+	return RemoveMember(userID, filter, deps)
 }
 
-func RemoveMember(userID, filter string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func RemoveMember(userID, filter string, deps common.Dependencies) string {
 	var (
 		filterID int
 		deleted  bool
@@ -229,24 +226,24 @@ func RemoveMember(userID, filter string, logger *zap.SugaredLogger, db *sq.State
 		userID = common.ExtractUserId(userID)
 	}
 
-	err = db.Select("id").
+	err = deps.DB.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
 		QueryRow().Scan(&filterID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning filterID: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
-	rows, err := db.Delete("filter_membership").
+	rows, err := deps.DB.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).
 		Where(sq.Eq{"user_id": userID}).
 		Suffix("RETURNING \"id\"").
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error deleting filter: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
@@ -255,26 +252,26 @@ func RemoveMember(userID, filter string, logger *zap.SugaredLogger, db *sq.State
 	}
 
 	if deleted {
-		queueUpdate(userID, logger, nsq)
+		QueueUpdate(userID, deps)
 		return common.SendSuccess(fmt.Sprintf("Removed <@%s> from `%s`", userID, filter))
 	}
 
 	return common.SendError(fmt.Sprintf("<@%s> not a member of `%s`", userID, filter))
 }
 
-func queueUpdate(member string, logger *zap.SugaredLogger, nsq *nsq.Producer) {
+func QueueUpdate(member string, deps common.Dependencies) {
 	payload := payloads.Payload{
 		Member: member,
 	}
 
 	b, err := json.Marshal(payload)
 	if err != nil {
-		logger.Errorf("error marshalling queue message: %s", err)
+		deps.Logger.Errorf("error marshalling queue message: %s", err)
 	}
 
-	logger.Debug("Submitting member queue message")
-	err = nsq.PublishAsync(common.GetTopic("member"), b, nil)
+	deps.Logger.Debug("Submitting member queue message")
+	err = deps.MembersProducer.Publish(b)
 	if err != nil {
-		logger.Errorf("error publishing message: %s", err)
+		deps.Logger.Errorf("error publishing message: %s", err)
 	}
 }

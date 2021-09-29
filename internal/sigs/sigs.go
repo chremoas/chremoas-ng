@@ -4,27 +4,22 @@ import (
 	"fmt"
 	"strconv"
 
-	sq "github.com/Masterminds/squirrel"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
 	"github.com/chremoas/chremoas-ng/internal/roles"
-	"github.com/nsqio/go-nsq"
-	"go.uber.org/zap"
 )
 
 type Sig struct {
-	logger *zap.SugaredLogger
-	db     *sq.StatementBuilderType
-	nsq    *nsq.Producer
-	role   payloads.Role
-	sig    string
-	userID string
-	author string
+	dependencies common.Dependencies
+	role         payloads.Role
+	sig          string
+	userID       string
+	author       string
 }
 
-func New(member, sig, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) (*Sig, error) {
+func New(member, sig, author string, deps common.Dependencies) (*Sig, error) {
 	_, err := strconv.Atoi(member)
 	if err != nil {
 		if !common.IsDiscordUser(member) {
@@ -33,7 +28,7 @@ func New(member, sig, author string, logger *zap.SugaredLogger, db *sq.Statement
 		member = common.ExtractUserId(member)
 	}
 
-	role, err := roles.GetRoles(roles.Sig, &sig, logger, db)
+	role, err := roles.GetRoles(roles.Sig, &sig, deps)
 	if err != nil {
 		return nil, err
 	}
@@ -45,9 +40,7 @@ func New(member, sig, author string, logger *zap.SugaredLogger, db *sq.Statement
 	}
 
 	return &Sig{
-		logger: logger,
-		db:     db,
-		nsq:    nsq,
+		dependencies: deps,
 		role:   role[0],
 		sig:    sig,
 		userID: member,
@@ -56,17 +49,17 @@ func New(member, sig, author string, logger *zap.SugaredLogger, db *sq.Statement
 }
 
 func (s Sig) Add() string {
-	if !perms.CanPerform(s.author, "sig_admins", s.logger, s.db) {
+	if !perms.CanPerform(s.author, "sig_admins", s.dependencies) {
 		return common.SendError("User not authorized")
 	}
-	return filters.AddMember(s.userID, s.sig, s.logger, s.db, s.nsq)
+	return filters.AddMember(s.userID, s.sig, s.dependencies)
 }
 
 func (s Sig) Remove() string {
-	if !perms.CanPerform(s.author, "sig_admins", s.logger, s.db) {
+	if !perms.CanPerform(s.author, "sig_admins", s.dependencies) {
 		return common.SendError("User not authorized")
 	}
-	return filters.RemoveMember(s.userID, s.sig, s.logger, s.db, s.nsq)
+	return filters.RemoveMember(s.userID, s.sig, s.dependencies)
 }
 
 func (s Sig) Join() string {
@@ -74,7 +67,7 @@ func (s Sig) Join() string {
 		return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", s.sig))
 	}
 
-	return filters.AddMember(s.userID, s.sig, s.logger, s.db, s.nsq)
+	return filters.AddMember(s.userID, s.sig, s.dependencies)
 }
 
 func (s Sig) Leave() string {
@@ -82,5 +75,5 @@ func (s Sig) Leave() string {
 		return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", s.sig))
 	}
 
-	return filters.RemoveMember(s.userID, s.sig, s.logger, s.db, s.nsq)
+	return filters.RemoveMember(s.userID, s.sig, s.dependencies)
 }

@@ -10,6 +10,6 @@ import (
 func (c Command) Pong(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
 	_, err := s.ChannelMessageSend(m.ChannelID, "Ping!")
 	if err != nil {
-		c.logger.Errorf("Error sending command: %s", err)
+		c.dependencies.Logger.Errorf("Error sending command: %s", err)
 	}
 }

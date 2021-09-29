@@ -17,7 +17,7 @@ func New(filename string) (*Configuration, error) {
 	var fileReadErr, remoteReadErr error
 	var c Configuration
 
-	log := log.New()
+	logger := log.New()
 
 	configNameSpace := os.Getenv("CONFIG_NAMESPACE")
 	if configNameSpace == "" {
@@ -32,33 +32,33 @@ func New(filename string) (*Configuration, error) {
 	viper.SetConfigFile(filename)
 
 	if fileReadErr = viper.ReadInConfig(); fileReadErr == nil {
-		log.Info("Successfully read local config file")
+		logger.Info("Successfully read local config file")
 		fileRead = true
 	}
 
-	if err := viper.BindEnv("consul"); err == nil {
+	if err := viper.BindEnv("CONSUL"); err == nil {
 		consul := viper.Get("consul")
 
 		if consul != nil {
 			// TODO: This is very rigid. Let's find a better way.
 			configPath := fmt.Sprintf("/%s/config", configNameSpace)
-			log.Infof("Using %s Config: %s", configType, configPath)
+			logger.Infof("Using %s config %s from %s", configType, configPath, consul.(string))
 			err := viper.AddRemoteProvider("consul", consul.(string), configPath)
 			if err == nil {
 				viper.SetConfigType(configType) // because there is no file extension in a stream of bytes, supported extensions are "json", "toml", "yaml", "yml", "properties", "props", "prop"
 
 				if remoteReadErr = viper.ReadRemoteConfig(); remoteReadErr == nil {
-					log.Info("Successfully read remote config")
+					logger.Info("Successfully read remote config")
 					remoteRead = true
 				}
 			} else {
-				log.Info(err.Error())
+				logger.Info(err.Error())
 			}
 		}
 	}
 
 	if !fileRead && !remoteRead {
-		return nil, fmt.Errorf("unable to read config:\n\tfile=%v\n\tremote=%v|n", fileReadErr, remoteReadErr)
+		return nil, fmt.Errorf("unable to read config:\n\tfile=%v\n\tremote=%v", fileReadErr, remoteReadErr)
 	}
 
 	if err := viper.Unmarshal(&c); err != nil {

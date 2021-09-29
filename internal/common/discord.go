@@ -30,3 +30,16 @@ func GetUsername(userID interface{}, discord *discordgo.Session) string {
 		return user.User.Username
 	}
 }
+
+func IgnoreRole(role string) bool {
+	ignoredRoles := viper.GetStringSlice("bot.ignoredRoles")
+	ignoredRoles = append(ignoredRoles, "@everyone")
+
+	for _, r := range ignoredRoles {
+		if role == r {
+			return true
+		}
+	}
+
+	return false
+}

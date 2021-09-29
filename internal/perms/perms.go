@@ -5,25 +5,23 @@ import (
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/lib/pq"
-	"go.uber.org/zap"
 )
 
-func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func List(deps common.Dependencies) string {
 	var (
 		count  int
 		buffer bytes.Buffer
 		filter payloads.Filter
 	)
 
-	rows, err := db.Select("name", "description").
+	rows, err := deps.DB.Select("name", "description").
 		From("permissions").
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(err.Error())
 	}
 
@@ -32,7 +30,7 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 		err = rows.Scan(&filter.Name, &filter.Description)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning permissions row: %s", err)
-			logger.Error(newErr)
+			deps.Logger.Error(newErr)
 			return common.SendFatal(newErr.Error())
 		}
 
@@ -47,16 +45,16 @@ func List(logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Add(name, description, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func Add(name, description, author string, deps common.Dependencies) string {
 	if name == "server_admins" {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	if !CanPerform(author, "server_admins", logger, db) {
+	if !CanPerform(author, "server_admins", deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	_, err := db.Insert("permissions").
+	_, err := deps.DB.Insert("permissions").
 		Columns("name", "description").
 		Values(name, description).
 		Query()
@@ -66,48 +64,48 @@ func Add(name, description, author string, logger *zap.SugaredLogger, db *sq.Sta
 			return common.SendError(fmt.Sprintf("permission `%s` already exists", name))
 		}
 		newErr := fmt.Errorf("error inserting permission: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
 	return common.SendSuccess(fmt.Sprintf("Created permission `%s`", name))
 }
 
-func Delete(name, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func Delete(name, author string, deps common.Dependencies) string {
 	if name == "server_admins" {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	if !CanPerform(author, "server_admins", logger, db) {
+	if !CanPerform(author, "server_admins", deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	_, err := db.Delete("permissions").
+	_, err := deps.DB.Delete("permissions").
 		Where(sq.Eq{"name": name}).
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error deleting permission: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
 	return common.SendSuccess(fmt.Sprintf("Deleted permission `%s`", name))
 }
 
-func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, discord *discordgo.Session) string {
+func ListMembers(name string, deps common.Dependencies) string {
 	var (
 		count, userID int
 		buffer        bytes.Buffer
 	)
 
-	rows, err := db.Select("user_id").
+	rows, err := deps.DB.Select("user_id").
 		From("permission_membership").
 		Join("permissions ON permission_membership.permission = permissions.id").
 		Where(sq.Eq{"permissions.name": name}).
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error getting permission membership list: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
@@ -116,10 +114,10 @@ func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilder
 		err = rows.Scan(&userID)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning permission_membership userID: %s", err)
-			logger.Error(newErr)
+			deps.Logger.Error(newErr)
 			return common.SendFatal(newErr.Error())
 		}
-		buffer.WriteString(fmt.Sprintf("\t<@%s>\n", common.GetUsername(userID, discord)))
+		buffer.WriteString(fmt.Sprintf("\t<@%s>\n", common.GetUsername(userID, deps.Session)))
 		count += 1
 	}
 
@@ -130,14 +128,14 @@ func ListMembers(name string, logger *zap.SugaredLogger, db *sq.StatementBuilder
 	return buffer.String()
 }
 
-func AddMember(user, permission, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func AddMember(user, permission, author string, deps common.Dependencies) string {
 	var permissionID int
 
 	if permission == "server_admins" {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	if !CanPerform(author, "server_admins", logger, db) {
+	if !CanPerform(author, "server_admins", deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
@@ -147,17 +145,17 @@ func AddMember(user, permission, author string, logger *zap.SugaredLogger, db *s
 
 	userID := common.ExtractUserId(user)
 
-	err := db.Select("id").
+	err := deps.DB.Select("id").
 		From("permissions").
 		Where(sq.Eq{"name": permission}).
 		QueryRow().Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permissionID: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
-	_, err = db.Insert("permission_membership").
+	_, err = deps.DB.Insert("permission_membership").
 		Columns("permission", "user_id").
 		Values(permissionID, userID).
 		Query()
@@ -167,21 +165,21 @@ func AddMember(user, permission, author string, logger *zap.SugaredLogger, db *s
 			return common.SendError(fmt.Sprintf("<@%s> already a member of `%s`", userID, permission))
 		}
 		newErr := fmt.Errorf("error inserting permission: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
 	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, permission))
 }
 
-func RemoveMember(user, permission, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func RemoveMember(user, permission, author string, deps common.Dependencies) string {
 	var permissionID int
 
 	if permission == "server_admins" {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	if !CanPerform(author, "server_admins", logger, db) {
+	if !CanPerform(author, "server_admins", deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
@@ -191,30 +189,30 @@ func RemoveMember(user, permission, author string, logger *zap.SugaredLogger, db
 
 	userID := common.ExtractUserId(user)
 
-	err := db.Select("id").
+	err := deps.DB.Select("id").
 		From("permissions").
 		Where(sq.Eq{"name": permission}).
 		QueryRow().Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permisionID: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
-	_, err = db.Delete("permission_membership").
+	_, err = deps.DB.Delete("permission_membership").
 		Where(sq.Eq{"permission": permissionID}).
 		Where(sq.Eq{"user_id": userID}).
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error deleting permission: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
 	return common.SendSuccess(fmt.Sprintf("Removed <@%s> from `%s`", userID, permission))
 }
 
-func UserPerms(user string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func UserPerms(user string, deps common.Dependencies) string {
 	var (
 		buffer     bytes.Buffer
 		permission string
@@ -226,14 +224,14 @@ func UserPerms(user string, logger *zap.SugaredLogger, db *sq.StatementBuilderTy
 
 	userID := common.ExtractUserId(user)
 
-	rows, err := db.Select("name").
+	rows, err := deps.DB.Select("name").
 		From("permissions").
 		Join("permission_membership ON permission_membership.permission = permissions.id").
 		Where(sq.Eq{"permission_membership.user_id": userID}).
 		Query()
 	if err != nil {
 		newErr := fmt.Errorf("error getting user perms: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
@@ -241,7 +239,7 @@ func UserPerms(user string, logger *zap.SugaredLogger, db *sq.StatementBuilderTy
 	for rows.Next() {
 		err = rows.Scan(&permission)
 		if err != nil {
-			logger.Errorf("Error scanning permission id: %s", err)
+			deps.Logger.Errorf("Error scanning permission id: %s", err)
 			return common.SendFatal(err.Error())
 		}
 		buffer.WriteString(fmt.Sprintf("\t%s\n", permission))
@@ -250,7 +248,7 @@ func UserPerms(user string, logger *zap.SugaredLogger, db *sq.StatementBuilderTy
 	return buffer.String()
 }
 
-func CanPerform(authorID, permission string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) bool {
+func CanPerform(authorID, permission string, deps common.Dependencies) bool {
 	var (
 		count        int
 		permissionID int
@@ -261,23 +259,23 @@ func CanPerform(authorID, permission string, logger *zap.SugaredLogger, db *sq.S
 		return true
 	}
 
-	err := db.Select("id").
+	err := deps.DB.Select("id").
 		From("permissions").
 		Where(sq.Eq{"name": permission}).
 		QueryRow().Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permisionID: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return false
 	}
-	err = db.Select("COUNT(*)").
+	err = deps.DB.Select("COUNT(*)").
 		From("permission_membership").
 		Where(sq.Eq{"user_id": authorID}).
 		Where(sq.Eq{"permission": permissionID}).
 		QueryRow().Scan(&count)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permission count: %s", err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return false
 	}
 

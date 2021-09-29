@@ -5,7 +5,6 @@ package main
 // Import all Go packages required for this file.
 import (
 	"context"
-	"database/sql"
 	_ "expvar"
 	"flag"
 	"fmt"
@@ -16,22 +15,23 @@ import (
 	"syscall"
 	"time"
 
-	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
-	"github.com/chremoas/chremoas-ng/internal/auth/web"
-	esi_poller "github.com/chremoas/chremoas-ng/internal/esi-poller"
-	queue2 "github.com/chremoas/chremoas-ng/internal/queue"
-	"github.com/jmoiron/sqlx"
+	"github.com/chremoas/chremoas-ng/internal/common"
+	discordMembers "github.com/chremoas/chremoas-ng/internal/discord/members"
+	discordRoles "github.com/chremoas/chremoas-ng/internal/discord/roles"
+	"github.com/gregjones/httpcache"
 	_ "github.com/lib/pq"
-	"github.com/nsqio/go-nsq"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"go.uber.org/zap"
 
+	"github.com/chremoas/chremoas-ng/internal/auth/web"
 	"github.com/chremoas/chremoas-ng/internal/commands"
 	"github.com/chremoas/chremoas-ng/internal/config"
+	"github.com/chremoas/chremoas-ng/internal/database"
+	esi_poller "github.com/chremoas/chremoas-ng/internal/esi-poller"
 	"github.com/chremoas/chremoas-ng/internal/log"
+	"github.com/chremoas/chremoas-ng/internal/queue"
 )
 
 // Version is a constant that stores the Disgord version information.
@@ -39,8 +39,8 @@ const Version = "v0.0.0"
 
 func main() {
 	var (
-		err    error
-		logger = log.New()
+		err          error
+		dependencies = common.Dependencies{Logger: log.New()}
 	)
 
 	// Print out a fancy logo!
@@ -69,6 +69,9 @@ func main() {
 		panic(err)
 	}
 
+	// put guildID somewhere useful
+	dependencies.GuildID = viper.GetString("bot.discordServerId")
+
 	// =========================================================================
 	// Start Debug Service
 	//
@@ -77,39 +80,50 @@ func main() {
 	//
 	// Not concerned with shutting this down when the application is shutdown.
 
-	logger.Info("main: Initializing debugging support")
+	dependencies.Logger.Info("main: Initializing debugging support")
 
+	debugAddr := fmt.Sprintf("%s:%d", viper.GetString("net.host"), viper.GetInt("net.debugPort"))
 	go func() {
-		logger.Infof("main: Debug Listening %s", "0.0.0.0:4000")
-		if err = http.ListenAndServe("0.0.0.0:4000", http.DefaultServeMux); err != nil {
-			logger.Errorf("main: Debug Listener closed: %v", err)
+		dependencies.Logger.Infof("main: Debug Listening %s", debugAddr)
+		if err = http.ListenAndServe(debugAddr, http.DefaultServeMux); err != nil {
+			dependencies.Logger.Errorf("main: Debug Listener closed: %v", err)
 		}
 	}()
 
 	// =========================================================================
 	// Setup DB connection
 
-	db, err := NewDB(logger)
+	dependencies.DB, err = database.New(dependencies.Logger)
 	if err != nil {
-		logger.Fatalf("error opening connection to PostgreSQL: %s\n", err)
+		dependencies.Logger.Fatalf("error opening connection to PostgreSQL: %s\n", err)
 	}
 
 	// =========================================================================
 	// Start the discord session
 
-	session, err := discordgo.New("Bot " + viper.GetString("bot.token"))
+	dependencies.Session, err = discordgo.New("Bot " + viper.GetString("bot.token"))
 	if err != nil {
-		logger.Fatalf("Error starting session: %s", err)
+		dependencies.Logger.Fatalf("Error starting session: %s", err)
 	}
 
-	session.Identify.Intents = discordgo.IntentsGuildMessages
+	defer func() {
+		err := dependencies.Session.Close()
+		if err != nil {
+			dependencies.Logger.Errorf("Error closing discord connection: %s", err)
+		}
+	}()
+
+	// Let's use a caching http client
+	dependencies.Session.Client = httpcache.NewMemoryCacheTransport().Client()
+
+	dependencies.Session.Identify.Intents = discordgo.IntentsGuildMessages
 
 	Router := mux.New()
 	Router.Prefix = "!"
 
 	// Register the mux OnMessageCreate handler that listens for and processes
 	// all messages received.
-	session.AddHandler(Router.OnMessageCreate)
+	dependencies.Session.AddHandler(Router.OnMessageCreate)
 
 	// Register the build-in help command.
 	_, err = Router.Route("help", "Display this message.", Router.Help)
@@ -118,34 +132,57 @@ func main() {
 	}
 
 	// =========================================================================
-	// Setup NSQ
+	// Setup RabbitMQ
+	// =========================================================================
+	queueURI := fmt.Sprintf("amqp://%s:%s@%s:%d/%s",
+		viper.GetString("queue.username"),
+		viper.GetString("queue.password"),
+		viper.GetString("queue.host"),
+		viper.GetInt("queue.port"),
+		viper.GetString("namespace"),
+	)
 
-	workers := queue2.New(session, logger, nsq.LogLevelError, db)
-
-	// Setup NSQ producer for the commands to use
-	producer, err := workers.ProducerQueue()
+	// Consumers
+	members := discordMembers.New(dependencies)
+	membersConsumer, err := queue.NewConsumer(queueURI, "members", "direct", "members", "members", "members", members.HandleMessage, dependencies.Logger)
 	if err != nil {
-		logger.Fatalf("error setting up producer queue: %s\n", err)
+		dependencies.Logger.Errorf("Error setting up members consumer: %s", err)
 	}
-	defer producer.Stop()
+	defer func() {
+		err := membersConsumer.Shutdown()
+		if err != nil {
+			dependencies.Logger.Errorf("error shutting down members consumer: %s", err)
+		}
+	}()
 
-	// Setup the Role Consumer handler
-	roleConsumer, err := workers.RoleConsumer()
+	roles := discordRoles.New(dependencies)
+	rolesConsumer, err := queue.NewConsumer(queueURI, "roles", "direct", "roles", "roles", "roles", roles.HandleMessage, dependencies.Logger)
 	if err != nil {
-		logger.Fatalf("error setting up role queue consumer: %s\n", err)
+		dependencies.Logger.Errorf("Error setting up members consumer: %s", err)
 	}
-	defer roleConsumer.Stop()
+	defer func() {
+		err := rolesConsumer.Shutdown()
+		if err != nil {
+			dependencies.Logger.Errorf("error shutting down roles consumer: %s", err)
+		}
+	}()
 
-	// Setup the Member Consumer handler
-	memberConsumer, err := workers.MemberConsumer()
+	// Producers
+	dependencies.MembersProducer, err = queue.NewPublisher(queueURI, "members", "direct", "members", dependencies.Logger)
 	if err != nil {
-		logger.Fatalf("error setting up member queue consumer: %s\n", err)
+		dependencies.Logger.Errorf("Error setting up members producer: %s", err)
 	}
-	defer memberConsumer.Stop()
+	defer dependencies.MembersProducer.Shutdown()
+
+	dependencies.RolesProducer, err = queue.NewPublisher(queueURI, "roles", "direct", "roles", dependencies.Logger)
+	if err != nil {
+		dependencies.Logger.Errorf("Error setting up roles producer: %s", err)
+	}
+	defer dependencies.RolesProducer.Shutdown()
 
 	// =========================================================================
 	// Setup commands
-	c := commands.New(logger, db, producer, session)
+	c := commands.New(dependencies)
 
 	commandList := []struct {
 		command string
@@ -164,33 +201,35 @@ func main() {
 	for _, route := range commandList {
 		_, err = Router.Route(route.command, route.desc, route.handler)
 		if err != nil {
-			logger.Warnf("Failed to load route: %s", route.command)
+			dependencies.Logger.Warnf("Failed to load route: %s", route.command)
 		}
 	}
 
 	// Open a websocket connection to Discord
-	err = session.Open()
+	err = dependencies.Session.Open()
 	if err != nil {
-		logger.Fatalf("error opening connection to Discord: %s\n", err)
+		dependencies.Logger.Fatalf("error opening connection to Discord: %s\n", err)
 	}
 
 	// =========================================================================
 	// Start auth-web Service
 
-	logger.Info("main: Initializing auth-web support")
+	dependencies.Logger.Info("main: Initializing auth-web support")
 
 	// Make a channel to listen for an interrupt or terminate signal from the OS.
 	// Use a buffered channel because the signal package requires it.
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 
-	authWeb, err := web.New(logger, db, producer)
+	authWeb, err := web.New(dependencies)
 	if err != nil {
-		logger.Fatalf("Error starting authWeb: %s", err)
+		dependencies.Logger.Fatalf("Error starting authWeb: %s", err)
 	}
 
-	api := http.Server{
-		Addr:         "0.0.0.0:3100",
+	webUI := http.Server{
+		Addr: fmt.Sprintf("%s:%d",
+			viper.GetString("net.host"),
+			viper.GetInt("net.webPort")),
 		Handler:      authWeb.Auth(),
 		ReadTimeout:  time.Second * 5,
 		WriteTimeout: time.Second * 5,
@@ -202,117 +241,42 @@ func main() {
 
 	// Start the service listening for requests.
 	go func() {
-		logger.Infof("main: auth-web listening on %s", api.Addr)
-		serverErrors <- api.ListenAndServe()
+		dependencies.Logger.Infof("main: auth-web listening on %s", webUI.Addr)
+		serverErrors <- webUI.ListenAndServe()
 	}()
 
 	// =========================================================================
 	// Start the ESI Poller thread.
-	userAgent := "chremoas-esi-srv Ramdar Chinken on TweetFleet Slack https://github.com/chremoas/chremoas-ng"
-	esiPoller := esi_poller.New(userAgent, logger, db, producer)
+	userAgent := "chremoas-ng Ramdar Chinken on TweetFleet Slack https://github.com/chremoas/chremoas-ng"
+	esiPoller := esi_poller.New(userAgent, dependencies)
 	esiPoller.Start()
 	defer esiPoller.Stop()
 
 	// =========================================================================
 	// Main loop
 
-	logger.Info(`Now running. Press CTRL-C to exit.`)
+	dependencies.Logger.Info(`Now running. Press CTRL-C to exit.`)
 	// Blocking main and waiting for shutdown.
 	select {
 	case err = <-serverErrors:
-		logger.Fatal(err)
+		dependencies.Logger.Fatal(err)
 
 	case sig := <-shutdown:
-		logger.Infof("main: %v: Start shutdown", sig)
+		dependencies.Logger.Infof("main: %v: Start shutdown", sig)
 
 		// Give outstanding requests a deadline for completion.
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
 
 		// Asking listener to shutdown and shed load.
-		if err = api.Shutdown(ctx); err != nil {
-			err = api.Close()
+		if err = webUI.Shutdown(ctx); err != nil {
+			err = webUI.Close()
 			if err != nil {
-				logger.Fatalf("Error stopping API: %s", err)
+				dependencies.Logger.Fatalf("Error stopping API: %s", err)
 			}
-			logger.Fatalf("could not stop server gracefully: %s", err)
+			dependencies.Logger.Fatalf("could not stop server gracefully: %s", err)
 		}
-	}
-
-	// Clean up
-	err = session.Close()
-	if err != nil {
-		logger.Fatalf("Error closing discord session: %s", err)
 	}
 
 	// Exit Normally.
-}
-
-func NewDB(logger *zap.SugaredLogger) (*sq.StatementBuilderType, error) {
-	var (
-		err error
-	)
-
-	//ignoredRoles = viper.GetStringSlice("bot.ignoredRoles")
-
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
-		viper.GetString("database.host"),
-		viper.GetInt("database.port"),
-		viper.GetString("database.username"),
-		viper.GetString("database.password"),
-		viper.GetString("database.roledb"),
-	)
-
-	ldb, err := sqlx.Connect(viper.GetString("database.driver"), dsn)
-	if err != nil {
-		logger.Error(err)
-		return nil, err
-	}
-
-	err = ldb.Ping()
-	if err != nil {
-		logger.Error(err)
-		return nil, err
-	}
-
-	dbCache := sq.NewStmtCache(ldb)
-	db := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(dbCache)
-
-	// Ensure required permissions exist in the database
-	var (
-		requiredPermissions = map[string]string{
-			"role_admins":   "Role Admins",
-			"sig_admins":    "SIG Admins",
-			"server_admins": "Server Admins",
-		}
-		id int
-	)
-
-	for k, v := range requiredPermissions {
-		err = db.Select("id").
-			From("permissions").
-			Where(sq.Eq{"name": k}).
-			QueryRow().Scan(&id)
-
-		switch err {
-		case nil:
-			logger.Infof("%s (%d) found", k, id)
-		case sql.ErrNoRows:
-			logger.Infof("%s NOT found, creating", k)
-			err = db.Insert("permissions").
-				Columns("name", "description").
-				Values(k, v).
-				Suffix("RETURNING \"id\"").
-				QueryRow().Scan(&id)
-			if err != nil {
-				logger.Error(err)
-				return nil, err
-			}
-		default:
-			logger.Error(err)
-			return nil, err
-		}
-	}
-
-	return &db, nil
 }

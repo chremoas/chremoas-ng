@@ -26,7 +26,7 @@ Subcommands:
     list membership: List user Roles
 `
 
-// This function will be called (due to AddHandler above) every time a new
+// Role will be called (due to AddHandler above) every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (c Command) Role(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
 	_, err := s.ChannelMessageSend(m.ChannelID, c.doRole(s, m, ctx))
@@ -47,8 +47,8 @@ func (c Command) Role(s *discordgo.Session, m *discordgo.Message, ctx *mux.Conte
 	}
 }
 
-func (c Command) doRole(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) string {
-	c.logger.Infof("Received: %s", m.Content)
+func (c Command) doRole(_ *discordgo.Session, m *discordgo.Message, _ *mux.Context) string {
+	c.dependencies.Logger.Infof("Received: %s", m.Content)
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {
@@ -58,29 +58,29 @@ func (c Command) doRole(s *discordgo.Session, m *discordgo.Message, ctx *mux.Con
 	switch cmdStr[1] {
 	case "list":
 		if len(cmdStr) < 3 {
-			return roles.List(roles.Role, false, c.logger, c.db)
+			return roles.List(roles.Role, false, c.dependencies)
 		}
 
 		switch cmdStr[2] {
 		case "all":
-			return roles.List(roles.Role, true, c.logger, c.db)
+			return roles.List(roles.Role, true, c.dependencies)
 
 		case "members":
 			if len(cmdStr) < 4 {
 				return "Usage: !role list members <role_name>"
 			}
-			return roles.ListMembers(roles.Role, cmdStr[3], c.logger, c.db, c.discord)
+			return roles.ListMembers(roles.Role, cmdStr[3], c.dependencies)
 
 		case "membership":
 			if len(cmdStr) < 4 {
-				return roles.ListUserRoles(roles.Role, m.Author.ID, c.logger, c.db)
+				return roles.ListUserRoles(roles.Role, m.Author.ID, c.dependencies)
 			}
 
 			if !common.IsDiscordUser(cmdStr[3]) {
 				return common.SendError("member name must be a discord user")
 			}
 
-			return roles.ListUserRoles(roles.Role, common.ExtractUserId(cmdStr[3]), c.logger, c.db)
+			return roles.ListUserRoles(roles.Role, common.ExtractUserId(cmdStr[3]), c.dependencies)
 
 		default:
 			return "Usage: !role list members <role_name>"
@@ -90,25 +90,25 @@ func (c Command) doRole(s *discordgo.Session, m *discordgo.Message, ctx *mux.Con
 		if len(cmdStr) < 4 {
 			return "Usage: !role create <role_name> <role_description>"
 		}
-		return roles.AuthedAdd(roles.Role, false, cmdStr[2], strings.Join(cmdStr[3:], " "), "discord", m.Author.ID, c.logger, c.db, c.nsq)
+		return roles.AuthedAdd(roles.Role, false, cmdStr[2], strings.Join(cmdStr[3:], " "), "discord", m.Author.ID, c.dependencies)
 
 	case "destroy":
 		if len(cmdStr) < 3 {
 			return "Usage: !role destroy <role_name>"
 		}
-		return roles.AuthedDestroy(roles.Role, cmdStr[2], m.Author.ID, c.logger, c.db, c.nsq)
+		return roles.AuthedDestroy(roles.Role, cmdStr[2], m.Author.ID, c.dependencies)
 
 	case "set":
 		if len(cmdStr) < 5 {
 			return "Usage: !role set <role_name> <key> <value>"
 		}
-		return roles.AuthedUpdate(roles.Role, cmdStr[2], cmdStr[3], cmdStr[4], m.Author.ID, c.logger, c.db, c.nsq)
+		return roles.AuthedUpdate(roles.Role, cmdStr[2], cmdStr[3], cmdStr[4], m.Author.ID, c.dependencies)
 
 	case "info":
 		if len(cmdStr) < 3 {
 			return "Usage: !role info <role_name>"
 		}
-		return roles.Info(roles.Role, cmdStr[2], c.logger, c.db)
+		return roles.Info(roles.Role, cmdStr[2], c.dependencies)
 
 	case "keys":
 		return roles.Keys()

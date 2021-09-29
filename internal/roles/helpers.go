@@ -9,17 +9,15 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
-	"github.com/nsqio/go-nsq"
-	"go.uber.org/zap"
 )
 
-func getRoleID(name string, db *sq.StatementBuilderType) (int, error) {
+func getRoleID(name string, deps common.Dependencies) (int, error) {
 	var (
 		err error
 		id  int
 	)
 
-	err = db.Select("id").
+	err = deps.DB.Select("id").
 		From("roles").
 		Where(sq.Eq{"role_nick": name}).
 		QueryRow().Scan(&id)
@@ -36,28 +34,30 @@ func validListItem(a string, list []string) bool {
 	return false
 }
 
-func queueUpdate(chatID int, action payloads.Action, logger *zap.SugaredLogger, nsq *nsq.Producer) {
+func queueUpdate(role *discordgo.Role, action payloads.Action, deps common.Dependencies) error {
 	payload := payloads.Payload{
 		Action: action,
-		Role: &discordgo.Role{
-			ID: fmt.Sprintf("%d", chatID),
-		},
+		Role: role,
 	}
 
 	b, err := json.Marshal(payload)
 	if err != nil {
-		logger.Errorf("error marshalling json for queue: %s", err)
+		deps.Logger.Errorf("error marshalling json for queue: %s", err)
+		return err
 	}
 
-	logger.Debug("Submitting role queue message")
-	err = nsq.PublishAsync(common.GetTopic("role"), b, nil)
+	deps.Logger.Debug("Submitting role queue message")
+	err = deps.RolesProducer.Publish(b)
 	if err != nil {
-		logger.Errorf("error publishing message: %s", err)
+		deps.Logger.Errorf("error publishing message: %s", err)
+		return err
 	}
+
+	return nil
 }
 
 // GetRoleMembers lists all userIDs that match all the filters for a role.
-func GetRoleMembers(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) ([]int, error) {
+func GetRoleMembers(sig bool, name string, deps common.Dependencies) ([]int, error) {
 	var (
 		err        error
 		id         int
@@ -65,19 +65,19 @@ func GetRoleMembers(sig bool, name string, logger *zap.SugaredLogger, db *sq.Sta
 		filterList []int
 	)
 
-	rows, err := db.Select("role_filters.filter").
+	rows, err := deps.DB.Select("role_filters.filter").
 		From("role_filters").
 		InnerJoin("roles ON role_filters.role = roles.id").
 		Where(sq.Eq{"sig": sig}).
 		Where(sq.Eq{"role_nick": name}).
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return nil, err
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
-			logger.Error(err)
+			deps.Logger.Error(err)
 		}
 	}()
 
@@ -91,19 +91,19 @@ func GetRoleMembers(sig bool, name string, logger *zap.SugaredLogger, db *sq.Sta
 		filterList = append(filterList, id)
 	}
 
-	rows, err = db.Select("user_id").
+	rows, err = deps.DB.Select("user_id").
 		From("filter_membership").
 		Where(sq.Eq{"filter": filterList}).
 		GroupBy("user_id").
 		Having("count(*) = ?", len(filterList)).
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return nil, err
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
-			logger.Error(err)
+			deps.Logger.Error(err)
 		}
 	}()
 
@@ -120,7 +120,7 @@ func GetRoleMembers(sig bool, name string, logger *zap.SugaredLogger, db *sq.Sta
 	return members, nil
 }
 
-func GetUserRoles(sig bool, userID string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) ([]payloads.Role, error) {
+func GetUserRoles(sig bool, userID string, deps common.Dependencies) ([]payloads.Role, error) {
 	var (
 		roles []payloads.Role
 	)
@@ -133,17 +133,17 @@ func GetUserRoles(sig bool, userID string, logger *zap.SugaredLogger, db *sq.Sta
 		userID = common.ExtractUserId(userID)
 	}
 
-	rows, err := db.Select("role_nick", "name").
+	rows, err := deps.DB.Select("role_nick", "name").
 		From("").
 		Suffix("getMemberRoles(?, ?)", userID, strconv.FormatBool(sig)).
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return nil, fmt.Errorf("error getting user %ss (%s): %s", roleType[sig], userID, err)
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
-			logger.Error(err)
+			deps.Logger.Error(err)
 		}
 	}()
 
@@ -156,7 +156,7 @@ func GetUserRoles(sig bool, userID string, logger *zap.SugaredLogger, db *sq.Sta
 		)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
-			logger.Error(newErr)
+			deps.Logger.Error(newErr)
 			return nil, newErr
 		}
 
@@ -167,13 +167,13 @@ func GetUserRoles(sig bool, userID string, logger *zap.SugaredLogger, db *sq.Sta
 }
 
 // GetRoles goes and fetches all the roles of type sig/role. If shortname is set only one role is fetched.
-func GetRoles(sig bool, shortName *string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) ([]payloads.Role, error) {
+func GetRoles(sig bool, shortName *string, deps common.Dependencies) ([]payloads.Role, error) {
 	var (
 		rs        []payloads.Role
 		charTotal int
 	)
 
-	q := db.Select("color", "hoist", "joinable", "managed", "mentionable", "name", "permissions",
+	q := deps.DB.Select("color", "hoist", "joinable", "managed", "mentionable", "name", "permissions",
 		"position", "role_nick", "sig", "sync").
 		Where(sq.Eq{"sig": sig}).
 		From("roles")
@@ -185,12 +185,12 @@ func GetRoles(sig bool, shortName *string, logger *zap.SugaredLogger, db *sq.Sta
 	rows, err := q.Query()
 	if err != nil {
 		newErr := fmt.Errorf("error getting %ss: %s", roleType[sig], err)
-		logger.Error(newErr)
+		deps.Logger.Error(newErr)
 		return nil, newErr
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
-			logger.Error(err)
+			deps.Logger.Error(err)
 		}
 	}()
 
@@ -211,7 +211,7 @@ func GetRoles(sig bool, shortName *string, logger *zap.SugaredLogger, db *sq.Sta
 		)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
-			logger.Error(newErr)
+			deps.Logger.Error(newErr)
 			return nil, newErr
 		}
 		charTotal += len(role.ShortName) + len(role.Name) + 15 // Guessing on bool excess

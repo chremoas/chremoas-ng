@@ -7,13 +7,12 @@ import (
 type Action string
 
 const (
-	Create Action = "create"
+	Upsert Action = "upsert"
 	Delete Action = "delete"
-	Update Action = "update"
 )
 
 type Payload struct {
-	Action Action          `json:"action"`
+	Action Action          `json:"action,omitempty"`
 	Role   *discordgo.Role `json:"role,omitempty"`
 	Filter *Filter         `json:"filter,omitempty"`
 	Member string          `json:"member,omitempty"`
@@ -36,7 +35,7 @@ type Role struct {
 	Managed     bool   `json:"managed,omitempty"`
 	Mentionable bool   `json:"mentionable,omitempty"`
 	Name        string `json:"name"`
-	Permissions int32  `json:"permissions,omitempty"`
+	Permissions int64  `json:"permissions,omitempty"`
 	Position    int32  `json:"position,omitempty"`
 	ShortName   string `json:"role_nick"`
 	Sig         bool   `json:"sig,omitempty"`

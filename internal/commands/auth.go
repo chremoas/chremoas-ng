@@ -18,12 +18,12 @@ Usage: !auth <token>
 func (c Command) Auth(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
 	_, err := s.ChannelMessageSend(m.ChannelID, c.doAuth(s, m, ctx))
 	if err != nil {
-		c.logger.Errorf("Error sending command: %s", err)
+		c.dependencies.Logger.Errorf("Error sending command: %s", err)
 	}
 }
 
-func (c Command) doAuth(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) string {
-	c.logger.Infof("Received: %s", m.Content)
+func (c Command) doAuth(_ *discordgo.Session, m *discordgo.Message, _ *mux.Context) string {
+	c.dependencies.Logger.Infof("Received: %s", m.Content)
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {
@@ -35,6 +35,6 @@ func (c Command) doAuth(s *discordgo.Session, m *discordgo.Message, ctx *mux.Con
 		return fmt.Sprintf("```%s```", authHelpStr)
 
 	default:
-		return auth.Confirm(cmdStr[1], m.Author.ID, c.logger, c.db, c.nsq)
+		return auth.Confirm(cmdStr[1], m.Author.ID, c.dependencies)
 	}
 }

@@ -11,16 +11,14 @@ import (
 	"html/template"
 	"net/http"
 
-	sq "github.com/Masterminds/squirrel"
 	"github.com/antihax/goesi"
 	"github.com/antihax/goesi/esi"
 	"github.com/astaxie/beego/session"
 	"github.com/chremoas/chremoas-ng/internal/auth"
+	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/dimfeld/httptreemux"
 	"github.com/gregjones/httpcache"
-	"github.com/nsqio/go-nsq"
 	"github.com/spf13/viper"
-	"go.uber.org/zap"
 )
 
 const (
@@ -44,13 +42,11 @@ type ResultModel struct {
 }
 
 type Web struct {
-	logger    *zap.SugaredLogger
-	db        *sq.StatementBuilderType
+	dependencies common.Dependencies
 	templates *template.Template
-	nsq       *nsq.Producer
 }
 
-func New(logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) (*Web, error) {
+func New(deps common.Dependencies) (*Web, error) {
 	//Setup our required globals.
 	globalSessions, _ = session.NewManager("memory", &session.ManagerConfig{CookieName: "gosessionid", EnableSetCookie: true, Gclifetime: 600})
 	go globalSessions.GC()
@@ -75,11 +71,11 @@ func New(logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Produc
 	templates := template.New("auth-web")
 	_, err := templates.ParseFS(content, "templates/*.html")
 	if err != nil {
-		logger.Errorf("Error parsing templates: %s", err)
+		deps.Logger.Errorf("Error parsing templates: %s", err)
 		return nil, err
 	}
 
-	return &Web{logger: logger, db: db, templates: templates, nsq: nsq}, nil
+	return &Web{dependencies: deps, templates: templates}, nil
 }
 
 func (web Web) Auth() *httptreemux.ContextMux {
@@ -106,14 +102,14 @@ func (web Web) readiness(w http.ResponseWriter, _ *http.Request) {
 	}
 	err := json.NewEncoder(w).Encode(status)
 	if err != nil {
-		web.logger.Errorf("Error encoding status: %s", err)
+		web.dependencies.Logger.Errorf("Error encoding status: %s", err)
 	}
 }
 
 func (web Web) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	err := web.templates.ExecuteTemplate(w, "index.html", nil)
 	if err != nil {
-		web.logger.Error("Error executing index: %s", err)
+		web.dependencies.Logger.Error("Error executing index: %s", err)
 	}
 }
 
@@ -128,14 +124,14 @@ func (web Web) handleEveLogin(w http.ResponseWriter, r *http.Request) {
 	b := make([]byte, 16)
 	_, err := rand.Read(b)
 	if err != nil {
-		web.logger.Error("Error generating rangom string: %s", err)
+		web.dependencies.Logger.Error("Error generating rangom string: %s", err)
 	}
 	state := base64.URLEncoding.EncodeToString(b)
 
 	// Save the state to the session to validate with the response.
 	err = sess.Set("state", state)
 	if err != nil {
-		web.logger.Errorf("Error setting state: %s", err)
+		web.dependencies.Logger.Errorf("Error setting state: %s", err)
 	}
 
 	// Build the authorize URL
@@ -170,7 +166,7 @@ func (web Web) handleEveCallback(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		web.logger.Errorf("Error executing authd template: %s", err)
+		web.dependencies.Logger.Errorf("Error executing authd template: %s", err)
 	}
 }
 
@@ -255,7 +251,7 @@ func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store
 		}
 	}
 
-	authCode, err := auth.Create(context.Background(), request, web.logger, web.db, web.nsq)
+	authCode, err := auth.Create(context.Background(), request, web.dependencies)
 
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("Had an issue authing internally: (%s)", err))

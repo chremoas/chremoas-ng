@@ -35,6 +35,9 @@ github.com/armon/go-metrics
 ## explicit
 github.com/astaxie/beego/session
 github.com/astaxie/beego/utils
+# github.com/bhechinger/go-sets v0.0.3
+## explicit
+github.com/bhechinger/go-sets
 # github.com/bketelsen/crypt v0.0.3-0.20200106085610-5cbc8cc4026c
 github.com/bketelsen/crypt/backend
 github.com/bketelsen/crypt/backend/consul
@@ -92,8 +95,6 @@ github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
 github.com/golang/protobuf/ptypes/wrappers
-# github.com/golang/snappy v0.0.1
-github.com/golang/snappy
 # github.com/google/go-cmp v0.5.1
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
@@ -197,12 +198,14 @@ github.com/modern-go/concurrent
 github.com/modern-go/reflect2
 # github.com/nsqio/go-nsq v1.0.8
 ## explicit
-github.com/nsqio/go-nsq
 # github.com/pelletier/go-toml v1.8.1
 ## explicit
 github.com/pelletier/go-toml
 # github.com/pkg/errors v0.9.1
 github.com/pkg/errors
+# github.com/rabbitmq/amqp091-go v0.0.0-20210917115608-f77dab523f04
+## explicit
+github.com/rabbitmq/amqp091-go
 # github.com/russross/blackfriday/v2 v2.0.1
 github.com/russross/blackfriday/v2
 # github.com/shopspring/decimal v1.2.0
@@ -223,6 +226,8 @@ github.com/spf13/pflag
 ## explicit
 github.com/spf13/viper
 github.com/spf13/viper/remote
+# github.com/streadway/amqp v1.0.0
+## explicit
 # github.com/subosito/gotenv v1.2.0
 github.com/subosito/gotenv
 # github.com/trivago/tgo v1.0.1

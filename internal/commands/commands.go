@@ -1,24 +1,15 @@
 package commands
 
 import (
-	sq "github.com/Masterminds/squirrel"
-	"github.com/bwmarrin/discordgo"
-	"github.com/nsqio/go-nsq"
-	"go.uber.org/zap"
+	"github.com/chremoas/chremoas-ng/internal/common"
 )
 
 type Command struct {
-	logger  *zap.SugaredLogger
-	db      *sq.StatementBuilderType
-	nsq     *nsq.Producer
-	discord *discordgo.Session
+	dependencies common.Dependencies
 }
 
-func New(logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer, discord *discordgo.Session) *Command {
+func New(deps common.Dependencies) *Command {
 	return &Command{
-		logger: logger,
-		db:     db,
-		nsq:    nsq,
-		discord:     discord,
+		dependencies: deps,
 	}
 }

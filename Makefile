@@ -9,10 +9,10 @@ tidy:
 	go mod vendor
 
 migrate:
-	migrate -source file://sql/ --database postgres://chremoas_aba@10.42.1.30:5432/chremoas_aba up
+	migrate -source file://sql/ --database postgres://chremoas_dev@10.42.1.30:5432/chremoas_dev2 up
 
 migrate-drop:
-	migrate -source file://sql/ --database postgres://chremoas_aba@10.42.1.30:5432/chremoas_aba drop
+	migrate -source file://sql/ --database postgres://chremoas_dev@10.42.1.30:5432/chremoas_dev2 drop
 
 docker-local:
 	KO_DOCKER_REPO=ko.local GOFLAGS="-ldflags=-X=main.buildCommit=$SHA8 -mod=vendor" ko resolve --platform=linux/amd64 --tags ${SHA8},dev-latest -Bf config/docker-compose.yaml | egrep -v "^$|\---" > docker-compose.yaml

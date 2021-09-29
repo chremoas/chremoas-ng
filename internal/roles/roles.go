@@ -3,21 +3,17 @@ package roles
 import (
 	"bytes"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
+	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
+	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
 	"github.com/lib/pq"
-	"github.com/nsqio/go-nsq"
-	"go.uber.org/zap"
-
-	"github.com/chremoas/chremoas-ng/internal/common"
-	"github.com/chremoas/chremoas-ng/internal/payloads"
 )
 
 var (
@@ -35,11 +31,11 @@ const (
 
 var roleType = map[bool]string{Role: "role", Sig: "sig"}
 
-func List(sig, all bool, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func List(sig, all bool, deps common.Dependencies) string {
 	var buffer bytes.Buffer
 	var roleList = make(map[string]string)
 
-	roles, err := GetRoles(sig, nil, logger, db)
+	roles, err := GetRoles(sig, nil, deps)
 	if err != nil {
 		return common.SendFatal(err.Error())
 	}
@@ -92,14 +88,14 @@ func Types() string {
 }
 
 // ListMembers lists all userIDs that match all the filters for a role.
-func ListMembers(sig bool, name string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, discord *discordgo.Session) string {
+func ListMembers(sig bool, name string, deps common.Dependencies) string {
 	var (
 		buffer bytes.Buffer
 	)
 
-	logger.Debugf("Listing members for %s: %s", roleType[sig], name)
+	deps.Logger.Debugf("Listing members for %s: %s", roleType[sig], name)
 
-	members, err := GetRoleMembers(sig, name, logger, db)
+	members, err := GetRoleMembers(sig, name, deps)
 	if err != nil {
 		return common.SendError(fmt.Sprintf("error getting member list: %s", err))
 	}
@@ -109,18 +105,18 @@ func ListMembers(sig bool, name string, logger *zap.SugaredLogger, db *sq.Statem
 	}
 
 	for _, userID := range members {
-		buffer.WriteString(fmt.Sprintf("\t%s\n", common.GetUsername(userID, discord)))
+		buffer.WriteString(fmt.Sprintf("\t%s\n", common.GetUsername(userID, deps.Session)))
 	}
 
 	return fmt.Sprintf("```%d member(s) in %s:\n%s```", len(members), name, buffer.String())
 }
 
-func ListUserRoles(sig bool, userID string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func ListUserRoles(sig bool, userID string, deps common.Dependencies) string {
 	var (
 		buffer bytes.Buffer
 	)
 
-	roles, err := GetUserRoles(sig, userID, logger, db)
+	roles, err := GetUserRoles(sig, userID, deps)
 	if err != nil {
 		return common.SendError(fmt.Sprintf("error getting user roles: %s", err))
 	}
@@ -136,20 +132,20 @@ func ListUserRoles(sig bool, userID string, logger *zap.SugaredLogger, db *sq.St
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func Info(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func Info(sig bool, ticker string, deps common.Dependencies) string {
 	var buffer bytes.Buffer
 
-	//if !canPerform {
+	// if !canPerform {
 	//	return common.SendError("User doesn't have permission to this command")
-	//}
+	// }
 
-	roles, err := GetRoles(sig, &shortName, logger, db)
+	roles, err := GetRoles(sig, &ticker, deps)
 	if err != nil {
 		return common.SendFatal(err.Error())
 	}
 
 	if len(roles) == 0 {
-		return common.SendError(fmt.Sprintf("no such %s: %s", roleType[sig], shortName))
+		return common.SendError(fmt.Sprintf("no such %s: %s", roleType[sig], ticker))
 	}
 
 	buffer.WriteString(fmt.Sprintf("ShortName: %s\n", roles[0].ShortName))
@@ -168,15 +164,15 @@ func Info(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.Statemen
 	return fmt.Sprintf("```%s```", buffer.String())
 }
 
-func AuthedAdd(sig, joinable bool, shortName, name, chatType, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	if !perms.CanPerform(author, adminType[sig], logger, db) {
+func AuthedAdd(sig, joinable bool, ticker, name, chatType, author string, deps common.Dependencies) string {
+	if !perms.CanPerform(author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	return Add(sig, joinable, shortName, name, chatType, logger, db, nsq)
+	return Add(sig, joinable, ticker, name, chatType, deps)
 }
 
-func Add(sig, joinable bool, shortName, name, chatType string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependencies) string {
 	var roleID int
 
 	// Type, Name and ShortName are required so let's check for those
@@ -184,34 +180,33 @@ func Add(sig, joinable bool, shortName, name, chatType string, logger *zap.Sugar
 		return common.SendError("type is required")
 	}
 
-	if len(shortName) == 0 {
+	if len(ticker) == 0 {
 		return common.SendError("short name is required")
 	}
 
 	if len(name) == 0 {
-		return common.SendError("name is requred")
+		return common.SendError("name is required")
 	}
 
 	if !validListItem(chatType, roleTypes) {
 		return common.SendError(fmt.Sprintf("`%s` isn't a valid Role Type", chatType))
 	}
 
-	// need to pass in joinable at some point
-	err := db.Insert("roles").
+	err := deps.DB.Insert("roles").
 		Columns("sig", "joinable", "name", "role_nick", "chat_type").
-		Values(sig, joinable, name, shortName, chatType).
+		Values(sig, joinable, name, ticker, chatType).
 		Suffix("RETURNING \"id\"").
 		QueryRow().Scan(&roleID)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
-			return common.SendError(fmt.Sprintf("%s `%s` (%s) already exists", roleType[sig], name, shortName))
+			return common.SendError(fmt.Sprintf("%s `%s` (%s) already exists", roleType[sig], name, ticker))
 		}
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
 	}
 
-	role := discordgo.Role{
+	role := &discordgo.Role{
 		Name:        name,
 		Managed:     false,
 		Mentionable: false,
@@ -223,73 +218,63 @@ func Add(sig, joinable bool, shortName, name, chatType string, logger *zap.Sugar
 
 	// We now need to create the default filter for this role
 	filterResponse, filterID := filters.Add(
-		shortName,
-		fmt.Sprintf("Auto-created filter for %s %s", roleType[sig], shortName),
-		logger,
-		db,
+		ticker,
+		fmt.Sprintf("Auto-created filter for %s %s", roleType[sig], ticker),
+		deps,
 	)
 
 	// Associate new filter with new role
-	_, err = db.Insert("role_filters").
+	_, err = deps.DB.Insert("role_filters").
 		Columns("role", "filter").
 		Values(roleID, filterID).
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error adding role_filter for %s: %s", roleType[sig], err))
 	}
 
-	payload := payloads.Payload{
-		Action: payloads.Create,
-		Role:   &role,
-	}
-	b, err := json.Marshal(payload)
+	err = queueUpdate(role, payloads.Upsert, deps)
 	if err != nil {
-		fmt.Println("error:", err)
+		return common.SendFatal(fmt.Sprintf("error adding role for %s: %s", roleType[sig], err))
 	}
 
-	err = nsq.PublishAsync(common.GetTopic("role"), b, nil)
-	if err != nil {
-		fmt.Println("error:", err)
-	}
-
-	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Created %s `%s`", roleType[sig], shortName)))
+	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Created %s `%s`", roleType[sig], ticker)))
 }
 
-func AuthedDestroy(sig bool, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	if !perms.CanPerform(author, adminType[sig], logger, db) {
+func AuthedDestroy(sig bool, ticker, author string, deps common.Dependencies) string {
+	if !perms.CanPerform(author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	return Destroy(sig, shortName, logger, db, nsq)
+	return Destroy(sig, ticker, deps)
 }
 
-func Destroy(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 	var chatID, roleID int
 
-	if len(shortName) == 0 {
+	if len(ticker) == 0 {
 		return common.SendError("short name is required")
 	}
 
-	err := db.Select("chat_id").
+	err := deps.DB.Select("chat_id").
 		From("roles").
-		Where(sq.Eq{"role_nick": shortName}).
+		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
 		QueryRow().Scan(&chatID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], shortName))
+			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
 		}
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
 
-	rows, err := db.Delete("roles").
-		Where(sq.Eq{"role_nick": shortName}).
+	rows, err := deps.DB.Delete("roles").
+		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
 
@@ -297,37 +282,40 @@ func Destroy(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.State
 		err = rows.Scan(&roleID)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning role id: %s", err)
-			logger.Error(newErr)
+			deps.Logger.Error(newErr)
 			return common.SendFatal(newErr.Error())
 		}
 	}
 
 	// We now need to create the default filter for this role
-	filterResponse, filterID := filters.Delete(shortName, logger, db)
+	filterResponse, filterID := filters.Delete(ticker, deps)
 
-	_, err = db.Delete("filter_membership").
+	_, err = deps.DB.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting filter_membershipts for %s: %s", roleType[sig], err))
 	}
 
-	_, err = db.Delete("role_filters").
+	_, err = deps.DB.Delete("role_filters").
 		Where(sq.Eq{"role": roleID}).
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting role_filters %s: %s", roleType[sig], err))
 	}
 
-	queueUpdate(chatID, payloads.Delete, logger, nsq)
+	err = queueUpdate(&discordgo.Role{ID: fmt.Sprintf("%d", chatID)}, payloads.Delete, deps)
+	if err != nil {
+		return common.SendFatal(fmt.Sprintf("error deleting role for %s: %s", roleType[sig], err))
+	}
 
-	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Destroyed %s `%s`", roleType[sig], shortName)))
+	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Destroyed %s `%s`", roleType[sig], ticker)))
 }
 
-func AuthedUpdate(sig bool, shortName, key, value, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	if !perms.CanPerform(author, adminType[sig], logger, db) {
+func AuthedUpdate(sig bool, ticker, key, value, author string, deps common.Dependencies) string {
+	if !perms.CanPerform(author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
@@ -335,65 +323,105 @@ func AuthedUpdate(sig bool, shortName, key, value, author string, logger *zap.Su
 		return common.SendError(fmt.Sprintf("`%s` isn't a valid Role Key", key))
 	}
 
-	return Update(sig, shortName, key, value, logger, db, nsq)
+	values := map[string]string{
+		key: value,
+	}
+	return Update(sig, ticker, values, deps)
 }
 
-func Update(sig bool, shortName, key, value string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	var chatID int
+func Update(sig bool, ticker string, values map[string]string, deps common.Dependencies) string {
+	var name string
 
 	// ShortName, Key and Value are required so let's check for those
-	if len(shortName) == 0 {
-		return common.SendError("short name is required")
+	if len(ticker) == 0 {
+		return common.SendError("ticker is required")
 	}
 
-	if len(key) == 0 {
-		return common.SendError("type is required")
+	if len(values) == 0 {
+		return common.SendError("values is required")
 	}
 
-	if len(value) == 0 {
-		return common.SendError("name is requred")
-	}
-
-	if key == "Color" {
-		if string(value[0]) == "#" {
-			i, _ := strconv.ParseInt(value[1:], 16, 64)
-			value = strconv.Itoa(int(i))
-		}
-	}
-
-	err := db.Select("chat_id").
+	err := deps.DB.Select("name").
 		From("roles").
-		Where(sq.Eq{"role_nick": shortName}).
+		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
-		QueryRow().Scan(&chatID)
+		QueryRow().Scan(&name)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], shortName))
+			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
 		}
 		return common.SendFatal(err.Error())
 	}
 
-	if chatID == 0 {
-		return common.SendError(fmt.Sprintf("%s `%s` doesn't have chatID set properly", roleType[sig], shortName))
+	updateSQL := deps.DB.Update("roles")
+
+	for k, v := range values {
+		if k == "Color" {
+			if string(v[0]) == "#" {
+				i, _ := strconv.ParseInt(v[1:], 16, 64)
+				v = strconv.Itoa(int(i))
+			}
+		}
+		updateSQL = updateSQL.Set(strings.ToLower(k), v)
 	}
 
-	_, err = db.Update("roles").
-		Set(strings.ToLower(key), value).
-		Where(sq.Eq{"chat_id": chatID}).
+	_, err = updateSQL.Where(sq.Eq{"name": name}).
 		Where(sq.Eq{"sig": sig}).
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
 	}
 
-	var role discordgo.Role
+	role, err := GetChremoasRole(sig, ticker, deps)
+	if err != nil {
+		deps.Logger.Error(err)
+		return common.SendFatal(fmt.Sprintf("error fetching %s from db: %s", roleType[sig], err))
+	}
 
-	err = db.Select("name", "managed", "mentionable", "hoist", "color", "position", "permissions").
+	dRole, err := GetDiscordRole(role.Name, deps)
+	if err != nil {
+		return common.SendFatal(fmt.Sprintf("error fetching roles from discord: %s", err))
+	}
+
+	if role.ID != dRole.ID {
+		// The role was probably created/recreated manually.
+		_, err := deps.DB.Update("roles").
+			Set("ID", dRole.ID).
+			Where(sq.Eq{"name": role.Name}).
+			Query()
+		if err != nil {
+			deps.Logger.Errorf("error updating role's ID: %s", err)
+		}
+	}
+
+	if role.Mentionable != dRole.Mentionable ||
+		role.Hoist != dRole.Hoist ||
+		role.Color != dRole.Color ||
+		role.Permissions != dRole.Permissions {
+		deps.Logger.Infof("Roles differ for %s", name)
+
+		err = queueUpdate(role, payloads.Upsert, deps)
+		if err != nil {
+			return common.SendFatal(fmt.Sprintf("error updating role for %s: %s", roleType[sig], err))
+		}
+	}
+
+	return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], ticker))
+}
+
+func GetChremoasRole(sig bool, ticker string, deps common.Dependencies) (*discordgo.Role, error) {
+	var (
+		role discordgo.Role
+		err  error
+	)
+
+	err = deps.DB.Select("chat_id", "name", "managed", "mentionable", "hoist", "color", "position", "permissions").
 		From("roles").
-		Where(sq.Eq{"chat_id": chatID}).
+		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
 		QueryRow().Scan(
+		&role.ID,
 		&role.Name,
 		&role.Managed,
 		&role.Mentionable,
@@ -403,42 +431,55 @@ func Update(sig bool, shortName, key, value string, logger *zap.SugaredLogger, d
 		&role.Permissions,
 	)
 	if err != nil {
-		logger.Error(err)
-		return common.SendFatal(fmt.Sprintf("error fetching %s from db: %s", roleType[sig], err))
+		return nil, fmt.Errorf("error fetching %s from db: %s", roleType[sig], err)
 	}
 
-	queueUpdate(chatID, payloads.Update, logger, nsq)
-
-	return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], shortName))
+	return &role, nil
 }
 
-func ListFilters(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType) string {
+func GetDiscordRole(name string, deps common.Dependencies) (*discordgo.Role, error) {
+	roles, err := deps.Session.GuildRoles(deps.GuildID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, r := range roles {
+		if r.Name == name {
+			// something is different, let's push changes to discord
+			return r, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no such role: %s", name)
+}
+
+func ListFilters(sig bool, ticker string, deps common.Dependencies) string {
 	var (
 		buffer  bytes.Buffer
 		filter  string
 		results bool
 	)
 
-	rows, err := db.Select("filters.name").
+	rows, err := deps.DB.Select("filters.name").
 		From("filters").
 		Join("role_filters ON role_filters.filter = filters.id").
 		Join("roles ON roles.id = role_filters.role").
-		Where(sq.Eq{"roles.role_nick": shortName}).
+		Where(sq.Eq{"roles.role_nick": ticker}).
 		Where(sq.Eq{"roles.sig": sig}).
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error fetching filters: %s", err))
 	}
 
 	for rows.Next() {
 		if !results {
-			buffer.WriteString(fmt.Sprintf("Filters for %s\n", shortName))
+			buffer.WriteString(fmt.Sprintf("Filters for %s\n", ticker))
 			results = true
 		}
 		err = rows.Scan(&filter)
 		if err != nil {
-			logger.Error(err)
+			deps.Logger.Error(err)
 			return common.SendFatal(fmt.Sprintf("error scanning row filters: %s", err))
 		}
 
@@ -448,26 +489,26 @@ func ListFilters(sig bool, shortName string, logger *zap.SugaredLogger, db *sq.S
 	if results {
 		return fmt.Sprintf("```%s```", buffer.String())
 	} else {
-		return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], shortName))
+		return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
 	}
 }
 
-func AuthedAddFilter(sig bool, filter, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	if !perms.CanPerform(author, adminType[sig], logger, db) {
+func AuthedAddFilter(sig bool, filter, ticker, author string, deps common.Dependencies) string {
+	if !perms.CanPerform(author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	return AddFilter(sig, filter, shortName, logger, db, nsq)
+	return AddFilter(sig, filter, ticker, deps)
 }
 
-func AddFilter(sig bool, filter, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) string {
 	var (
 		err      error
 		filterID int
 		roleID   int
 	)
 
-	err = db.Select("id").
+	err = deps.DB.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
 		QueryRow().Scan(&filterID)
@@ -475,51 +516,51 @@ func AddFilter(sig bool, filter, shortName string, logger *zap.SugaredLogger, db
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
 		}
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error fetching filter id: %s", err))
 	}
 
-	err = db.Select("id").
+	err = deps.DB.Select("id").
 		From("roles").
-		Where(sq.Eq{"role_nick": shortName}).
+		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
 		QueryRow().Scan(&roleID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
 		}
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
 	}
 
-	_, err = db.Insert("role_filters").
+	_, err = deps.DB.Insert("role_filters").
 		Columns("role", "filter").
 		Values(roleID, filterID).
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error inserting role_filter: %s", err))
 	}
 
-	return common.SendSuccess(fmt.Sprintf("Added filter %s to role %s", filter, shortName))
+	return common.SendSuccess(fmt.Sprintf("Added filter %s to role %s", filter, ticker))
 }
 
-func AuthedRemoveFilter(sig bool, filter, shortName, author string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
-	if !perms.CanPerform(author, adminType[sig], logger, db) {
+func AuthedRemoveFilter(sig bool, filter, ticker, author string, deps common.Dependencies) string {
+	if !perms.CanPerform(author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	return RemoveFilter(sig, filter, shortName, logger, db, nsq)
+	return RemoveFilter(sig, filter, ticker, deps)
 }
 
-func RemoveFilter(sig bool, filter, shortName string, logger *zap.SugaredLogger, db *sq.StatementBuilderType, nsq *nsq.Producer) string {
+func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) string {
 	var (
 		err      error
 		filterID int
 		roleID   int
 	)
 
-	err = db.Select("id").
+	err = deps.DB.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
 		QueryRow().Scan(&filterID)
@@ -527,31 +568,31 @@ func RemoveFilter(sig bool, filter, shortName string, logger *zap.SugaredLogger,
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
 		}
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error fetching filter id: %s", err))
 	}
 
-	err = db.Select("id").
+	err = deps.DB.Select("id").
 		From("roles").
-		Where(sq.Eq{"role_nick": shortName}).
+		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
 		QueryRow().Scan(&roleID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
 		}
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
 	}
 
-	_, err = db.Delete("role_filters").
+	_, err = deps.DB.Delete("role_filters").
 		Where(sq.Eq{"role": roleID}).
 		Where(sq.Eq{"filter": filterID}).
 		Query()
 	if err != nil {
-		logger.Error(err)
+		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting role_filter: %s", err))
 	}
 
-	return common.SendSuccess(fmt.Sprintf("Removed filter %s from role %s", filter, shortName))
+	return common.SendSuccess(fmt.Sprintf("Removed filter %s from role %s", filter, ticker))
 }

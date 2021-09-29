@@ -13,6 +13,6 @@ func (c Command) Ping(s *discordgo.Session, m *discordgo.Message, ctx *mux.Conte
 	fmt.Println("Got a ping!")
 	_, err := s.ChannelMessageSend(m.ChannelID, "Pong!")
 	if err != nil {
-		c.logger.Errorf("Error sending command: %s", err)
+		c.dependencies.Logger.Errorf("Error sending command: %s", err)
 	}
 }
