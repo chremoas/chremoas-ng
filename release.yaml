@@ -1,11 +1,13 @@
-apiVersion: serving.knative.dev/v1
-kind: Service
-metadata:
-  name: chremoas-ng
-spec:
-  template:
-    spec:
-      containers:
-        - image: docker.io/chremoas/chremoas-ng@sha256:26025d978fc6f3a6f663a084e211750ee7efb5cdc381cbab47af942769660125
+version: '3'
+services:
+  chremoas-ng:
+    image: docker.io/chremoas/chremoas-ng@sha256:89afff683bee21c0b6bd4c8bef14d20d4ef2a01df4132f0e14e77b2bef34e458
+    restart: always
+    ports:
+      - "3000:3000"
+      - "4000:4000"
+    environment:
+      CONSUL: 10.42.1.30:8500
+      CONFIG_NAMESPACE: chremoas-dev
 
 ---

@@ -381,7 +381,14 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 
 	dRole, err := GetDiscordRole(role.Name, deps)
 	if err != nil {
-		return common.SendFatal(fmt.Sprintf("error fetching roles from discord: %s", err))
+		// TODO: Figure out if there are errors we should really fail on
+		// return common.SendFatal(fmt.Sprintf("error fetching roles from discord: %s", err))
+		err = queueUpdate(role, payloads.Upsert, deps)
+		if err != nil {
+			return common.SendFatal(fmt.Sprintf("error updating role for %s: %s", roleType[sig], err))
+		}
+
+		return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], ticker))
 	}
 
 	if role.ID != dRole.ID {

@@ -1,0 +1,87 @@
+- hosts: rabbitmq
+  tasks:
+### Add APT keys and repos
+    - name: Add apt signing keys
+      apt_key:
+        url: "{{ item }}"
+        state: present
+      with_items:
+        - https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA
+        - https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xf77f1eda57ebb1cc
+        - https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey
+
+    - name: Add apt repositories into sources list
+      apt_repository:
+        repo: "{{ item }}"
+        state: present
+      with_items:
+        - deb http://ppa.launchpad.net/rabbitmq/rabbitmq-erlang/ubuntu focal main
+        - deb https://packagecloud.io/rabbitmq/rabbitmq-server/ubuntu/ focal main
+
+### Install software
+    - name: Install a list of packages
+      apt:
+        pkg:
+          - apt-transport-https
+          - erlang-base
+          - erlang-asn1
+          - erlang-crypto
+          - erlang-eldap
+          - erlang-ftp
+          - erlang-inets
+          - erlang-mnesia
+          - erlang-os-mon
+          - erlang-parsetools
+          - erlang-public-key
+          - erlang-runtime-tools
+          - erlang-snmp
+          - erlang-ssl
+          - erlang-syntax-tools
+          - erlang-tftp
+          - erlang-tools
+          - erlang-xmerl
+          - rabbitmq-server
+
+### Setup RabbitMQ
+    - name: Enables the rabbitmq_management plugin
+      rabbitmq_plugin:
+        names: rabbitmq_management
+        state: enabled
+
+    - name: "RabbitMQ: Delete guest user"
+      rabbitmq_user:
+        user: guest
+        state: absent
+
+    - name: "RabbitMQ create chremoas_dev vhost"
+      rabbitmq_vhost:
+        name: net.4amlunch.dev
+        state: present
+
+    - name: "RabbitMQ: Add user wonko (admin)"
+      rabbitmq_user:
+        user: wonko
+        password: "{{ rabbitmq_wonko_password }}"
+        permissions:
+          - vhost: /
+            configure_priv: .*
+            read_priv: .*
+            write_priv: .*
+          - vhost: net.4amlunch.dev
+            configure_priv: .*
+            read_priv: .*
+            write_priv: .*
+        state: present
+        tags: "administrator"
+
+#### Setup chremoas_dev stuff
+    - name: "RabbitMQ: Add user chremoas_dev"
+      rabbitmq_user:
+        user: chremoas_dev
+        password: "{{ rabbitmq_chremoas_dev_password }}"
+        permissions:
+          - vhost: net.4amlunch.dev
+            configure_priv: .*
+            read_priv: .*
+            write_priv: .*
+        state: present

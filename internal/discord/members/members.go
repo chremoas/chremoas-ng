@@ -23,8 +23,8 @@ func New(deps common.Dependencies) *Member {
 func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 	var (
 		role   string
-		roles  sets.StringSet
-		dRoles sets.StringSet
+		roles  = sets.NewStringSet()
+		dRoles = sets.NewStringSet()
 	)
 
 	m.dependencies.Logger.Info("Started members message handling")
@@ -53,6 +53,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 			Join("role_filters ON filters.id = role_filters.filter").
 			Join("roles ON role_filters.role = roles.id").
 			Where(sq.Eq{"filter_membership.user_id": body.Member}).
+			Where(sq.Eq{"roles.sync": true}).
 			Query()
 		if err != nil {
 			m.dependencies.Logger.Errorf("error updating member `%s`: %s", body.Member, err)
@@ -84,26 +85,21 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 
 		dRoles.FromSlice(member.Roles)
 
-		m.dependencies.Logger.Infof("member.Roles: %+v\n", dRoles)
-		m.dependencies.Logger.Infof("roles: %+v\n", roles)
-
-		removeRoles := dRoles.Difference(&roles)
-		removeRoles := compare(member.Roles, roles)
-		if len(removeRoles) > 0 {
-			m.dependencies.Logger.Infof("Removing roles from user %s: %s", body.Member, removeRoles)
+		removeRoles := dRoles.Difference(roles)
+		if removeRoles.Len() > 0 {
+			m.dependencies.Logger.Infof("Removing roles from user %s: %s", body.Member, removeRoles.ToSlice())
 		}
-		for _, role = range removeRoles {
+		for _, role = range removeRoles.ToSlice() {
 			err = m.dependencies.Session.GuildMemberRoleRemove(m.dependencies.GuildID, body.Member, role)
 			if err != nil {
 				m.dependencies.Logger.Errorf("Error removing role %s from user %s: %s", role, body.Member, err)
 			}
 		}
 
-		addRoles := roles.Difference(&dRoles)
-		addRoles := compare(roles, member.Roles)
-		if len(addRoles) > 0 {
-			m.dependencies.Logger.Infof("Adding roles to user %s: %s", body.Member, addRoles)
-			for _, role = range addRoles {
+		addRoles := roles.Difference(dRoles)
+		if addRoles.Len() > 0 {
+			m.dependencies.Logger.Infof("Adding roles to user %s: %s", body.Member, addRoles.ToSlice())
+			for _, role = range addRoles.ToSlice() {
 				if role != "0" {
 					err = m.dependencies.Session.GuildMemberRoleAdd(m.dependencies.GuildID, body.Member, role)
 					if err != nil {
@@ -113,6 +109,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				}
 			}
 		}
+
 		err = d.Ack(false)
 		if err != nil {
 			m.dependencies.Logger.Errorf("Error Acking message: %s", err)
