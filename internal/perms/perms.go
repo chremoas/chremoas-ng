@@ -148,7 +148,7 @@ func AddMember(user, permission, author string, deps common.Dependencies) string
 	err := deps.DB.Select("id").
 		From("permissions").
 		Where(sq.Eq{"name": permission}).
-		QueryRow().Scan(&permissionID)
+		Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permissionID: %s", err)
 		deps.Logger.Error(newErr)
@@ -192,7 +192,7 @@ func RemoveMember(user, permission, author string, deps common.Dependencies) str
 	err := deps.DB.Select("id").
 		From("permissions").
 		Where(sq.Eq{"name": permission}).
-		QueryRow().Scan(&permissionID)
+		Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permisionID: %s", err)
 		deps.Logger.Error(newErr)
@@ -262,7 +262,7 @@ func CanPerform(authorID, permission string, deps common.Dependencies) bool {
 	err := deps.DB.Select("id").
 		From("permissions").
 		Where(sq.Eq{"name": permission}).
-		QueryRow().Scan(&permissionID)
+		Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permisionID: %s", err)
 		deps.Logger.Error(newErr)
@@ -272,7 +272,7 @@ func CanPerform(authorID, permission string, deps common.Dependencies) bool {
 		From("permission_membership").
 		Where(sq.Eq{"user_id": authorID}).
 		Where(sq.Eq{"permission": permissionID}).
-		QueryRow().Scan(&count)
+		Scan(&count)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permission count: %s", err)
 		deps.Logger.Error(newErr)

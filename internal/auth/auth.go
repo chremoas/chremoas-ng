@@ -29,7 +29,7 @@ func Create(_ context.Context, request *CreateRequest, deps common.Dependencies)
 		err = deps.DB.Select("COUNT(*)").
 			From("alliances").
 			Where(sq.Eq{"id": request.Alliance.ID}).
-			QueryRow().Scan(&count)
+			Scan(&count)
 		if err != nil {
 			deps.Logger.Error(err)
 			return nil, err
@@ -64,7 +64,7 @@ func Create(_ context.Context, request *CreateRequest, deps common.Dependencies)
 	err = deps.DB.Select("COUNT(*)").
 		From("corporations").
 		Where(sq.Eq{"id": request.Corporation.ID}).
-		QueryRow().Scan(&count)
+		Scan(&count)
 	if err != nil {
 		deps.Logger.Error(err)
 		return nil, err
@@ -105,7 +105,7 @@ func Create(_ context.Context, request *CreateRequest, deps common.Dependencies)
 	err = deps.DB.Select("count(*)").
 		From("characters").
 		Where(sq.Eq{"id": request.Character.ID}).
-		QueryRow().Scan(&count)
+		Scan(&count)
 	if err != nil {
 		deps.Logger.Error(err)
 		return nil, err
@@ -155,7 +155,7 @@ func Confirm(authCode, sender string, deps common.Dependencies) string {
 	err = deps.DB.Select("character_id", "used").
 		From("authentication_codes").
 		Where(sq.Eq{"code": authCode}).
-		QueryRow().Scan(&characterID, &used)
+		Scan(&characterID, &used)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendError(fmt.Sprintf("Error getting authentication code: %s", authCode))
@@ -168,7 +168,7 @@ func Confirm(authCode, sender string, deps common.Dependencies) string {
 	err = deps.DB.Select("name", "corporation_id").
 		From("characters").
 		Where(sq.Eq{"id": characterID}).
-		QueryRow().Scan(&name, &corporationID)
+		Scan(&name, &corporationID)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendError(fmt.Sprintf("Error getting character name: %d", characterID))
@@ -198,7 +198,7 @@ func Confirm(authCode, sender string, deps common.Dependencies) string {
 	err = deps.DB.Select("ticker", "alliance_id").
 		From("corporations").
 		Where(sq.Eq{"id": corporationID}).
-		QueryRow().Scan(&corpTicker, &allianceID)
+		Scan(&corpTicker, &allianceID)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendError("Error updating auth code used")
@@ -211,7 +211,7 @@ func Confirm(authCode, sender string, deps common.Dependencies) string {
 		err = deps.DB.Select("ticker").
 			From("alliances").
 			Where(sq.Eq{"id": allianceID}).
-			QueryRow().Scan(&allianceTicker)
+			Scan(&allianceTicker)
 		if err != nil {
 			deps.Logger.Error(err)
 			return common.SendError("Error updating auth code used")

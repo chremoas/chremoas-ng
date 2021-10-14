@@ -6,8 +6,11 @@ import (
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/bhechinger/go-sets"
 	"github.com/chremoas/chremoas-ng/internal/auth"
+	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
+	"github.com/chremoas/chremoas-ng/internal/payloads"
 )
 
 func (aep *authEsiPoller) updateCharacters() (int, int, error) {
@@ -94,7 +97,6 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 		err := aep.dependencies.DB.Select("name, alliance_id", "ticker").
 			From("corporations").
 			Where(sq.Eq{"id": response.CorporationId}).
-			QueryRow().
 			Scan(&corporation.Name, &corporation.AllianceID, &corporation.Ticker)
 		if err != nil {
 			aep.dependencies.Logger.Errorf("error getting corp info for %d: %s", response.CorporationId, err)
@@ -126,15 +128,41 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 	err = aep.dependencies.DB.Select("chat_id").
 		From("user_character_map").
 		Where(sq.Eq{"character_id": character.ID}).
-		QueryRow().
 		Scan(&chatID)
 	if err != nil {
 		aep.dependencies.Logger.Errorf("error getting chat_id from %d: %s", character.ID, err)
 		return err
 	}
 
-	// send them off to get processed
-	filters.QueueUpdate(fmt.Sprintf("%d", chatID), aep.dependencies)
+	strChatID := fmt.Sprintf("%d", chatID)
+
+	member, err := aep.dependencies.Session.GuildMember(aep.dependencies.GuildID, strChatID)
+	if err != nil {
+		aep.dependencies.Logger.Errorf("error getting guild member '%d': %s", chatID, err)
+		if err != nil {
+			aep.dependencies.Logger.Errorf("Error Acking message: %s", err)
+		}
+		return err
+	}
+
+	dRoles := sets.NewStringSet()
+	dRoles.FromSlice(member.Roles)
+
+	roles, err := common.GetMembership(strChatID, aep.dependencies)
+	if err != nil {
+		return err
+	}
+
+	addRoles := roles.Difference(dRoles)
+	removeRoles := dRoles.Difference(roles)
+
+	for _, r := range addRoles.ToSlice() {
+		filters.QueueUpdate(payloads.Add, strChatID, r, aep.dependencies)
+	}
+
+	for _, r := range removeRoles.ToSlice() {
+		filters.QueueUpdate(payloads.Delete, strChatID, r, aep.dependencies)
+	}
 
 	return nil
 }

@@ -16,7 +16,7 @@ func (aep *authEsiPoller) addCorpMembers(corpTicker string, allianceID int32) {
 	err := aep.dependencies.DB.Select("ticker").
 		From("alliances").
 		Where(sq.Eq{"id": allianceID}).
-		QueryRow().Scan(&allianceTicker)
+		Scan(&allianceTicker)
 	if err != nil {
 		aep.dependencies.Logger.Errorf("error getting alliance ticker for %d: %s", allianceID, err)
 		return
@@ -39,7 +39,7 @@ func (aep *authEsiPoller) removeCorpMembers(corpTicker string, allianceID int32)
 	err := aep.dependencies.DB.Select("ticker").
 		From("alliances").
 		Where(sq.Eq{"id": allianceID}).
-		QueryRow().Scan(&allianceTicker)
+		Scan(&allianceTicker)
 	if err != nil {
 		aep.dependencies.Logger.Errorf("error getting alliance ticker for %d: %s", allianceID, err)
 		return
@@ -143,7 +143,7 @@ func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error 
 			err := aep.dependencies.DB.Select("name", "ticker").
 				From("alliances").
 				Where(sq.Eq{"id": response.AllianceId}).
-				QueryRow().Scan(&alliance.Name, &alliance.Ticker)
+				Scan(&alliance.Name, &alliance.Ticker)
 			if err != nil {
 				aep.dependencies.Logger.Errorf("Error fetching alliance: %s", err)
 			}
@@ -171,7 +171,7 @@ func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error 
 		From("roles").
 		Where(sq.Eq{"role_nick": response.Ticker}).
 		Where(sq.Eq{"sig": roles.Role}).
-		QueryRow().Scan(&count)
+		Scan(&count)
 	if err != nil {
 		aep.dependencies.Logger.Errorf("error getting count of corporations by name: %s", err)
 		return err

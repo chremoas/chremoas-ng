@@ -116,7 +116,7 @@ func ListUserRoles(sig bool, userID string, deps common.Dependencies) string {
 		buffer bytes.Buffer
 	)
 
-	roles, err := GetUserRoles(sig, userID, deps)
+	roles, err := common.GetUserRoles(sig, userID, deps)
 	if err != nil {
 		return common.SendError(fmt.Sprintf("error getting user roles: %s", err))
 	}
@@ -196,7 +196,7 @@ func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependen
 		Columns("sig", "joinable", "name", "role_nick", "chat_type").
 		Values(sig, joinable, name, ticker, chatType).
 		Suffix("RETURNING \"id\"").
-		QueryRow().Scan(&roleID)
+		Scan(&roleID)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -206,7 +206,7 @@ func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependen
 		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
 	}
 
-	role := &discordgo.Role{
+	role := payloads.Role{
 		Name:        name,
 		Managed:     false,
 		Mentionable: false,
@@ -260,7 +260,7 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
-		QueryRow().Scan(&chatID)
+		Scan(&chatID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
@@ -306,7 +306,7 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 		return common.SendFatal(fmt.Sprintf("error deleting role_filters %s: %s", roleType[sig], err))
 	}
 
-	err = queueUpdate(&discordgo.Role{ID: fmt.Sprintf("%d", chatID)}, payloads.Delete, deps)
+	err = queueUpdate(payloads.Role{ID: fmt.Sprintf("%d", chatID)}, payloads.Delete, deps)
 	if err != nil {
 		return common.SendFatal(fmt.Sprintf("error deleting role for %s: %s", roleType[sig], err))
 	}
@@ -345,7 +345,7 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
-		QueryRow().Scan(&name)
+		Scan(&name)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
@@ -417,9 +417,9 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 	return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], ticker))
 }
 
-func GetChremoasRole(sig bool, ticker string, deps common.Dependencies) (*discordgo.Role, error) {
+func GetChremoasRole(sig bool, ticker string, deps common.Dependencies) (payloads.Role, error) {
 	var (
-		role discordgo.Role
+		role payloads.Role
 		err  error
 	)
 
@@ -427,7 +427,7 @@ func GetChremoasRole(sig bool, ticker string, deps common.Dependencies) (*discor
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
-		QueryRow().Scan(
+		Scan(
 		&role.ID,
 		&role.Name,
 		&role.Managed,
@@ -438,10 +438,10 @@ func GetChremoasRole(sig bool, ticker string, deps common.Dependencies) (*discor
 		&role.Permissions,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching %s from db: %s", roleType[sig], err)
+		return payloads.Role{}, fmt.Errorf("error fetching %s from db: %s", roleType[sig], err)
 	}
 
-	return &role, nil
+	return role, nil
 }
 
 func GetDiscordRole(name string, deps common.Dependencies) (*discordgo.Role, error) {
@@ -518,7 +518,7 @@ func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) string
 	err = deps.DB.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
-		QueryRow().Scan(&filterID)
+		Scan(&filterID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
@@ -531,7 +531,7 @@ func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) string
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
-		QueryRow().Scan(&roleID)
+		Scan(&roleID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
@@ -570,7 +570,7 @@ func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) str
 	err = deps.DB.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
-		QueryRow().Scan(&filterID)
+		Scan(&filterID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
@@ -583,7 +583,7 @@ func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) str
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
-		QueryRow().Scan(&roleID)
+		Scan(&roleID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))

@@ -92,7 +92,7 @@ func (aep *authEsiPoller) updateAlliance(alliance auth.Alliance) error {
 		From("roles").
 		Where(sq.Eq{"role_nick": response.Ticker}).
 		Where(sq.Eq{"sig": roles.Role}).
-		QueryRow().Scan(&count)
+		Scan(&count)
 	if err != nil {
 		aep.dependencies.Logger.Errorf("error getting count of alliances by name: %s", err)
 		return err

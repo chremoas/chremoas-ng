@@ -1,21 +1,24 @@
 package payloads
 
-import (
-	"github.com/bwmarrin/discordgo"
-)
-
 type Action string
 
 const (
+	Add    Action = "add"
 	Upsert Action = "upsert"
 	Delete Action = "delete"
 )
 
-type Payload struct {
-	Action Action          `json:"action,omitempty"`
-	Role   *discordgo.Role `json:"role,omitempty"`
-	Filter *Filter         `json:"filter,omitempty"`
-	Member string          `json:"member,omitempty"`
+type RolePayload struct {
+	Action  Action `json:"action,omitempty"`
+	GuildID string `json:"guildId"`
+	Role    Role   `json:"role,omitempty"`
+}
+
+type MemberPayload struct {
+	Action   Action `json:"action"`
+	GuildID  string `json:"guildId"`
+	MemberID string `json:"memberId"`
+	RoleID   string `json:"roleId"`
 }
 
 // Filter is the filter data structure
@@ -28,17 +31,21 @@ type Filter struct {
 
 // Role is the role data structure
 type Role struct {
-	ID          int64  `json:"id,omitempty"`
-	Color       int32  `json:"color,omitempty"`
-	Hoist       bool   `json:"hoist,omitempty"`
-	Joinable    bool   `json:"joinable,omitempty"`
+	// discordgo.Role
+	ID          string `json:"id,omitempty"`
+	Name        string `json:"name"`
 	Managed     bool   `json:"managed,omitempty"`
 	Mentionable bool   `json:"mentionable,omitempty"`
-	Name        string `json:"name"`
+	Hoist       bool   `json:"hoist,omitempty"`
+	Color       int    `json:"color,omitempty"`
+	Position    int    `json:"position,omitempty"`
 	Permissions int64  `json:"permissions,omitempty"`
-	Position    int32  `json:"position,omitempty"`
-	ShortName   string `json:"role_nick"`
-	Sig         bool   `json:"sig,omitempty"`
-	Sync        bool   `json:"sync,omitempty"`
-	Type        string `json:"chat_type"`
+
+	// Chremoas bits
+	ChatID    int64  `json:"chat_id,omitempty"`
+	Joinable  bool   `json:"joinable,omitempty"`
+	ShortName string `json:"role_nick"`
+	Sig       bool   `json:"sig,omitempty"`
+	Sync      bool   `json:"sync,omitempty"`
+	Type      string `json:"chat_type"`
 }

@@ -54,7 +54,7 @@ func New(logger *zap.SugaredLogger) (*sq.StatementBuilderType, error) {
 		err = db.Select("id").
 			From("permissions").
 			Where(sq.Eq{"name": k}).
-			QueryRow().Scan(&id)
+			Scan(&id)
 
 		switch err {
 		case nil:
@@ -65,7 +65,7 @@ func New(logger *zap.SugaredLogger) (*sq.StatementBuilderType, error) {
 				Columns("name", "description").
 				Values(k, v).
 				Suffix("RETURNING \"id\"").
-				QueryRow().Scan(&id)
+				Scan(&id)
 			if err != nil {
 				logger.Error(err)
 				return nil, err

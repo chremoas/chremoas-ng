@@ -21,6 +21,10 @@ func (set *StringSet) Remove(s string) {
 	delete(set.Set, s)
 }
 
+func (set *StringSet) Merge(newSet *StringSet) {
+	set.FromSlice(newSet.ToSlice())
+}
+
 func (set *StringSet) Contains(s string) bool {
 	_, found := set.Set[s]
 	return found

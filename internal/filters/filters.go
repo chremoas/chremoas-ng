@@ -65,7 +65,7 @@ func Add(name, description string, deps common.Dependencies) (string, int) {
 		Columns("name", "description").
 		Values(name, description).
 		Suffix("RETURNING \"id\"").
-		QueryRow().Scan(&id)
+		Scan(&id)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -170,10 +170,15 @@ func AddMember(userID, filter string, deps common.Dependencies) string {
 		userID = common.ExtractUserId(userID)
 	}
 
+	before, err := common.GetMembership(userID, deps)
+	if err != nil {
+		return common.SendFatal(err.Error())
+	}
+
 	err = deps.DB.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
-		QueryRow().Scan(&filterID)
+		Scan(&filterID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
@@ -199,7 +204,20 @@ func AddMember(userID, filter string, deps common.Dependencies) string {
 		return common.SendFatal(newErr.Error())
 	}
 
-	QueueUpdate(userID, deps)
+	after, err := common.GetMembership(userID, deps)
+	if err != nil {
+		return common.SendFatal(err.Error())
+	}
+
+	addSet := after.Difference(before)
+
+	if addSet.Len() == 0 {
+		return common.SendError(fmt.Sprintf("<@%s> already a member of: `%s`", userID, filter))
+	}
+
+	for _, role := range addSet.ToSlice() {
+		QueueUpdate(payloads.Upsert, userID, role, deps)
+	}
 
 	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, filter))
 }
@@ -213,12 +231,14 @@ func AuthedRemoveMember(userID, filter, author string, deps common.Dependencies)
 }
 
 func RemoveMember(userID, filter string, deps common.Dependencies) string {
-	var (
-		filterID int
-		deleted  bool
-	)
+	var filterID int
 
-	_, err := strconv.Atoi(userID)
+	before, err := common.GetMembership(userID, deps)
+	if err != nil {
+		return common.SendFatal(err.Error())
+	}
+
+	_, err = strconv.Atoi(userID)
 	if err != nil {
 		if !common.IsDiscordUser(userID) {
 			return common.SendError("second argument must be a discord user")
@@ -229,14 +249,14 @@ func RemoveMember(userID, filter string, deps common.Dependencies) string {
 	err = deps.DB.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
-		QueryRow().Scan(&filterID)
+		Scan(&filterID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning filterID: %s", err)
 		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
 
-	rows, err := deps.DB.Delete("filter_membership").
+	_, err = deps.DB.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).
 		Where(sq.Eq{"user_id": userID}).
 		Suffix("RETURNING \"id\"").
@@ -247,21 +267,30 @@ func RemoveMember(userID, filter string, deps common.Dependencies) string {
 		return common.SendFatal(newErr.Error())
 	}
 
-	for rows.Next() {
-		deleted = true
+	after, err := common.GetMembership(userID, deps)
+	if err != nil {
+		return common.SendFatal(err.Error())
 	}
 
-	if deleted {
-		QueueUpdate(userID, deps)
-		return common.SendSuccess(fmt.Sprintf("Removed <@%s> from `%s`", userID, filter))
+	removeSet := before.Difference(after)
+
+	if removeSet.Len() == 0 {
+		return common.SendError(fmt.Sprintf("<@%s> not a member of `%s`", userID, filter))
 	}
 
-	return common.SendError(fmt.Sprintf("<@%s> not a member of `%s`", userID, filter))
+	for _, role := range removeSet.ToSlice() {
+		QueueUpdate(payloads.Delete, userID, role, deps)
+	}
+
+	return common.SendSuccess(fmt.Sprintf("Removed <@%s> from `%s`", userID, filter))
 }
 
-func QueueUpdate(member string, deps common.Dependencies) {
-	payload := payloads.Payload{
-		Member: member,
+func QueueUpdate(action payloads.Action, memberID, roleID string, deps common.Dependencies) {
+	payload := payloads.MemberPayload{
+		Action:   action,
+		GuildID:  deps.GuildID,
+		MemberID: memberID,
+		RoleID:   roleID,
 	}
 
 	b, err := json.Marshal(payload)

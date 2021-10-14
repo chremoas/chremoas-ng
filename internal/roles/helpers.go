@@ -3,10 +3,8 @@ package roles
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 )
@@ -20,7 +18,7 @@ func getRoleID(name string, deps common.Dependencies) (int, error) {
 	err = deps.DB.Select("id").
 		From("roles").
 		Where(sq.Eq{"role_nick": name}).
-		QueryRow().Scan(&id)
+		Scan(&id)
 
 	return id, err
 }
@@ -34,9 +32,10 @@ func validListItem(a string, list []string) bool {
 	return false
 }
 
-func queueUpdate(role *discordgo.Role, action payloads.Action, deps common.Dependencies) error {
-	payload := payloads.Payload{
+func queueUpdate(role payloads.Role, action payloads.Action, deps common.Dependencies) error {
+	payload := payloads.RolePayload{
 		Action: action,
+		GuildID: deps.GuildID,
 		Role: role,
 	}
 
@@ -118,52 +117,6 @@ func GetRoleMembers(sig bool, name string, deps common.Dependencies) ([]int, err
 	}
 
 	return members, nil
-}
-
-func GetUserRoles(sig bool, userID string, deps common.Dependencies) ([]payloads.Role, error) {
-	var (
-		roles []payloads.Role
-	)
-
-	_, err := strconv.Atoi(userID)
-	if err != nil {
-		if !common.IsDiscordUser(userID) {
-			return nil, fmt.Errorf("second argument must be a discord user")
-		}
-		userID = common.ExtractUserId(userID)
-	}
-
-	rows, err := deps.DB.Select("role_nick", "name").
-		From("").
-		Suffix("getMemberRoles(?, ?)", userID, strconv.FormatBool(sig)).
-		Query()
-	if err != nil {
-		deps.Logger.Error(err)
-		return nil, fmt.Errorf("error getting user %ss (%s): %s", roleType[sig], userID, err)
-	}
-	defer func() {
-		if err = rows.Close(); err != nil {
-			deps.Logger.Error(err)
-		}
-	}()
-
-	for rows.Next() {
-		var role payloads.Role
-
-		err = rows.Scan(
-			&role.ShortName,
-			&role.Name,
-		)
-		if err != nil {
-			newErr := fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
-			deps.Logger.Error(newErr)
-			return nil, newErr
-		}
-
-		roles = append(roles, role)
-	}
-
-	return roles, nil
 }
 
 // GetRoles goes and fetches all the roles of type sig/role. If shortname is set only one role is fetched.

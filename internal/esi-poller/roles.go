@@ -16,8 +16,8 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 		count         int
 		errorCount    int
 		roles         []*discordgo.Role
-		discordRoles  = make(map[string]*discordgo.Role)
-		chremoasRoles = make(map[string]*discordgo.Role)
+		discordRoles  = make(map[string]payloads.Role)
+		chremoasRoles = make(map[string]payloads.Role)
 	)
 
 	roles, err := aep.dependencies.Session.GuildRoles(aep.dependencies.GuildID)
@@ -27,7 +27,18 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 
 	for _, role := range roles {
 		if !common.IgnoreRole(role.Name) {
-			discordRoles[role.Name] = role
+			var dr payloads.Role
+
+			dr.ID = role.ID
+			dr.Name = role.Name
+			dr.Managed = role.Managed
+			dr.Mentionable = role.Mentionable
+			dr.Hoist = role.Hoist
+			dr.Color = role.Color
+			dr.Position = role.Position
+			dr.Permissions = role.Permissions
+
+			discordRoles[role.Name] = dr
 		}
 	}
 
@@ -47,7 +58,7 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 	}()
 
 	for rows.Next() {
-		var role discordgo.Role
+		var role payloads.Role
 		err = rows.Scan(
 			&role.ID,
 			&role.Name,
@@ -64,7 +75,7 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 			continue
 		}
 
-		chremoasRoles[role.Name] = &role
+		chremoasRoles[role.Name] = role
 	}
 
 	// Delete roles from discord that aren't in the bot
@@ -111,10 +122,10 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 // interDiff finds the intersection of the two maps of roles and then checks if there are any
 // differences between what we (chremoas) thinks the roles should be and what they actually are
 // in discord.
-func interDiff(chremoasMap, discordMap map[string]*discordgo.Role, deps common.Dependencies) []*discordgo.Role {
+func interDiff(chremoasMap, discordMap map[string]payloads.Role, deps common.Dependencies) []payloads.Role {
 	var (
 		roleList []string
-		output   []*discordgo.Role
+		output   []payloads.Role
 	)
 
 	// find the intersection and make as list
@@ -130,11 +141,11 @@ func interDiff(chremoasMap, discordMap map[string]*discordgo.Role, deps common.D
 		if chremoasMap[r].ID != discordMap[r].ID {
 			// The role was probably recreated manually.
 			_, err := deps.DB.Update("roles").
-				Set("ID", discordMap[r].ID).
+				Set("chat_id", discordMap[r].ID).
 				Where(sq.Eq{"name": r}).
 				Query()
 			if err != nil {
-				deps.Logger.Errorf("error updating role's ID: %s", err)
+				deps.Logger.Errorf("error updating role's chat_id: %s", err)
 			}
 		}
 
@@ -151,9 +162,9 @@ func interDiff(chremoasMap, discordMap map[string]*discordgo.Role, deps common.D
 	return output
 }
 
-func difference(map1, map2 map[string]*discordgo.Role) []*discordgo.Role {
+func difference(map1, map2 map[string]payloads.Role) []payloads.Role {
 	var found bool
-	var output []*discordgo.Role
+	var output []payloads.Role
 
 	for m1, role := range map1 {
 		found = false
@@ -172,10 +183,11 @@ func difference(map1, map2 map[string]*discordgo.Role) []*discordgo.Role {
 	return output
 }
 
-func (aep authEsiPoller) queueUpdate(role *discordgo.Role, action payloads.Action) error {
-	payload := payloads.Payload{
-		Action: action,
-		Role:   role,
+func (aep authEsiPoller) queueUpdate(role payloads.Role, action payloads.Action) error {
+	payload := payloads.RolePayload{
+		Action:  action,
+		GuildID: aep.dependencies.GuildID,
+		Role:    role,
 	}
 
 	b, err := json.Marshal(payload)

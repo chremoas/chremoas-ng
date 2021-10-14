@@ -18,7 +18,7 @@ bot:
 database:
   driver: postgres
   protocol: tcp
-  host: localhost
+  host: 10.42.1.30
   port: 5432
   database: chremoas_dev
   username: chremoas_dev
@@ -27,7 +27,7 @@ database:
   maxConnections: 5
 
 queue:
-  host: 10.42.0.10
+  host: 10.42.1.30
   username: chremoas_dev
   password: s5lNJDoV9hEl9IKBDCBF
   port: 5672
