@@ -23,14 +23,11 @@ require (
 	github.com/lib/pq v1.10.0
 	github.com/miekg/dns v1.1.22 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
-	github.com/nsqio/go-nsq v1.0.8 // indirect
 	github.com/pelletier/go-toml v1.8.1 // indirect
 	github.com/rabbitmq/amqp091-go v0.0.0-20210917115608-f77dab523f04
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.7.1
-	github.com/streadway/amqp v1.0.0 // indirect
 	go.uber.org/zap v1.16.0
-	golang.org/x/net v0.0.0-20210220033124-5f55cee0dc0d // indirect
 	sigs.k8s.io/yaml v1.1.0 // indirect
 )
 
