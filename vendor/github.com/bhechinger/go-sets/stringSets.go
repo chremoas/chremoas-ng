@@ -8,13 +8,12 @@ func NewStringSet() *StringSet {
 	return &StringSet{make(map[string]bool)}
 }
 
-func (set *StringSet) Add(s string) bool {
+func (set *StringSet) Add(s string) {
 	if len(s) == 0 {
-		return false
+		return
 	}
-	_, found := set.Set[s]
+
 	set.Set[s] = true
-	return !found
 }
 
 func (set *StringSet) Remove(s string) {

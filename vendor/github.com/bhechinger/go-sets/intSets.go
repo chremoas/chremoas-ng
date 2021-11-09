@@ -8,10 +8,9 @@ func NewIntSet() *IntSet {
 	return &IntSet{make(map[int]bool)}
 }
 
-func (set *IntSet) Add(s int) bool {
-	_, found := set.set[s]
+func (set *IntSet) Add(s int) {
 	set.set[s] = true
-	return !found
+	return
 }
 
 func (set *IntSet) Remove(s int) {
