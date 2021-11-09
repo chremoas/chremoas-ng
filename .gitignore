@@ -39,3 +39,4 @@ credentials
 coverage.txt
 /ansible/secrets.yaml
 /ansible/inventory.yaml
+chremoas.yaml
