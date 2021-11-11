@@ -4,7 +4,7 @@ go 1.16
 
 require (
 	github.com/Masterminds/squirrel v1.5.0
-	github.com/antihax/goesi v0.0.0-20210313233113-a4c71dbef361
+	github.com/antihax/goesi v0.0.0-20211028231550-640b98e35e09
 	github.com/astaxie/beego v1.12.3
 	github.com/bhechinger/go-sets v0.0.4
 	github.com/bwmarrin/discordgo v0.23.2

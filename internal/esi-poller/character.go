@@ -56,24 +56,24 @@ func (aep *authEsiPoller) updateCharacters() (int, int, error) {
 func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 	response, _, err := aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(context.Background(), character.ID, nil)
 	if err != nil {
-		if aep.notFound(err) == nil {
-			aep.dependencies.Logger.Infof("Deleting character: %d", character.ID)
-			rows, deleteErr := aep.dependencies.DB.Delete("characters").
-				Where(sq.Eq{"id": character.ID}).
-				Query()
-			if deleteErr != nil {
-				aep.dependencies.Logger.Errorf("Error deleting character: %s", err)
-			}
+		aep.dependencies.Logger.Infof("Character not found: %d", character.ID)
+		// if aep.notFound(err) == nil {
+		// aep.dependencies.Logger.Infof("Deleting character: %d", character.ID)
+		// rows, deleteErr := aep.dependencies.DB.Delete("characters").
+		// 	Where(sq.Eq{"id": character.ID}).
+		// 	Query()
+		// if deleteErr != nil {
+		// 	aep.dependencies.Logger.Errorf("Error deleting character: %s", deleteErr)
+		// }
+		//
+		// deleteErr = rows.Close()
+		// if deleteErr != nil {
+		// 	aep.dependencies.Logger.Errorf("Error closing DB: %s", err)
+		// }
+		//
+		// return deleteErr
+		// }
 
-			deleteErr = rows.Close()
-			if deleteErr != nil {
-				aep.dependencies.Logger.Errorf("Error closing DB: %s", err)
-			}
-
-			return deleteErr
-		}
-
-		aep.dependencies.Logger.Errorf("Error calling GetCharactersCharacterId: %s", err)
 		return err
 	}
 
