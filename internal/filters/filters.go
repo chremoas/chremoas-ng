@@ -27,6 +27,12 @@ func List(deps common.Dependencies) string {
 		deps.Logger.Error(err)
 		return common.SendFatal(err.Error())
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	buffer.WriteString("Filters:\n")
 	for rows.Next() {
@@ -99,6 +105,12 @@ func Delete(name string, deps common.Dependencies) (string, int) {
 		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error()), -1
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	for rows.Next() {
 		err = rows.Scan(&id)
@@ -128,6 +140,12 @@ func ListMembers(name string, deps common.Dependencies) string {
 		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	buffer.WriteString(fmt.Sprintf("Filter membership (%s):\n", name))
 	for rows.Next() {
@@ -190,7 +208,7 @@ func AddMember(userID, filter string, deps common.Dependencies) string {
 
 	deps.Logger.Infof("Got userID:%s filterID:%d", userID, filterID)
 
-	_, err = deps.DB.Insert("filter_membership").
+	rows, err := deps.DB.Insert("filter_membership").
 		Columns("filter", "user_id").
 		Values(filterID, userID).
 		Query()
@@ -203,6 +221,12 @@ func AddMember(userID, filter string, deps common.Dependencies) string {
 		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	after, err := common.GetMembership(userID, deps)
 	if err != nil {
@@ -256,7 +280,7 @@ func RemoveMember(userID, filter string, deps common.Dependencies) string {
 		return common.SendFatal(newErr.Error())
 	}
 
-	_, err = deps.DB.Delete("filter_membership").
+	rows, err := deps.DB.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).
 		Where(sq.Eq{"user_id": userID}).
 		Suffix("RETURNING \"id\"").
@@ -266,6 +290,12 @@ func RemoveMember(userID, filter string, deps common.Dependencies) string {
 		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	after, err := common.GetMembership(userID, deps)
 	if err != nil {
@@ -298,7 +328,7 @@ func QueueUpdate(action payloads.Action, memberID, roleID string, deps common.De
 		deps.Logger.Errorf("error marshalling queue message: %s", err)
 	}
 
-	deps.Logger.Debug("Submitting member queue message")
+	deps.Logger.Debugf("Submitting member queue message: %+v", payload)
 	err = deps.MembersProducer.Publish(b)
 	if err != nil {
 		deps.Logger.Errorf("error publishing message: %s", err)

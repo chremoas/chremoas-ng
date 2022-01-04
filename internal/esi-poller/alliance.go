@@ -55,22 +55,10 @@ func (aep *authEsiPoller) updateAlliance(alliance auth.Alliance) error {
 	response, _, err := aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), alliance.ID, nil)
 	if err != nil {
 		if aep.notFound(err) == nil {
-			aep.dependencies.Logger.Infof("Deleting alliance: %d", alliance.ID)
-			deleteRows, deleteErr := aep.dependencies.DB.Delete("alliances").
-				Where(sq.Eq{"id": alliance.ID}).
-				Query()
-			if deleteErr != nil {
-				aep.dependencies.Logger.Errorf("Error deleting alliance: %s", err)
-			}
-
-			deleteErr = deleteRows.Close()
-			if deleteErr != nil {
-				aep.dependencies.Logger.Errorf("Error closing DB: %s", err)
-			}
-
+			aep.dependencies.Logger.Infof("Alliance not found: %d", alliance.ID)
 			roles.Destroy(roles.Role, response.Ticker, aep.dependencies)
 
-			return deleteErr
+			return fmt.Errorf("alliance not found: %d", alliance.ID)
 		}
 
 		aep.dependencies.Logger.Errorf("Error calling GetAlliancesAllianceId: %s", err)
@@ -99,10 +87,10 @@ func (aep *authEsiPoller) updateAlliance(alliance auth.Alliance) error {
 	}
 
 	if count == 0 {
-		aep.dependencies.Logger.Infof("Adding Alliance: %s", response.Ticker)
+		aep.dependencies.Logger.Debugf("Adding Alliance: %s", response.Ticker)
 		roles.Add(roles.Role, false, response.Ticker, response.Name, "discord", aep.dependencies)
 	} else {
-		aep.dependencies.Logger.Infof("Updating Alliance: %s", response.Ticker)
+		aep.dependencies.Logger.Debugf("Updating Alliance: %s", response.Ticker)
 		values := map[string]string{
 			"role_nick": response.Ticker,
 			"name":      response.Name,

@@ -102,29 +102,17 @@ func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error 
 	response, _, err := aep.esiClient.ESI.CorporationApi.GetCorporationsCorporationId(context.Background(), corporation.ID, nil)
 	if err != nil {
 		if aep.notFound(err) == nil {
-			aep.dependencies.Logger.Infof("Deleting corporation: %d", corporation.ID)
-			deleteRows, deleteErr := aep.dependencies.DB.Delete("corporations").
-				Where(sq.Eq{"id": corporation.ID}).
-				Query()
-			if deleteErr != nil {
-				aep.dependencies.Logger.Errorf("Error deleting corporation: %s", err)
-			}
-
-			deleteErr = deleteRows.Close()
-			if deleteErr != nil {
-				aep.dependencies.Logger.Errorf("Error closing DB: %s", err)
-			}
-
+			aep.dependencies.Logger.Infof("Corporation not found: %d", corporation.ID)
 			roles.Destroy(roles.Role, response.Ticker, aep.dependencies)
 
-			return deleteErr
+			return fmt.Errorf("corporation not found: %d", corporation.ID)
 		}
 
 		aep.dependencies.Logger.Errorf("Error calling GetCorporationsCorporationId: %s", err)
 	}
 
 	if corporation.Name != response.Name || corporation.Ticker != response.Ticker || corporation.AllianceID.Int32 != response.AllianceId {
-		aep.dependencies.Logger.Infof("ESI Poller: Updating corporation: %d with name '%s' and ticker '%s'", corporation.ID, response.Name, response.Ticker)
+		aep.dependencies.Logger.Debugf("ESI Poller: Updating corporation: %d with name '%s' and ticker '%s'", corporation.ID, response.Name, response.Ticker)
 		err = aep.upsertCorporation(corporation.ID, response.AllianceId, response.Name, response.Ticker)
 		if err != nil {
 			aep.dependencies.Logger.Errorf("Error updating alliance '%d' for corp '%s': %s", response.AllianceId, corporation.Name, err)
@@ -136,8 +124,7 @@ func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error 
 	if corporation.AllianceID.Int32 != response.AllianceId {
 		if response.AllianceId != 0 {
 			// corp has joined or switched alliances so let's make sure the new alliance is up to date
-			aep.dependencies.Logger.Infof("ESI Poller: Updating corporation's alliance for %s with allianceId %d\n", response.Name, response.AllianceId)
-			aep.dependencies.Logger.Debugf("Updating alliance (cascade): %s (%d)", corporation.Name, corporation.AllianceID)
+			aep.dependencies.Logger.Debugf("ESI Poller: Updating corporation's alliance for %s with allianceId %d\n", response.Name, response.AllianceId)
 
 			alliance := auth.Alliance{ID: response.AllianceId}
 			err := aep.dependencies.DB.Select("name", "ticker").
@@ -178,10 +165,10 @@ func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error 
 	}
 
 	if count == 0 {
-		aep.dependencies.Logger.Infof("Adding Corporation: %s", response.Ticker)
+		aep.dependencies.Logger.Debugf("Adding Corporation: %s", response.Ticker)
 		roles.Add(roles.Role, false, response.Ticker, response.Name, "discord", aep.dependencies)
 	} else {
-		aep.dependencies.Logger.Infof("Updating Corporation: %s", response.Ticker)
+		aep.dependencies.Logger.Debugf("Updating Corporation: %s", response.Ticker)
 		values := map[string]string{
 			"role_nick": response.Ticker,
 			"name": response.Name,

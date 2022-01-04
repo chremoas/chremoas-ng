@@ -224,7 +224,7 @@ func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependen
 	)
 
 	// Associate new filter with new role
-	_, err = deps.DB.Insert("role_filters").
+	rows, err := deps.DB.Insert("role_filters").
 		Columns("role", "filter").
 		Values(roleID, filterID).
 		Query()
@@ -232,6 +232,12 @@ func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependen
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error adding role_filter for %s: %s", roleType[sig], err))
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	err = queueUpdate(role, payloads.Upsert, deps)
 	if err != nil {
@@ -277,6 +283,12 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	for rows.Next() {
 		err = rows.Scan(&roleID)
@@ -290,21 +302,33 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 	// We now need to create the default filter for this role
 	filterResponse, filterID := filters.Delete(ticker, deps)
 
-	_, err = deps.DB.Delete("filter_membership").
+	rows, err = deps.DB.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).
 		Query()
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting filter_membershipts for %s: %s", roleType[sig], err))
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
-	_, err = deps.DB.Delete("role_filters").
+	rows, err = deps.DB.Delete("role_filters").
 		Where(sq.Eq{"role": roleID}).
 		Query()
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting role_filters %s: %s", roleType[sig], err))
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	err = queueUpdate(payloads.Role{ID: fmt.Sprintf("%d", chatID)}, payloads.Delete, deps)
 	if err != nil {
@@ -331,6 +355,7 @@ func AuthedUpdate(sig bool, ticker, key, value, author string, deps common.Depen
 
 func Update(sig bool, ticker string, values map[string]string, deps common.Dependencies) string {
 	var name string
+	var sync bool
 
 	// ShortName, Key and Value are required so let's check for those
 	if len(ticker) == 0 {
@@ -341,11 +366,11 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 		return common.SendError("values is required")
 	}
 
-	err := deps.DB.Select("name").
+	err := deps.DB.Select("name", "sync").
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
-		Scan(&name)
+		Scan(&name, &sync)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
@@ -356,13 +381,22 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 	updateSQL := deps.DB.Update("roles")
 
 	for k, v := range values {
-		if k == "Color" {
+		key := strings.ToLower(k)
+		if key == "color" {
 			if string(v[0]) == "#" {
 				i, _ := strconv.ParseInt(v[1:], 16, 64)
 				v = strconv.Itoa(int(i))
 			}
 		}
-		updateSQL = updateSQL.Set(strings.ToLower(k), v)
+
+		if key == "sync" {
+			sync, err = strconv.ParseBool(v)
+			if err != nil {
+				return common.SendFatal(fmt.Sprintf("error updating sync for %s: %s", name, err))
+			}
+		}
+
+		updateSQL = updateSQL.Set(key, v)
 	}
 
 	_, err = updateSQL.Where(sq.Eq{"name": name}).
@@ -393,13 +427,23 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 
 	if role.ID != dRole.ID {
 		// The role was probably created/recreated manually.
-		_, err := deps.DB.Update("roles").
+		rows, err := deps.DB.Update("roles").
 			Set("ID", dRole.ID).
 			Where(sq.Eq{"name": role.Name}).
 			Query()
 		if err != nil {
 			deps.Logger.Errorf("error updating role's ID: %s", err)
 		}
+		defer func() {
+			err := rows.Close()
+			if err != nil {
+				deps.Logger.Errorf("error closing database: %s", err)
+			}
+		}()
+	}
+
+	if !sync {
+		return common.SendSuccess(fmt.Sprintf("Updated %s in db but not Discord (sync not set): %s", roleType[sig], ticker))
 	}
 
 	if role.Mentionable != dRole.Mentionable ||
@@ -478,6 +522,12 @@ func ListFilters(sig bool, ticker string, deps common.Dependencies) string {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error fetching filters: %s", err))
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	for rows.Next() {
 		if !results {
@@ -540,7 +590,7 @@ func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) string
 		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
 	}
 
-	_, err = deps.DB.Insert("role_filters").
+	rows, err := deps.DB.Insert("role_filters").
 		Columns("role", "filter").
 		Values(roleID, filterID).
 		Query()
@@ -548,6 +598,12 @@ func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) string
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error inserting role_filter: %s", err))
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	return common.SendSuccess(fmt.Sprintf("Added filter %s to role %s", filter, ticker))
 }
@@ -592,7 +648,7 @@ func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) str
 		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
 	}
 
-	_, err = deps.DB.Delete("role_filters").
+	rows, err := deps.DB.Delete("role_filters").
 		Where(sq.Eq{"role": roleID}).
 		Where(sq.Eq{"filter": filterID}).
 		Query()
@@ -600,6 +656,12 @@ func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) str
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting role_filter: %s", err))
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	return common.SendSuccess(fmt.Sprintf("Removed filter %s from role %s", filter, ticker))
 }

@@ -3,6 +3,7 @@ package members
 import (
 	"encoding/json"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -61,7 +62,35 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 			}()
 
 			switch body.Action {
-			case payloads.Add:
+			case payloads.Add, payloads.Upsert:
+				if body.RoleID == "0" {
+					err = d.Reject(false)
+					if err != nil {
+						m.dependencies.Logger.Errorf("Error Nacking invalid (RoleID==0) Role Add message: %s", err)
+					}
+
+					return
+				}
+
+				var sync bool
+				err = m.dependencies.DB.Select("sync").
+					From("roles").
+					Where(sq.Eq{"chat_id": body.RoleID}).
+					Scan(&sync)
+				if err != nil {
+					m.dependencies.Logger.Errorf("Error getting role sync status: %s", err)
+					return
+				}
+
+				if !sync {
+					err = d.Reject(false)
+					if err != nil {
+						m.dependencies.Logger.Errorf("Error Nacking Role not set to sync: %s", err)
+					}
+
+					return
+				}
+
 				err = m.dependencies.Session.GuildMemberRoleAdd(body.GuildID, body.MemberID, body.RoleID)
 				if err != nil {
 					m.dependencies.Logger.Errorf("Error adding role %s to user %s: %s",
@@ -100,7 +129,8 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 		}()
 	}
 
-	m.dependencies.Logger.Infof("members/HandleMessage: deliveries channel closed")
+	// I don't think this is valid anymore
+	// m.dependencies.Logger.Infof("members/HandleMessage: deliveries channel closed")
 	done <- nil
 }
 

@@ -97,6 +97,7 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 // Only return an error if we want to keep the message and try again.
 func (r Role) upsert(role payloads.RolePayload) error {
 	var err error
+	var sync bool
 
 	// Only one thing should write to discord at a time
 	r.dependencies.Logger.Info("role.upsert() acquiring lock")
@@ -105,6 +106,21 @@ func (r Role) upsert(role payloads.RolePayload) error {
 		r.dependencies.Session.Unlock()
 		r.dependencies.Logger.Info("role.upsert() released lock")
 	}()
+
+	err = r.dependencies.DB.Select("sync").
+		From("roles").
+		Where(sq.Eq{"name": role.Role.Name}).
+		Scan(&sync)
+	if err != nil {
+		r.dependencies.Logger.Errorf("Error getting role sync status: %s", err)
+		return err
+	}
+
+	// If this role isn't set to sync, ignore it.
+	if !sync {
+		r.dependencies.Logger.Debugf("role.upsert(): Skipping role not set to sync: %s", role.Role.Name)
+		return nil
+	}
 
 	// Check and see if this role has been created in discord or not
 	if r.exists(role.Role.Name, role.GuildID) {
@@ -153,11 +169,11 @@ func (r Role) upsert(role payloads.RolePayload) error {
 // Only return an error if we want to keep the message and try again.
 func (r Role) delete(role payloads.RolePayload) error {
 	// Only one thing should write to discord at a time
-	r.dependencies.Logger.Info("role.create() acquiring lock")
+	r.dependencies.Logger.Info("role.delete() acquiring lock")
 	r.dependencies.Session.Lock()
 	defer func() {
 		r.dependencies.Session.Unlock()
-		r.dependencies.Logger.Info("role.create() released lock")
+		r.dependencies.Logger.Info("role.delete() released lock")
 	}()
 
 	err := r.dependencies.Session.GuildRoleDelete(role.GuildID, role.Role.ID)

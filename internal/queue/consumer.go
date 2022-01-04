@@ -30,7 +30,7 @@ func NewConsumer(amqpURI, exchange, exchangeType, queueName, key, ctag string,
 
 	var err error
 
-	logger.Infof("dialing %q", amqpURI)
+	logger.Infof("dialing %q", sanitizeURI(amqpURI))
 	c.conn, err = amqp.Dial(amqpURI)
 	if err != nil {
 		return nil, fmt.Errorf("Dial: %s", err)

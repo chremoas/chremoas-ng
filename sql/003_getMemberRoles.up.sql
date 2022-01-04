@@ -1,12 +1,13 @@
-CREATE OR REPLACE FUNCTION getMemberRoles(BIGINT, BOOL) RETURNS SETOF roles AS
+CREATE OR REPLACE FUNCTION getMemberRoles(BIGINT, BOOL, BOOL) RETURNS SETOF roles AS
 $$
 DECLARE
     inputUserID ALIAS FOR $1;
     inputSig ALIAS FOR $2;
+    inputSync ALIAS FOR $3;
     _role  roles%ROWTYPE;
     exists bigint;
 BEGIN
-    FOR _role IN SELECT * FROM roles WHERE sig = inputSig
+    FOR _role IN SELECT * FROM roles WHERE sync = inputSync AND sig = inputSig
         LOOP
             SELECT INTO exists user_id
             FROM filter_membership

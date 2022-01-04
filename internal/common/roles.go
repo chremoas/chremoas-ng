@@ -30,7 +30,7 @@ func GetUserRoles(sig bool, userID string, deps Dependencies) ([]payloads.Role, 
 
 	rows, err := deps.DB.Select("role_nick", "name", "chat_id").
 		From("").
-		Suffix("getMemberRoles(?, ?)", userID, strconv.FormatBool(sig)).
+		Suffix("getMemberRoles(?, ?, ?)", userID, strconv.FormatBool(sig), true).
 		Query()
 	if err != nil {
 		deps.Logger.Error(err)
@@ -85,7 +85,7 @@ func RoleToSet(roles []payloads.Role) *sets.StringSet {
 	newSet := sets.NewStringSet()
 
 	for _, role := range roles {
-		newSet.Add(role.Name)
+		newSet.Add(fmt.Sprintf("%d", role.ChatID))
 	}
 
 	return newSet

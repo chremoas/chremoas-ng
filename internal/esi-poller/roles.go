@@ -50,7 +50,6 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 		aep.dependencies.Logger.Error(err)
 		return -1, -1, fmt.Errorf("error getting role list from db: %w", err)
 	}
-
 	defer func() {
 		if err = rows.Close(); err != nil {
 			aep.dependencies.Logger.Error(err)
@@ -77,6 +76,9 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 
 		chremoasRoles[role.Name] = role
 	}
+
+	aep.dependencies.Logger.Debugf("chremoasRoles: %+v", chremoasRoles)
+	aep.dependencies.Logger.Debugf("discordRoles: %+v", discordRoles)
 
 	// Delete roles from discord that aren't in the bot
 	rolesToDelete := difference(discordRoles, chremoasRoles)
@@ -140,13 +142,21 @@ func interDiff(chremoasMap, discordMap map[string]payloads.Role, deps common.Dep
 	for _, r := range roleList {
 		if chremoasMap[r].ID != discordMap[r].ID {
 			// The role was probably recreated manually.
-			_, err := deps.DB.Update("roles").
-				Set("chat_id", discordMap[r].ID).
-				Where(sq.Eq{"name": r}).
-				Query()
-			if err != nil {
-				deps.Logger.Errorf("error updating role's chat_id: %s", err)
-			}
+			func() {
+				rows, err := deps.DB.Update("roles").
+					Set("chat_id", discordMap[r].ID).
+					Where(sq.Eq{"name": r}).
+					Query()
+				if err != nil {
+					deps.Logger.Errorf("error updating role's chat_id: %s", err)
+				}
+				defer func() {
+					err := rows.Close()
+					if err != nil {
+						deps.Logger.Errorf("error closing database: %s", err)
+					}
+				}()
+			}()
 		}
 
 		if chremoasMap[r].Mentionable != discordMap[r].Mentionable ||

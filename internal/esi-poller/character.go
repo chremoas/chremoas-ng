@@ -57,22 +57,6 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 	response, _, err := aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(context.Background(), character.ID, nil)
 	if err != nil {
 		aep.dependencies.Logger.Infof("Character not found: %d", character.ID)
-		// if aep.notFound(err) == nil {
-		// aep.dependencies.Logger.Infof("Deleting character: %d", character.ID)
-		// rows, deleteErr := aep.dependencies.DB.Delete("characters").
-		// 	Where(sq.Eq{"id": character.ID}).
-		// 	Query()
-		// if deleteErr != nil {
-		// 	aep.dependencies.Logger.Errorf("Error deleting character: %s", deleteErr)
-		// }
-		//
-		// deleteErr = rows.Close()
-		// if deleteErr != nil {
-		// 	aep.dependencies.Logger.Errorf("Error closing DB: %s", err)
-		// }
-		//
-		// return deleteErr
-		// }
 
 		return err
 	}

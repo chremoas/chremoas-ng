@@ -26,7 +26,7 @@ func NewPublisher(amqpURI, exchange, exchangeType, routingKey string, logger *za
 		routingKey: routingKey,
 	}
 
-	logger.Infof("dialing %q", amqpURI)
+	logger.Infof("dialing %q", sanitizeURI(amqpURI))
 	p.conn, err = amqp.Dial(amqpURI)
 	if err != nil {
 		return nil, fmt.Errorf("Dial: %s", err)

@@ -24,6 +24,12 @@ func List(deps common.Dependencies) string {
 		deps.Logger.Error(err)
 		return common.SendFatal(err.Error())
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	buffer.WriteString("Permissions:\n")
 	for rows.Next() {
@@ -54,7 +60,7 @@ func Add(name, description, author string, deps common.Dependencies) string {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	_, err := deps.DB.Insert("permissions").
+	rows, err := deps.DB.Insert("permissions").
 		Columns("name", "description").
 		Values(name, description).
 		Query()
@@ -67,6 +73,12 @@ func Add(name, description, author string, deps common.Dependencies) string {
 		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	return common.SendSuccess(fmt.Sprintf("Created permission `%s`", name))
 }
@@ -80,7 +92,7 @@ func Delete(name, author string, deps common.Dependencies) string {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	_, err := deps.DB.Delete("permissions").
+	rows, err := deps.DB.Delete("permissions").
 		Where(sq.Eq{"name": name}).
 		Query()
 	if err != nil {
@@ -88,6 +100,12 @@ func Delete(name, author string, deps common.Dependencies) string {
 		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	return common.SendSuccess(fmt.Sprintf("Deleted permission `%s`", name))
 }
@@ -108,6 +126,12 @@ func ListMembers(name string, deps common.Dependencies) string {
 		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	buffer.WriteString(fmt.Sprintf("Permission membership (%s):\n", name))
 	for rows.Next() {
@@ -155,7 +179,7 @@ func AddMember(user, permission, author string, deps common.Dependencies) string
 		return common.SendFatal(newErr.Error())
 	}
 
-	_, err = deps.DB.Insert("permission_membership").
+	rows, err := deps.DB.Insert("permission_membership").
 		Columns("permission", "user_id").
 		Values(permissionID, userID).
 		Query()
@@ -168,6 +192,12 @@ func AddMember(user, permission, author string, deps common.Dependencies) string
 		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, permission))
 }
@@ -199,7 +229,7 @@ func RemoveMember(user, permission, author string, deps common.Dependencies) str
 		return common.SendFatal(newErr.Error())
 	}
 
-	_, err = deps.DB.Delete("permission_membership").
+	rows, err := deps.DB.Delete("permission_membership").
 		Where(sq.Eq{"permission": permissionID}).
 		Where(sq.Eq{"user_id": userID}).
 		Query()
@@ -208,6 +238,12 @@ func RemoveMember(user, permission, author string, deps common.Dependencies) str
 		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	return common.SendSuccess(fmt.Sprintf("Removed <@%s> from `%s`", userID, permission))
 }
@@ -234,6 +270,12 @@ func UserPerms(user string, deps common.Dependencies) string {
 		deps.Logger.Error(newErr)
 		return common.SendFatal(newErr.Error())
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			deps.Logger.Errorf("error closing database: %s", err)
+		}
+	}()
 
 	buffer.WriteString(fmt.Sprintf("Permissions for <@%s>:\n", userID))
 	for rows.Next() {
