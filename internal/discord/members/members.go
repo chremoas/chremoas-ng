@@ -53,12 +53,12 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				return
 			}
 
-			m.dependencies.Logger.Infof("Handling message for %s", body.MemberID)
-			m.dependencies.Logger.Info("members handler acquiring lock")
+			m.dependencies.Logger.Debugf("Handling message for %s", body.MemberID)
+			m.dependencies.Logger.Debug("members handler acquiring lock")
 			m.dependencies.Session.Lock()
 			defer func() {
 				m.dependencies.Session.Unlock()
-				m.dependencies.Logger.Info("members handler released lock")
+				m.dependencies.Logger.Debug("members handler released lock")
 			}()
 
 			switch body.Action {
@@ -83,6 +83,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				}
 
 				if !sync {
+					m.dependencies.Logger.Debugf("member handler: Skipping role not set to sync: %s", body.RoleID)
 					err = d.Reject(false)
 					if err != nil {
 						m.dependencies.Logger.Errorf("Error Nacking Role not set to sync: %s", err)
@@ -129,33 +130,5 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 		}()
 	}
 
-	// I don't think this is valid anymore
-	// m.dependencies.Logger.Infof("members/HandleMessage: deliveries channel closed")
 	done <- nil
 }
-
-// compare two string returning what the first one has that the second one doesn't
-// func compare(a, b []string) []string {
-// 	for i := len(a) - 1; i >= 0; i-- {
-// 		for _, vD := range b {
-// 			if a[i] == vD {
-// 				a = append(a[:i], a[i+1:]...)
-// 				break
-// 			}
-// 		}
-// 	}
-// 	return a
-// }
-
-// rows, err := m.dependencies.DB.Select("roles.chat_id").
-// 	From("filters").
-// 	Join("filter_membership ON filters.id = filter_membership.filter").
-// 	Join("role_filters ON filters.id = role_filters.filter").
-// 	Join("roles ON role_filters.role = roles.id").
-// 	Where(sq.Eq{"filter_membership.user_id": body.Member}).
-// 	Where(sq.Eq{"roles.sync": true}).
-// 	Query()
-// if err != nil {
-// 	m.dependencies.Logger.Errorf("error updating member `%s`: %s", body.Member, err)
-// 	return
-// }
