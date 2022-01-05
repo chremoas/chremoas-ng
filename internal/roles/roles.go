@@ -193,8 +193,9 @@ func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependen
 	}
 
 	err := deps.DB.Insert("roles").
-		Columns("sig", "joinable", "name", "role_nick", "chat_type").
-		Values(sig, joinable, name, ticker, chatType).
+		Columns("sig", "joinable", "name", "role_nick", "chat_type", "sync").
+		// a sig is sync-ed by default, so we overload the sig bool because it does the right thing here.
+		Values(sig, joinable, name, ticker, chatType, sig).
 		Suffix("RETURNING \"id\"").
 		Scan(&roleID)
 	if err != nil {
@@ -472,15 +473,15 @@ func GetChremoasRole(sig bool, ticker string, deps common.Dependencies) (payload
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
 		Scan(
-		&role.ID,
-		&role.Name,
-		&role.Managed,
-		&role.Mentionable,
-		&role.Hoist,
-		&role.Color,
-		&role.Position,
-		&role.Permissions,
-	)
+			&role.ID,
+			&role.Name,
+			&role.Managed,
+			&role.Mentionable,
+			&role.Hoist,
+			&role.Color,
+			&role.Position,
+			&role.Permissions,
+		)
 	if err != nil {
 		return payloads.Role{}, fmt.Errorf("error fetching %s from db: %s", roleType[sig], err)
 	}
