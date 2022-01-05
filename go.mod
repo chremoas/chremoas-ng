@@ -21,7 +21,7 @@ require (
 	github.com/jmoiron/sqlx v1.3.1
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/lib/pq v1.10.0
-	github.com/miekg/dns v1.1.22 // indirect
+	github.com/miekg/dns v1.1.45 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/pelletier/go-toml v1.8.1 // indirect
 	github.com/rabbitmq/amqp091-go v0.0.0-20210917115608-f77dab523f04
