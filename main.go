@@ -196,6 +196,7 @@ func main() {
 		{"filter", "Manages Filters", c.Filter},
 		{"perms", "Manages Permissions", c.Perms},
 		{"auth", "Manages Permissions", c.Auth},
+		{"version", "Returns Chremoas version", c.Version},
 	}
 
 	for _, route := range commandList {
