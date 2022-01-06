@@ -248,9 +248,9 @@ func main() {
 	// =========================================================================
 	// Start the ESI Poller thread.
 	userAgent := "chremoas-ng Ramdar Chinken on TweetFleet Slack https://github.com/chremoas/chremoas-ng"
-	dependencies.AuthESIPoller = esiPoller.New(userAgent, dependencies)
-	dependencies.AuthESIPoller.Start()
-	defer dependencies.AuthESIPoller.Stop()
+	esi := esiPoller.New(userAgent, dependencies)
+	esi.Start()
+	defer esi.Stop()
 
 	// =========================================================================
 	// Main loop

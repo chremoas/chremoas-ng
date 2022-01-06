@@ -356,8 +356,8 @@ func AuthedUpdate(sig bool, ticker, key, value, author string, deps common.Depen
 
 func Update(sig bool, ticker string, values map[string]string, deps common.Dependencies) string {
 	var (
-		name           string
-		sync, syncRole bool
+		name string
+		sync bool
 	)
 
 	// ShortName, Key and Value are required so let's check for those
@@ -397,7 +397,6 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 			if err != nil {
 				return common.SendFatal(fmt.Sprintf("error updating sync for %s: %s", name, err))
 			}
-			syncRole = sync
 		}
 
 		updateSQL = updateSQL.Set(key, v)
@@ -409,11 +408,6 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
-	}
-
-	// we changed sync so we need to force a role sync to discord
-	if syncRole {
-		deps.AuthESIPoller.Poll()
 	}
 
 	role, err := GetChremoasRole(sig, ticker, deps)

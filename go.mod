@@ -3,7 +3,7 @@ module github.com/chremoas/chremoas-ng
 go 1.16
 
 require (
-	github.com/Masterminds/squirrel v1.5.0
+	github.com/Masterminds/squirrel v1.5.2
 	github.com/antihax/goesi v0.0.0-20211028231550-640b98e35e09
 	github.com/astaxie/beego v1.12.3
 	github.com/bhechinger/go-sets v0.0.4
