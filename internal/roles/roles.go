@@ -2,6 +2,7 @@ package roles
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"fmt"
 	"strconv"
@@ -175,6 +176,9 @@ func AuthedAdd(sig, joinable bool, ticker, name, chatType, author string, deps c
 func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependencies) string {
 	var roleID int
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	// Type, Name and ShortName are required so let's check for those
 	if len(chatType) == 0 {
 		return common.SendError("type is required")
@@ -228,7 +232,7 @@ func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependen
 	rows, err := deps.DB.Insert("role_filters").
 		Columns("role", "filter").
 		Values(roleID, filterID).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error adding role_filter for %s: %s", roleType[sig], err))
@@ -259,6 +263,9 @@ func AuthedDestroy(sig bool, ticker, author string, deps common.Dependencies) st
 func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 	var chatID, roleID int
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	if len(ticker) == 0 {
 		return common.SendError("short name is required")
 	}
@@ -279,7 +286,7 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 	rows, err := deps.DB.Delete("roles").
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
@@ -305,7 +312,7 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 
 	rows, err = deps.DB.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting filter_membershipts for %s: %s", roleType[sig], err))
@@ -319,7 +326,7 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 
 	rows, err = deps.DB.Delete("role_filters").
 		Where(sq.Eq{"role": roleID}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting role_filters %s: %s", roleType[sig], err))
@@ -359,6 +366,9 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 		name string
 		sync bool
 	)
+
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
 
 	// ShortName, Key and Value are required so let's check for those
 	if len(ticker) == 0 {
@@ -404,7 +414,7 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 
 	_, err = updateSQL.Where(sq.Eq{"name": name}).
 		Where(sq.Eq{"sig": sig}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
@@ -433,7 +443,7 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 		rows, err := deps.DB.Update("roles").
 			Set("ID", dRole.ID).
 			Where(sq.Eq{"name": role.Name}).
-			Query()
+			QueryContext(ctx)
 		if err != nil {
 			deps.Logger.Errorf("error updating role's ID: %s", err)
 		}
@@ -514,13 +524,16 @@ func ListFilters(sig bool, ticker string, deps common.Dependencies) string {
 		results bool
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	rows, err := deps.DB.Select("filters.name").
 		From("filters").
 		Join("role_filters ON role_filters.filter = filters.id").
 		Join("roles ON roles.id = role_filters.role").
 		Where(sq.Eq{"roles.role_nick": ticker}).
 		Where(sq.Eq{"roles.sig": sig}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error fetching filters: %s", err))
@@ -568,6 +581,9 @@ func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) string
 		roleID   int
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	err = deps.DB.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
@@ -596,7 +612,7 @@ func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) string
 	rows, err := deps.DB.Insert("role_filters").
 		Columns("role", "filter").
 		Values(roleID, filterID).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error inserting role_filter: %s", err))
@@ -626,6 +642,9 @@ func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) str
 		roleID   int
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	err = deps.DB.Select("id").
 		From("filters").
 		Where(sq.Eq{"name": filter}).
@@ -654,7 +673,7 @@ func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) str
 	rows, err := deps.DB.Delete("role_filters").
 		Where(sq.Eq{"role": roleID}).
 		Where(sq.Eq{"filter": filterID}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(fmt.Sprintf("error deleting role_filter: %s", err))

@@ -1,6 +1,7 @@
 package roles
 
 import (
+	"context"
 	"encoding/json"
 
 	sq "github.com/Masterminds/squirrel"
@@ -99,6 +100,9 @@ func (r Role) upsert(role payloads.RolePayload) error {
 	var err error
 	var sync bool
 
+	ctx, cancel := context.WithCancel(r.dependencies.Context)
+	defer cancel()
+
 	// Only one thing should write to discord at a time
 	r.dependencies.Logger.Info("role.upsert() acquiring lock")
 	r.dependencies.Session.Lock()
@@ -145,7 +149,7 @@ func (r Role) upsert(role payloads.RolePayload) error {
 		_, err = r.dependencies.DB.Update("roles").
 			Set("chat_id", newRole.ID).
 			Where(sq.Eq{"name": role.Role.Name}).
-			Query()
+			QueryContext(ctx)
 		if err != nil {
 			r.dependencies.Logger.Errorf("Error updating role id in db: %s", err)
 			return err

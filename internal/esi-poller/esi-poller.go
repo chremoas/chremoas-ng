@@ -1,6 +1,7 @@
 package esi_poller
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -21,6 +22,7 @@ type authEsiPoller struct {
 	tickTime     time.Duration
 	ticker       *time.Ticker
 	esiClient    *goesi.APIClient
+	ctx          context.Context
 }
 
 func New(userAgent string, deps common.Dependencies) AuthEsiPoller {
@@ -31,6 +33,7 @@ func New(userAgent string, deps common.Dependencies) AuthEsiPoller {
 		dependencies: deps,
 		tickTime:     time.Minute * 60,
 		esiClient:    goesi.NewAPIClient(httpClient, userAgent),
+		ctx:          deps.Context,
 	}
 }
 

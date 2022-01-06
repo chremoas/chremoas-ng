@@ -17,9 +17,12 @@ func (aep *authEsiPoller) updateAlliances() (int, int, error) {
 		alliance   auth.Alliance
 	)
 
+	ctx, cancel := context.WithCancel(aep.ctx)
+	defer cancel()
+
 	rows, err := aep.dependencies.DB.Select("id", "name", "ticker").
 		From("alliances").
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		return -1, -1, fmt.Errorf("error getting alliance list from db: %w", err)
 	}
@@ -52,7 +55,7 @@ func (aep *authEsiPoller) updateAlliances() (int, int, error) {
 }
 
 func (aep *authEsiPoller) updateAlliance(alliance auth.Alliance) error {
-	response, _, err := aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), alliance.ID, nil)
+	response, _, err := aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(aep.ctx, alliance.ID, nil)
 	if err != nil {
 		if aep.notFound(err) == nil {
 			aep.dependencies.Logger.Infof("Alliance not found: %d", alliance.ID)
@@ -104,11 +107,14 @@ func (aep *authEsiPoller) updateAlliance(alliance auth.Alliance) error {
 func (aep *authEsiPoller) upsertAlliance(allianceID int32, name, ticker string) error {
 	var err error
 
+	ctx, cancel := context.WithCancel(aep.ctx)
+	defer cancel()
+
 	rows, err := aep.dependencies.DB.Insert("alliances").
 		Columns("id", "name", "ticker").
 		Values(allianceID, name, ticker).
 		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?", name, ticker).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		aep.dependencies.Logger.Errorf("ESI Poller: Error updating alliance %d: %s", allianceID, err)
 	}

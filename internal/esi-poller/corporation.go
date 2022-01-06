@@ -64,9 +64,12 @@ func (aep *authEsiPoller) updateCorporations() (int, int, error) {
 		corporation auth.Corporation
 	)
 
+	ctx, cancel := context.WithCancel(aep.ctx)
+	defer cancel()
+
 	rows, err := aep.dependencies.DB.Select("id", "name", "ticker", "alliance_id").
 		From("corporations").
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		return -1, -1, fmt.Errorf("error getting corporation list from db: %w", err)
 	}
@@ -99,7 +102,7 @@ func (aep *authEsiPoller) updateCorporations() (int, int, error) {
 }
 
 func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error {
-	response, _, err := aep.esiClient.ESI.CorporationApi.GetCorporationsCorporationId(context.Background(), corporation.ID, nil)
+	response, _, err := aep.esiClient.ESI.CorporationApi.GetCorporationsCorporationId(aep.ctx, corporation.ID, nil)
 	if err != nil {
 		if aep.notFound(err) == nil {
 			aep.dependencies.Logger.Infof("Corporation not found: %d", corporation.ID)
@@ -171,7 +174,7 @@ func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error 
 		aep.dependencies.Logger.Debugf("Updating Corporation: %s", response.Ticker)
 		values := map[string]string{
 			"role_nick": response.Ticker,
-			"name": response.Name,
+			"name":      response.Name,
 		}
 		roles.Update(roles.Role, corporation.Ticker, values, aep.dependencies)
 	}
@@ -182,11 +185,14 @@ func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error 
 func (aep *authEsiPoller) upsertCorporation(corporationID, allianceID int32, name, ticker string) error {
 	var err error
 
+	ctx, cancel := context.WithCancel(aep.ctx)
+	defer cancel()
+
 	rows, err := aep.dependencies.DB.Insert("corporations").
 		Columns("id", "name", "ticker", "alliance_id").
 		Values(corporationID, name, ticker, allianceID).
 		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?, alliance_id=?", name, ticker, allianceID).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		aep.dependencies.Logger.Errorf("ESI Poller: Error inserting corporation %d: %s", corporationID, err)
 	}

@@ -1,6 +1,7 @@
 package roles
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -34,9 +35,9 @@ func validListItem(a string, list []string) bool {
 
 func queueUpdate(role payloads.Role, action payloads.Action, deps common.Dependencies) error {
 	payload := payloads.RolePayload{
-		Action: action,
+		Action:  action,
 		GuildID: deps.GuildID,
-		Role: role,
+		Role:    role,
 	}
 
 	b, err := json.Marshal(payload)
@@ -64,12 +65,15 @@ func GetRoleMembers(sig bool, name string, deps common.Dependencies) ([]int, err
 		filterList []int
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	rows, err := deps.DB.Select("role_filters.filter").
 		From("role_filters").
 		InnerJoin("roles ON role_filters.role = roles.id").
 		Where(sq.Eq{"sig": sig}).
 		Where(sq.Eq{"role_nick": name}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return nil, err
@@ -95,7 +99,7 @@ func GetRoleMembers(sig bool, name string, deps common.Dependencies) ([]int, err
 		Where(sq.Eq{"filter": filterList}).
 		GroupBy("user_id").
 		Having("count(*) = ?", len(filterList)).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return nil, err
@@ -126,6 +130,9 @@ func GetRoles(sig bool, shortName *string, deps common.Dependencies) ([]payloads
 		charTotal int
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	q := deps.DB.Select("color", "hoist", "joinable", "managed", "mentionable", "name", "permissions",
 		"position", "role_nick", "sig", "sync").
 		Where(sq.Eq{"sig": sig}).
@@ -135,7 +142,7 @@ func GetRoles(sig bool, shortName *string, deps common.Dependencies) ([]payloads
 		q = q.Where(sq.Eq{"role_nick": shortName})
 	}
 
-	rows, err := q.Query()
+	rows, err := q.QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error getting %ss: %s", roleType[sig], err)
 		deps.Logger.Error(newErr)

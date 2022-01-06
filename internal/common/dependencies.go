@@ -1,6 +1,8 @@
 package common
 
 import (
+	"context"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/queue"
@@ -14,4 +16,5 @@ type Dependencies struct {
 	RolesProducer   *queue.Producer
 	Session         *discordgo.Session
 	GuildID         string
+	Context         context.Context
 }

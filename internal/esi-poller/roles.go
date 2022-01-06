@@ -1,6 +1,7 @@
 package esi_poller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -19,6 +20,9 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 		discordRoles  = make(map[string]payloads.Role)
 		chremoasRoles = make(map[string]payloads.Role)
 	)
+
+	ctx, cancel := context.WithCancel(aep.ctx)
+	defer cancel()
 
 	roles, err := aep.dependencies.Session.GuildRoles(aep.dependencies.GuildID)
 	if err != nil {
@@ -45,7 +49,7 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 	rows, err := aep.dependencies.DB.Select("chat_id", "name", "managed", "mentionable", "hoist", "color", "position", "permissions").
 		From("roles").
 		Where(sq.Eq{"sync": "true"}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		aep.dependencies.Logger.Error(err)
 		return -1, -1, fmt.Errorf("error getting role list from db: %w", err)
@@ -130,6 +134,9 @@ func interDiff(chremoasMap, discordMap map[string]payloads.Role, deps common.Dep
 		output   []payloads.Role
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	// find the intersection and make as list
 	for m1 := range chremoasMap {
 		for m2 := range discordMap {
@@ -146,7 +153,7 @@ func interDiff(chremoasMap, discordMap map[string]payloads.Role, deps common.Dep
 				rows, err := deps.DB.Update("roles").
 					Set("chat_id", discordMap[r].ID).
 					Where(sq.Eq{"name": r}).
-					Query()
+					QueryContext(ctx)
 				if err != nil {
 					deps.Logger.Errorf("error updating role's chat_id: %s", err)
 				}

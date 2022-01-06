@@ -2,6 +2,7 @@ package filters
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -20,9 +21,12 @@ func List(deps common.Dependencies) string {
 		filter payloads.Filter
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	rows, err := deps.DB.Select("name", "description").
 		From("filters").
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(err.Error())
@@ -96,10 +100,13 @@ func AuthedDelete(name string, author string, deps common.Dependencies) (string,
 func Delete(name string, deps common.Dependencies) (string, int) {
 	var id int
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	rows, err := deps.DB.Delete("filters").
 		Where(sq.Eq{"name": name}).
 		Suffix("RETURNING \"id\"").
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error deleting filter: %s", err)
 		deps.Logger.Error(newErr)
@@ -130,11 +137,14 @@ func ListMembers(name string, deps common.Dependencies) string {
 		buffer bytes.Buffer
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	rows, err := deps.DB.Select("user_id").
 		From("filters").
 		Join("filter_membership ON filters.id = filter_membership.filter").
 		Where(sq.Eq{"filters.name": name}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error getting filter membership list: %s", err)
 		deps.Logger.Error(newErr)
@@ -180,6 +190,9 @@ func AuthedAddMember(userID, filter, author string, deps common.Dependencies) st
 func AddMember(userID, filter string, deps common.Dependencies) string {
 	var filterID int
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	_, err := strconv.Atoi(userID)
 	if err != nil {
 		if !common.IsDiscordUser(userID) {
@@ -211,7 +224,7 @@ func AddMember(userID, filter string, deps common.Dependencies) string {
 	rows, err := deps.DB.Insert("filter_membership").
 		Columns("filter", "user_id").
 		Values(filterID, userID).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -257,6 +270,9 @@ func AuthedRemoveMember(userID, filter, author string, deps common.Dependencies)
 func RemoveMember(userID, filter string, deps common.Dependencies) string {
 	var filterID int
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	before, err := common.GetMembership(userID, deps)
 	if err != nil {
 		return common.SendFatal(err.Error())
@@ -284,7 +300,7 @@ func RemoveMember(userID, filter string, deps common.Dependencies) string {
 		Where(sq.Eq{"filter": filterID}).
 		Where(sq.Eq{"user_id": userID}).
 		Suffix("RETURNING \"id\"").
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error deleting filter: %s", err)
 		deps.Logger.Error(newErr)

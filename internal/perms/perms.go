@@ -2,6 +2,7 @@ package perms
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
@@ -17,9 +18,12 @@ func List(deps common.Dependencies) string {
 		filter payloads.Filter
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	rows, err := deps.DB.Select("name", "description").
 		From("permissions").
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendFatal(err.Error())
@@ -52,6 +56,9 @@ func List(deps common.Dependencies) string {
 }
 
 func Add(name, description, author string, deps common.Dependencies) string {
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	if name == "server_admins" {
 		return common.SendError("User doesn't have permission to this command")
 	}
@@ -63,7 +70,7 @@ func Add(name, description, author string, deps common.Dependencies) string {
 	rows, err := deps.DB.Insert("permissions").
 		Columns("name", "description").
 		Values(name, description).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -84,6 +91,9 @@ func Add(name, description, author string, deps common.Dependencies) string {
 }
 
 func Delete(name, author string, deps common.Dependencies) string {
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	if name == "server_admins" {
 		return common.SendError("User doesn't have permission to this command")
 	}
@@ -94,7 +104,7 @@ func Delete(name, author string, deps common.Dependencies) string {
 
 	rows, err := deps.DB.Delete("permissions").
 		Where(sq.Eq{"name": name}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error deleting permission: %s", err)
 		deps.Logger.Error(newErr)
@@ -116,11 +126,14 @@ func ListMembers(name string, deps common.Dependencies) string {
 		buffer        bytes.Buffer
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	rows, err := deps.DB.Select("user_id").
 		From("permission_membership").
 		Join("permissions ON permission_membership.permission = permissions.id").
 		Where(sq.Eq{"permissions.name": name}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error getting permission membership list: %s", err)
 		deps.Logger.Error(newErr)
@@ -155,6 +168,9 @@ func ListMembers(name string, deps common.Dependencies) string {
 func AddMember(user, permission, author string, deps common.Dependencies) string {
 	var permissionID int
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	if permission == "server_admins" {
 		return common.SendError("User doesn't have permission to this command")
 	}
@@ -182,7 +198,7 @@ func AddMember(user, permission, author string, deps common.Dependencies) string
 	rows, err := deps.DB.Insert("permission_membership").
 		Columns("permission", "user_id").
 		Values(permissionID, userID).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -204,6 +220,9 @@ func AddMember(user, permission, author string, deps common.Dependencies) string
 
 func RemoveMember(user, permission, author string, deps common.Dependencies) string {
 	var permissionID int
+
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
 
 	if permission == "server_admins" {
 		return common.SendError("User doesn't have permission to this command")
@@ -232,7 +251,7 @@ func RemoveMember(user, permission, author string, deps common.Dependencies) str
 	rows, err := deps.DB.Delete("permission_membership").
 		Where(sq.Eq{"permission": permissionID}).
 		Where(sq.Eq{"user_id": userID}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error deleting permission: %s", err)
 		deps.Logger.Error(newErr)
@@ -254,6 +273,9 @@ func UserPerms(user string, deps common.Dependencies) string {
 		permission string
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	if !common.IsDiscordUser(user) {
 		return common.SendError("second argument must be a discord user")
 	}
@@ -264,7 +286,7 @@ func UserPerms(user string, deps common.Dependencies) string {
 		From("permissions").
 		Join("permission_membership ON permission_membership.permission = permissions.id").
 		Where(sq.Eq{"permission_membership.user_id": userID}).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error getting user perms: %s", err)
 		deps.Logger.Error(newErr)

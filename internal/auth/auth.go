@@ -20,6 +20,9 @@ func Create(_ context.Context, request *CreateRequest, deps common.Dependencies)
 		count int
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	// ===========================================================================================
 	// Get alliance
 
@@ -40,7 +43,7 @@ func Create(_ context.Context, request *CreateRequest, deps common.Dependencies)
 			_, err = deps.DB.Insert("alliances").
 				Columns("id", "name", "ticker").
 				Values(request.Alliance.ID, request.Alliance.Name, request.Alliance.Ticker).
-				Query()
+				QueryContext(ctx)
 			if err != nil {
 				deps.Logger.Error(err)
 				return nil, err
@@ -76,12 +79,12 @@ func Create(_ context.Context, request *CreateRequest, deps common.Dependencies)
 			_, err = deps.DB.Insert("corporations").
 				Columns("id", "name", "ticker").
 				Values(request.Corporation.ID, request.Corporation.Name, request.Corporation.Ticker).
-				Query()
+				QueryContext(ctx)
 		} else {
 			_, err = deps.DB.Insert("corporations").
 				Columns("id", "name", "ticker", "alliance_id").
 				Values(request.Corporation.ID, request.Corporation.Name, request.Corporation.Ticker, request.Alliance.ID).
-				Query()
+				QueryContext(ctx)
 		}
 		if err != nil {
 			deps.Logger.Error(err)
@@ -113,17 +116,17 @@ func Create(_ context.Context, request *CreateRequest, deps common.Dependencies)
 
 	if count == 0 {
 		deps.Logger.Infof("Character not found, adding to db: %d", request.Character.ID)
-	_, err = deps.DB.Insert("characters").
+		_, err = deps.DB.Insert("characters").
 			Columns("id", "name", "token", "corporation_id").
 			Values(request.Character.ID, request.Character.Name, request.Token, request.Corporation.ID).
-			Query()
+			QueryContext(ctx)
 		if err != nil {
 			deps.Logger.Error(err)
 			return nil, err
 		}
 	}
 
-	//Now... make an auth string... hopefully this isn't too ugly
+	// Now... make an auth string... hopefully this isn't too ugly
 	b := make([]byte, 6)
 	rand.Read(b)
 	authCode := hex.EncodeToString(b)
@@ -131,7 +134,7 @@ func Create(_ context.Context, request *CreateRequest, deps common.Dependencies)
 	_, err = deps.DB.Insert("authentication_codes").
 		Columns("character_id", "code").
 		Values(request.Character.ID, authCode).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return nil, err
@@ -151,6 +154,9 @@ func Confirm(authCode, sender string, deps common.Dependencies) string {
 		name           string
 		used           bool
 	)
+
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
 
 	err = deps.DB.Select("character_id", "used").
 		From("authentication_codes").
@@ -176,7 +182,7 @@ func Confirm(authCode, sender string, deps common.Dependencies) string {
 
 	_, err = deps.DB.Update("authentication_codes").
 		Set("used", true).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return common.SendError("Error updating auth code used")
@@ -184,7 +190,7 @@ func Confirm(authCode, sender string, deps common.Dependencies) string {
 
 	_, err = deps.DB.Insert("user_character_map").
 		Values(sender, characterID).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {

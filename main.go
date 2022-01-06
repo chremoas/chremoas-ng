@@ -40,7 +40,7 @@ const Version = "v0.0.0"
 func main() {
 	var (
 		err          error
-		dependencies = common.Dependencies{Logger: log.New()}
+		dependencies = common.Dependencies{Logger: log.New(), Context: context.Background()}
 	)
 
 	// Print out a fancy logo!

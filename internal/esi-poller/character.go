@@ -21,9 +21,12 @@ func (aep *authEsiPoller) updateCharacters() (int, int, error) {
 		character  auth.Character
 	)
 
+	ctx, cancel := context.WithCancel(aep.ctx)
+	defer cancel()
+
 	rows, err := aep.dependencies.DB.Select("id", "name", "corporation_id", "token").
 		From("characters").
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		return -1, -1, fmt.Errorf("error getting character list from the db: %w", err)
 	}
@@ -54,7 +57,10 @@ func (aep *authEsiPoller) updateCharacters() (int, int, error) {
 }
 
 func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
-	response, _, err := aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(context.Background(), character.ID, nil)
+	ctx, cancel := context.WithCancel(aep.ctx)
+	defer cancel()
+
+	response, _, err := aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(aep.ctx, character.ID, nil)
 	if err != nil {
 		aep.dependencies.Logger.Infof("Character not found: %d", character.ID)
 
@@ -92,7 +98,7 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 		updateRows, err := aep.dependencies.DB.Update("characters").
 			Set("corporation_id", response.CorporationId).
 			Where(sq.Eq{"id": character.ID}).
-			Query()
+			QueryContext(ctx)
 		if err != nil {
 			aep.dependencies.Logger.Errorf("Error updating character: %s", err)
 		}
@@ -157,12 +163,15 @@ func (aep *authEsiPoller) upsertCharacter(characterID, corporationID int32, name
 		err  error
 	)
 
+	ctx, cancel := context.WithCancel(aep.ctx)
+	defer cancel()
+
 	if token != "" {
 		rows, err = aep.dependencies.DB.Insert("characters").
 			Columns("id", "name", "token", "corporation_id").
 			Values(characterID, name, token, corporationID).
 			Suffix("ON CONFLICT (id) DO UPDATE SET name=?, token=?, corporation_id=?", name, token, corporationID).
-			Query()
+			QueryContext(ctx)
 		if err != nil {
 			aep.dependencies.Logger.Errorf("ESI Poller: Error inserting character %d: %s", characterID, err)
 		}
@@ -171,7 +180,7 @@ func (aep *authEsiPoller) upsertCharacter(characterID, corporationID int32, name
 			Columns("id", "name", "corporation_id").
 			Values(characterID, name, corporationID).
 			Suffix("ON CONFLICT (id) DO UPDATE SET name=?, corporation_id=?", name, corporationID).
-			Query()
+			QueryContext(ctx)
 		if err != nil {
 			aep.dependencies.Logger.Errorf("ESI Poller: Error inserting character %d: %s", characterID, err)
 		}

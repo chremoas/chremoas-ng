@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
@@ -20,6 +21,9 @@ func GetUserRoles(sig bool, userID string, deps Dependencies) ([]payloads.Role, 
 		roles []payloads.Role
 	)
 
+	ctx, cancel := context.WithCancel(deps.Context)
+	defer cancel()
+
 	_, err := strconv.Atoi(userID)
 	if err != nil {
 		if !IsDiscordUser(userID) {
@@ -31,7 +35,7 @@ func GetUserRoles(sig bool, userID string, deps Dependencies) ([]payloads.Role, 
 	rows, err := deps.DB.Select("role_nick", "name", "chat_id").
 		From("").
 		Suffix("getMemberRoles(?, ?)", userID, strconv.FormatBool(sig)).
-		Query()
+		QueryContext(ctx)
 	if err != nil {
 		deps.Logger.Error(err)
 		return nil, fmt.Errorf("error getting user %ss (%s): %s", roleType[sig], userID, err)

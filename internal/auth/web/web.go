@@ -1,7 +1,6 @@
 package web
 
 import (
-	"context"
 	"crypto/rand"
 	"embed"
 	"encoding/base64"
@@ -43,11 +42,11 @@ type ResultModel struct {
 
 type Web struct {
 	dependencies common.Dependencies
-	templates *template.Template
+	templates    *template.Template
 }
 
 func New(deps common.Dependencies) (*Web, error) {
-	//Setup our required globals.
+	// Setup our required globals.
 	globalSessions, _ = session.NewManager("memory", &session.ManagerConfig{CookieName: "gosessionid", EnableSetCookie: true, Gclifetime: 600})
 	go globalSessions.GC()
 
@@ -67,7 +66,7 @@ func New(deps common.Dependencies) (*Web, error) {
 		nil,
 	)
 
-	//Initialize my templates
+	// Initialize my templates
 	templates := template.New("auth-web")
 	_, err := templates.ParseFS(content, "templates/*.html")
 	if err != nil {
@@ -135,7 +134,7 @@ func (web Web) handleEveLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build the authorize URL
-	//TODO: This is where we'd set extra needed scopes
+	// TODO: This is where we'd set extra needed scopes
 	redirectUrl := ssoauth.AuthorizeURL(state, true, nil)
 
 	// Redirect the user to CCP SSO
@@ -152,7 +151,7 @@ func (web Web) handleEveCallback(w http.ResponseWriter, r *http.Request) {
 
 	internalAuthCode, err := web.doAuth(w, r, sess)
 	if err != nil {
-		//TODO: Make another template for errors specifically for this endpoint
+		// TODO: Make another template for errors specifically for this endpoint
 		fmt.Printf("Received an error from doAuth: (%s)\n", err)
 		return
 	}
@@ -178,10 +177,10 @@ func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store
 	ssoauth := authenticatorFromContext(r.Context())
 	api := apiClientFromContext(r.Context())
 
-	//I really need to read up on how this is useful, what I've read is that it's to help prevent man in the middle attacks?
-	//But if they've intercepted the stream then they just return this... so I'm confused...
-	//Good blog post about it's usefulness, I feel educated:
-	//http://www.twobotechnologies.com/blog/2014/02/importance-of-state-in-oauth2.html
+	// I really need to read up on how this is useful, what I've read is that it's to help prevent man in the middle attacks?
+	// But if they've intercepted the stream then they just return this... so I'm confused...
+	// Good blog post about it's usefulness, I feel educated:
+	// http://www.twobotechnologies.com/blog/2014/02/importance-of-state-in-oauth2.html
 	if state != stateValidate {
 		fmt.Printf("Invalid oauth state, expected '%s', got '%s'\n", stateValidate, state)
 		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
@@ -196,37 +195,37 @@ func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store
 	}
 
 	tokenSource := ssoauth.TokenSource(token)
-	//if err != nil {
+	// if err != nil {
 	//	fmt.Printf("Token retrieve failed with '%s'\n", err)
 	//	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 	//	return nil, errors.New(fmt.Sprintf("Token retrieve failed with '%s'\n", err))
-	//}
+	// }
 
 	verifyReponse, err := ssoauth.Verify(tokenSource)
 	if err != nil {
 		fmt.Printf("Had some kind of error getting the verify response '%s'\n", err)
 	}
 
-	character, _, err := api.ESI.CharacterApi.GetCharactersCharacterId(context.Background(), int32(verifyReponse.CharacterID), nil)
+	character, _, err := api.ESI.CharacterApi.GetCharactersCharacterId(r.Context(), int32(verifyReponse.CharacterID), nil)
 	if err != nil {
 		fmt.Printf("Had some kind of error getting the character '%s'\n", err)
 	}
 
-	corporation, _, err := api.ESI.CorporationApi.GetCorporationsCorporationId(context.Background(), character.CorporationId, nil)
+	corporation, _, err := api.ESI.CorporationApi.GetCorporationsCorporationId(r.Context(), character.CorporationId, nil)
 	if err != nil {
 		fmt.Printf("Had some kind of error getting the corporation '%s'\n", err)
 	}
 
 	var alliance esi.GetAlliancesAllianceIdOk
 	if corporation.AllianceId != 0 {
-		alliance, _, err = api.ESI.AllianceApi.GetAlliancesAllianceId(context.Background(), corporation.AllianceId, nil)
+		alliance, _, err = api.ESI.AllianceApi.GetAlliancesAllianceId(r.Context(), corporation.AllianceId, nil)
 		if err != nil {
 			fmt.Printf("Had some kind of error getting the alliance '%s'\n", err)
 		}
 	}
 
-	//Auth internally, this is the source of the bot's auth code.
-	//We know we'll have a corp and a character, we're not sure if the corp is in an alliance.
+	// Auth internally, this is the source of the bot's auth code.
+	// We know we'll have a corp and a character, we're not sure if the corp is in an alliance.
 	request := &auth.CreateRequest{
 		Corporation: &auth.Corporation{
 			ID:     character.CorporationId,
@@ -238,20 +237,20 @@ func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store
 			Name: character.Name,
 		},
 		Token: code,
-		//TODO: When we implement custom scopes, send them over as well
+		// TODO: When we implement custom scopes, send them over as well
 		AuthScope: []string{"invalid"},
 	}
 
 	if corporation.AllianceId != 0 {
 		request.Alliance = &auth.Alliance{
-			//TODO: Damn, why did I put int64 here?  At least I can upcast...
+			// TODO: Damn, why did I put int64 here?  At least I can upcast...
 			ID:     corporation.AllianceId,
 			Name:   alliance.Name,
 			Ticker: alliance.Ticker,
 		}
 	}
 
-	authCode, err := auth.Create(context.Background(), request, web.dependencies)
+	authCode, err := auth.Create(r.Context(), request, web.dependencies)
 
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("Had an issue authing internally: (%s)", err))
