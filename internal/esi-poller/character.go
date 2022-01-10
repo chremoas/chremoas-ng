@@ -79,7 +79,6 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 		}
 	}
 
-	aep.dependencies.Logger.Debugf("%s: old corp '%s' new corp '%s", character.Name, character.CorporationID, response.CorporationId)
 	if character.CorporationID != response.CorporationId {
 		aep.dependencies.Logger.Infof("Updating %s to corp %d", character.Name, response.CorporationId)
 
@@ -91,6 +90,17 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 			Scan(&corporation.Name, &corporation.AllianceID, &corporation.Ticker)
 		if err != nil {
 			aep.dependencies.Logger.Errorf("error getting corp info for %d: %s", response.CorporationId, err)
+			return err
+		}
+
+		// We need the old corp Ticker to remove from the filter
+		var oldCorp string
+		err = aep.dependencies.DB.Select("ticker").
+			From("corporations").
+			Where(sq.Eq{"id": character.CorporationID}).
+			Scan(&oldCorp)
+		if err != nil {
+			aep.dependencies.Logger.Errorf("error getting old corp info for %d: %s", character.CorporationID, err)
 			return err
 		}
 
@@ -112,6 +122,22 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 				aep.dependencies.Logger.Errorf("Error closing DB: %s", err)
 			}
 		}
+
+		// We need the discord user ID
+		var discordID string
+		err = aep.dependencies.DB.Select("chat_id").
+			From("user_character_map").
+			Where(sq.Eq{"character_id": character.ID}).
+			Scan(&discordID)
+		if err != nil {
+			aep.dependencies.Logger.Errorf("error getting old corp info for %d: %s", character.CorporationID, err)
+			return err
+		}
+
+		// I don't like this here because if it fails it will never get cleaned up
+		// Change the filter they are in, requires discord ID
+		filters.RemoveMember(discordID, oldCorp, aep.dependencies)
+		filters.AddMember(discordID, corporation.Ticker, aep.dependencies)
 	}
 
 	// We need the chatID of the user, so let's get that.
