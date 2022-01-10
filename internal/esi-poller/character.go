@@ -79,6 +79,7 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 		}
 	}
 
+	aep.dependencies.Logger.Debugf("%s: old corp '%s' new corp '%s", character.Name, character.CorporationID, response.CorporationId)
 	if character.CorporationID != response.CorporationId {
 		aep.dependencies.Logger.Infof("Updating %s to corp %d", character.Name, response.CorporationId)
 
