@@ -111,7 +111,7 @@ func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error 
 			return fmt.Errorf("corporation not found: %d", corporation.ID)
 		}
 
-		aep.dependencies.Logger.Errorf("Error calling GetCorporationsCorporationId: %s", err)
+		aep.dependencies.Logger.Errorf("Error calling GetCorporationsCorporationId for %s: %s", corporation.Name, err)
 	}
 
 	if corporation.Name != response.Name || corporation.Ticker != response.Ticker || corporation.AllianceID.Int32 != response.AllianceId {
