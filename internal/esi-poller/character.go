@@ -194,6 +194,7 @@ func (aep *authEsiPoller) upsertCharacter(characterID, corporationID int32, name
 	defer cancel()
 
 	if token != "" {
+		aep.dependencies.Logger.Debugf("Updating character: %d, %s, %s, %d", characterID, name, token, corporationID)
 		rows, err = aep.dependencies.DB.Insert("characters").
 			Columns("id", "name", "token", "corporation_id").
 			Values(characterID, name, token, corporationID).
