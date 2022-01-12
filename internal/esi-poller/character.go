@@ -57,9 +57,6 @@ func (aep *authEsiPoller) updateCharacters() (int, int, error) {
 }
 
 func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
-	ctx, cancel := context.WithCancel(aep.ctx)
-	defer cancel()
-
 	response, _, err := aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(aep.ctx, character.ID, nil)
 	if err != nil {
 		aep.dependencies.Logger.Infof("Character not found: %d", character.ID)
@@ -71,26 +68,14 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 		return fmt.Errorf("CorpID is 0: ESI error most likely, probably transient")
 	}
 
-	if character.Name != response.Name || character.CorporationID != response.CorporationId {
-		aep.dependencies.Logger.Infof("ESI Poller: Updating character: %d with name '%s' and corporation '%d'", character.ID, response.Name, response.CorporationId)
-		err = aep.upsertCharacter(character.ID, response.CorporationId, response.Name, character.Token)
-		if err != nil {
-			return fmt.Errorf("error upserting character `%d`: %s", character.ID, err)
-		}
-	}
-
 	if character.CorporationID != response.CorporationId {
 		aep.dependencies.Logger.Infof("Updating %s to corp %d", character.Name, response.CorporationId)
 
 		// Check if corporation exists, if not, add it.
 		corporation := auth.Corporation{ID: response.CorporationId}
-		err := aep.dependencies.DB.Select("name, alliance_id", "ticker").
-			From("corporations").
-			Where(sq.Eq{"id": response.CorporationId}).
-			Scan(&corporation.Name, &corporation.AllianceID, &corporation.Ticker)
+		err = aep.updateCorporation(corporation)
 		if err != nil {
-			aep.dependencies.Logger.Errorf("error getting corp info for %d: %s", response.CorporationId, err)
-			return err
+			return fmt.Errorf("error updating corporation `%s`: %s", corporation.Name, err)
 		}
 
 		// We need the old corp Ticker to remove from the filter
@@ -104,23 +89,20 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 			return err
 		}
 
-		err = aep.updateCorporation(corporation)
-
-		updateRows, err := aep.dependencies.DB.Update("characters").
-			Set("corporation_id", response.CorporationId).
-			Where(sq.Eq{"id": character.ID}).
-			QueryContext(ctx)
+		err = aep.upsertCharacter(character.ID, response.CorporationId, response.Name, character.Token)
 		if err != nil {
-			aep.dependencies.Logger.Errorf("Error updating character: %s", err)
+			return fmt.Errorf("error upserting character `%d` with corp '%d': %s", character.ID, response.CorporationId, err)
 		}
 
-		if updateRows == nil {
-			aep.dependencies.Logger.Info("updateRows was nil")
-		} else {
-			err = updateRows.Close()
-			if err != nil {
-				aep.dependencies.Logger.Errorf("Error closing DB: %s", err)
-			}
+		// We need the new corp Ticker to add to the filter
+		var newCorp string
+		err = aep.dependencies.DB.Select("ticker").
+			From("corporations").
+			Where(sq.Eq{"id": response.CorporationId}).
+			Scan(&newCorp)
+		if err != nil {
+			aep.dependencies.Logger.Errorf("error getting old corp info for %d: %s", character.CorporationID, err)
+			return err
 		}
 
 		// We need the discord user ID
@@ -136,8 +118,10 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 
 		// I don't like this here because if it fails it will never get cleaned up
 		// Change the filter they are in, requires discord ID
+		aep.dependencies.Logger.Debugf("removing %s from %s", discordID, oldCorp)
 		filters.RemoveMember(discordID, oldCorp, aep.dependencies)
-		filters.AddMember(discordID, corporation.Ticker, aep.dependencies)
+		aep.dependencies.Logger.Debugf("adding %s to %s", discordID, newCorp)
+		filters.AddMember(discordID, newCorp, aep.dependencies)
 	}
 
 	// We need the chatID of the user, so let's get that.

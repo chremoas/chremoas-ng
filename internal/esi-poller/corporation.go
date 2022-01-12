@@ -2,6 +2,7 @@ package esi_poller
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
@@ -183,18 +184,29 @@ func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error 
 }
 
 func (aep *authEsiPoller) upsertCorporation(corporationID, allianceID int32, name, ticker string) error {
-	var err error
+	var (
+		err                error
+		allianceNullableID sql.NullInt32
+	)
+
+	if allianceID != 0 {
+		allianceNullableID.Int32 = allianceID
+		allianceNullableID.Valid = true
+	}
 
 	ctx, cancel := context.WithCancel(aep.ctx)
 	defer cancel()
 
+	aep.dependencies.Logger.Debugf("Upserting corporation: id=%d, alliance=%d, name=%s, ticker=%s",
+		corporationID, allianceID, name, ticker)
+
 	rows, err := aep.dependencies.DB.Insert("corporations").
 		Columns("id", "name", "ticker", "alliance_id").
-		Values(corporationID, name, ticker, allianceID).
-		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?, alliance_id=?", name, ticker, allianceID).
+		Values(corporationID, name, ticker, allianceNullableID).
+		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?, alliance_id=?", name, ticker, allianceNullableID).
 		QueryContext(ctx)
 	if err != nil {
-		aep.dependencies.Logger.Errorf("ESI Poller: Error inserting corporation %d: %s", corporationID, err)
+		aep.dependencies.Logger.Errorf("ESI Poller: Error upserting corporation %d alliance: %v: %s", corporationID, allianceNullableID, err)
 	}
 
 	defer func() {
