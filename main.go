@@ -47,6 +47,7 @@ func main() {
 	}
 
 	logger := log.New(environment, debug)
+	logger.Infof("Environment: %s Debug: %s", environment, dbg)
 	dependencies := common.Dependencies{Logger: logger, Context: context.Background()}
 
 	// Print out a fancy logo!
