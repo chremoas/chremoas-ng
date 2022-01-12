@@ -5,19 +5,16 @@ import (
 	"os"
 
 	"github.com/spf13/viper"
-
-	"github.com/chremoas/chremoas-ng/internal/log"
+	"go.uber.org/zap"
 
 	// Import the remote config driver
 	_ "github.com/spf13/viper/remote"
 )
 
-func New(filename string) (*Configuration, error) {
+func New(filename string, logger *zap.SugaredLogger) (*Configuration, error) {
 	var fileRead, remoteRead bool
 	var fileReadErr, remoteReadErr error
 	var c Configuration
-
-	logger := log.New()
 
 	configNameSpace := os.Getenv("CONFIG_NAMESPACE")
 	if configNameSpace == "" {

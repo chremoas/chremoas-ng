@@ -12,6 +12,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -38,10 +39,15 @@ import (
 const Version = "v0.0.0"
 
 func main() {
-	var (
-		err          error
-		dependencies = common.Dependencies{Logger: log.New(), Context: context.Background()}
-	)
+	environment := os.Getenv("ENVIRONMENT")
+	dbg := os.Getenv("DEBUG")
+	debug, err := strconv.ParseBool(dbg)
+	if err != nil {
+		fmt.Printf("Error parsing DEBUG '%s' is not a boolean value", dbg)
+	}
+
+	logger := log.New(environment, debug)
+	dependencies := common.Dependencies{Logger: logger, Context: context.Background()}
 
 	// Print out a fancy logo!
 	fmt.Printf(`
@@ -64,7 +70,7 @@ func main() {
 		panic(err)
 	}
 
-	_, err = config.New(viper.GetString("configFile"))
+	_, err = config.New(viper.GetString("configFile"), logger)
 	if err != nil {
 		panic(err)
 	}
