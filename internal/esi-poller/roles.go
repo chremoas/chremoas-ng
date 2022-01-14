@@ -26,7 +26,7 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 
 	roles, err := aep.dependencies.Session.GuildRoles(aep.dependencies.GuildID)
 	if err != nil {
-		return -1, -1, fmt.Errorf("Error getting discord roles: %s", err)
+		return -1, -1, fmt.Errorf("error getting discord roles: %s", err)
 	}
 
 	for _, role := range roles {
@@ -76,6 +76,22 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 			aep.dependencies.Logger.Errorf("error scanning role fields: %s", err)
 			errorCount += 1
 			continue
+		}
+
+		// Check if we need to update the role ID in the database
+		if val, ok := discordRoles[role.Name]; ok {
+			if val.ID != role.ID {
+				_, err = aep.dependencies.DB.Update("roles").
+					Set("chat_id", val.ID).
+					Where(sq.Eq{"name": role.Name}).
+					QueryContext(ctx)
+				if err != nil {
+					aep.dependencies.Logger.Errorf("Error updating role id in db: %s", err)
+					continue
+				}
+
+				role.ID = val.ID
+			}
 		}
 
 		chremoasRoles[role.Name] = role
