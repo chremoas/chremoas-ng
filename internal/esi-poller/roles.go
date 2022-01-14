@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bwmarrin/discordgo"
@@ -34,14 +33,7 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 		if !common.IgnoreRole(role.Name) {
 			var dr payloads.Role
 
-			id, err := strconv.Atoi(role.ID)
-			if err != nil {
-				aep.dependencies.Logger.Errorf("Error parsing role ID: %s", err)
-				continue
-			}
-
 			dr.ID = role.ID
-			dr.ChatID = int64(id)
 			dr.Name = role.Name
 			dr.Managed = role.Managed
 			dr.Mentionable = role.Mentionable
