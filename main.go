@@ -123,7 +123,7 @@ func main() {
 	// Let's use a caching http client
 	dependencies.Session.Client = httpcache.NewMemoryCacheTransport().Client()
 
-	dependencies.Session.Identify.Intents = discordgo.IntentsGuildMessages
+	dependencies.Session.Identify.Intents = discordgo.IntentsAll
 
 	Router := mux.New()
 	Router.Prefix = "!"
