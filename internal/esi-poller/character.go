@@ -131,7 +131,7 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 		Where(sq.Eq{"character_id": character.ID}).
 		Scan(&chatID)
 	if err != nil {
-		aep.dependencies.Logger.Errorf("error getting chat_id from %d: %s", character.ID, err)
+		aep.dependencies.Logger.Errorf("error getting chat_id for character %d: %s", character.ID, err)
 		return err
 	}
 
