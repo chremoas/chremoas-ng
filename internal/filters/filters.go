@@ -346,7 +346,7 @@ func QueueUpdate(action payloads.Action, memberID, roleID string, deps common.De
 
 	if roleID == "0" {
 		// no point submitting a message as it'll be ignored anyway
-		deps.Logger.Infof("Not submitting member queue message with roleID == 0: %+v", payload)
+		deps.Logger.Debugf("Not submitting member queue message with roleID == 0: %+v", payload)
 	}
 
 	deps.Logger.Debugf("Submitting member queue message: %+v", payload)
