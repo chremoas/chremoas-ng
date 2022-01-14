@@ -45,7 +45,7 @@ func (aep *authEsiPoller) updateCharacters() (int, int, error) {
 
 		err := aep.updateCharacter(character)
 		if err != nil {
-			aep.dependencies.Logger.Errorf("error updating alliance: %s", err)
+			aep.dependencies.Logger.Errorf("error updating character: %s", err)
 			errorCount += 1
 			continue
 		}

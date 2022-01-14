@@ -117,7 +117,7 @@ func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error 
 
 	if response.AllianceId != 0 {
 		// corp has joined or switched alliances so let's make sure the new alliance is up to date
-		aep.dependencies.Logger.Debugf("ESI Poller: Updating corporation's alliance for %s with allianceId %d\n", response.Name, response.AllianceId)
+		aep.dependencies.Logger.Debugf("ESI Poller: Updating corporation's alliance for %s with allianceId %d", response.Name, response.AllianceId)
 
 		alliance := auth.Alliance{ID: response.AllianceId}
 		err := aep.dependencies.DB.Select("name", "ticker").
