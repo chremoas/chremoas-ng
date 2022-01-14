@@ -81,6 +81,7 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 		// Check if we need to update the role ID in the database
 		if val, ok := discordRoles[role.Name]; ok {
 			if val.ID != role.ID {
+				aep.dependencies.Logger.Infof("Discord role ID doesn't match what we have: discord=%s chremoas=%s", val.ID, role.ID)
 				_, err = aep.dependencies.DB.Update("roles").
 					Set("chat_id", val.ID).
 					Where(sq.Eq{"name": role.Name}).

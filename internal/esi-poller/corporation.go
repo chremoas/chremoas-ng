@@ -115,6 +115,25 @@ func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error 
 		aep.dependencies.Logger.Errorf("Error calling GetCorporationsCorporationId for %s: %s", corporation.Name, err)
 	}
 
+	if response.AllianceId != 0 {
+		// corp has joined or switched alliances so let's make sure the new alliance is up to date
+		aep.dependencies.Logger.Debugf("ESI Poller: Updating corporation's alliance for %s with allianceId %d\n", response.Name, response.AllianceId)
+
+		alliance := auth.Alliance{ID: response.AllianceId}
+		err := aep.dependencies.DB.Select("name", "ticker").
+			From("alliances").
+			Where(sq.Eq{"id": response.AllianceId}).
+			Scan(&alliance.Name, &alliance.Ticker)
+		if err != nil {
+			aep.dependencies.Logger.Errorf("Error fetching alliance: %s", err)
+		}
+
+		err = aep.updateAlliance(alliance)
+		if err != nil {
+			return err
+		}
+	}
+
 	if corporation.Name != response.Name || corporation.Ticker != response.Ticker || corporation.AllianceID.Int32 != response.AllianceId {
 		aep.dependencies.Logger.Debugf("ESI Poller: Updating corporation: %d with name '%s' and ticker '%s'", corporation.ID, response.Name, response.Ticker)
 		err = aep.upsertCorporation(corporation.ID, response.AllianceId, response.Name, response.Ticker)
@@ -126,25 +145,6 @@ func (aep *authEsiPoller) updateCorporation(corporation auth.Corporation) error 
 
 	// Corp has switched or left alliance
 	if corporation.AllianceID.Int32 != response.AllianceId {
-		if response.AllianceId != 0 {
-			// corp has joined or switched alliances so let's make sure the new alliance is up to date
-			aep.dependencies.Logger.Debugf("ESI Poller: Updating corporation's alliance for %s with allianceId %d\n", response.Name, response.AllianceId)
-
-			alliance := auth.Alliance{ID: response.AllianceId}
-			err := aep.dependencies.DB.Select("name", "ticker").
-				From("alliances").
-				Where(sq.Eq{"id": response.AllianceId}).
-				Scan(&alliance.Name, &alliance.Ticker)
-			if err != nil {
-				aep.dependencies.Logger.Errorf("Error fetching alliance: %s", err)
-			}
-
-			err = aep.updateAlliance(alliance)
-			if err != nil {
-				return err
-			}
-		}
-
 		// Alliance has changed. Need to remove all members from the old alliance and add them to the new alliance.
 		// If there is an old alliance remove corp members from it
 		if corporation.AllianceID.Int32 != 0 {
