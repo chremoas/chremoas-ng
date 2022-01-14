@@ -61,17 +61,26 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				m.dependencies.Logger.Debug("members handler released lock")
 			}()
 
-			switch body.Action {
-			case payloads.Add, payloads.Upsert:
-				if body.RoleID == "0" {
-					err = d.Reject(false)
-					if err != nil {
-						m.dependencies.Logger.Errorf("Error Nacking invalid (RoleID==0) Role Add message: %s", err)
-					}
-
-					return
+			if body.RoleID == "0" {
+				err = d.Reject(false)
+				if err != nil {
+					m.dependencies.Logger.Errorf("Error Nacking invalid (RoleID==0) Role Add message: %s", err)
 				}
 
+				return
+			}
+
+			if common.IgnoreRole(body.RoleID) {
+				err = d.Reject(false)
+				if err != nil {
+					m.dependencies.Logger.Errorf("Error Nacking invalid (ignored role) Role Add message: %s", err)
+				}
+
+				return
+			}
+
+			switch body.Action {
+			case payloads.Add, payloads.Upsert:
 				var sync bool
 				err = m.dependencies.DB.Select("sync").
 					From("roles").
@@ -106,14 +115,6 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				}
 
 			case payloads.Delete:
-				if body.RoleID == "0" {
-					err = d.Nack(false, false)
-					if err != nil {
-						m.dependencies.Logger.Errorf("Error Nacking message: %s", err)
-					}
-					return
-				}
-
 				err = m.dependencies.Session.GuildMemberRoleRemove(body.GuildID, body.MemberID, body.RoleID)
 				if err != nil {
 					m.dependencies.Logger.Errorf("Error removing role %s from user %s: %s",
