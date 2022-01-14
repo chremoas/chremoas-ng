@@ -12,7 +12,7 @@ tidy:
 	go mod vendor
 
 migrate:
-	migrate -source file://sql/ --database postgres://chremoas_dev@10.42.1.30:5432/chremoas_dev up
+	migrate -source file://sql/ --database postgres://chremoas_aba@10.42.1.30:5432/chremoas_aba2 up
 
 migrate-drop:
 	migrate -source file://sql/ --database postgres://chremoas_dev@10.42.1.30:5432/chremoas_dev drop

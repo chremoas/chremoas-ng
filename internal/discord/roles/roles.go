@@ -161,7 +161,7 @@ func (r Role) upsert(role payloads.RolePayload) error {
 	_, err = r.dependencies.Session.GuildRoleEdit(role.GuildID, role.Role.ID, role.Role.Name, role.Role.Color, role.Role.Hoist,
 		role.Role.Permissions, role.Role.Mentionable)
 	if err != nil {
-		r.dependencies.Logger.Errorf("Error editing role %s: %s", role.Role.Name, err)
+		r.dependencies.Logger.Errorf("Error editing role %s (%s): %s", role.Role.Name, role.Role.ID, err)
 		return err
 	}
 
@@ -186,7 +186,7 @@ func (r Role) delete(role payloads.RolePayload) error {
 			r.dependencies.Logger.Warnf("Role doesn't exist in discord: %s", role.Role.ID)
 			return nil
 		}
-		r.dependencies.Logger.Errorf("Error deleting role %s: %s", role.Role.Name, err)
+		r.dependencies.Logger.Errorf("Error deleting role %s (%s): %s", role.Role.Name, role.Role.ID, err)
 		return err
 	}
 
