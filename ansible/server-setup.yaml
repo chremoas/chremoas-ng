@@ -71,6 +71,10 @@
             configure_priv: .*
             read_priv: .*
             write_priv: .*
+          - vhost: com.aba-eve
+            configure_priv: .*
+            read_priv: .*
+            write_priv: .*
         state: present
         tags: "administrator"
 
@@ -81,6 +85,22 @@
         password: "{{ rabbitmq_chremoas_dev_password }}"
         permissions:
           - vhost: net.4amlunch.dev
+            configure_priv: .*
+            read_priv: .*
+            write_priv: .*
+        state: present
+
+    - name: "RabbitMQ create chremoas_dev vhost"
+      rabbitmq_vhost:
+        name: com.aba-eve
+        state: present
+
+    - name: "RabbitMQ: Add user chremoas_aba"
+      rabbitmq_user:
+        user: chremoas_aba
+        password: "{{ rabbitmq_chremoas_aba_password }}"
+        permissions:
+          - vhost: com.aba-eve
             configure_priv: .*
             read_priv: .*
             write_priv: .*
