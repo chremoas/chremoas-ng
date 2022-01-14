@@ -104,11 +104,11 @@ func (r Role) upsert(role payloads.RolePayload) error {
 	defer cancel()
 
 	// Only one thing should write to discord at a time
-	r.dependencies.Logger.Info("role.upsert() acquiring lock")
+	r.dependencies.Logger.Debug("role.upsert() acquiring lock")
 	r.dependencies.Session.Lock()
 	defer func() {
 		r.dependencies.Session.Unlock()
-		r.dependencies.Logger.Info("role.upsert() released lock")
+		r.dependencies.Logger.Debug("role.upsert() released lock")
 	}()
 
 	err = r.dependencies.DB.Select("sync").
@@ -173,11 +173,11 @@ func (r Role) upsert(role payloads.RolePayload) error {
 // Only return an error if we want to keep the message and try again.
 func (r Role) delete(role payloads.RolePayload) error {
 	// Only one thing should write to discord at a time
-	r.dependencies.Logger.Info("role.delete() acquiring lock")
+	r.dependencies.Logger.Debug("role.delete() acquiring lock")
 	r.dependencies.Session.Lock()
 	defer func() {
 		r.dependencies.Session.Unlock()
-		r.dependencies.Logger.Info("role.delete() released lock")
+		r.dependencies.Logger.Debug("role.delete() released lock")
 	}()
 
 	err := r.dependencies.Session.GuildRoleDelete(role.GuildID, role.Role.ID)

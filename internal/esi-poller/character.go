@@ -140,9 +140,6 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 	member, err := aep.dependencies.Session.GuildMember(aep.dependencies.GuildID, strChatID)
 	if err != nil {
 		aep.dependencies.Logger.Errorf("error getting guild member '%d': %s", chatID, err)
-		if err != nil {
-			aep.dependencies.Logger.Errorf("Error Acking message: %s", err)
-		}
 		return err
 	}
 
