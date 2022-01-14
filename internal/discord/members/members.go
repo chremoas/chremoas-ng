@@ -106,6 +106,14 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				}
 
 			case payloads.Delete:
+				if body.RoleID == "0" {
+					err = d.Nack(false, false)
+					if err != nil {
+						m.dependencies.Logger.Errorf("Error Nacking message: %s", err)
+					}
+					return
+				}
+
 				err = m.dependencies.Session.GuildMemberRoleRemove(body.GuildID, body.MemberID, body.RoleID)
 				if err != nil {
 					m.dependencies.Logger.Errorf("Error removing role %s from user %s: %s",

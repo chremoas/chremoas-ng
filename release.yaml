@@ -1,7 +1,7 @@
 version: '3'
 services:
   chremoas-ng:
-    image: docker.io/chremoas/chremoas-ng@sha256:412e3dc4f6c506026ae3947561a98a99cf9b13e280a388803114e3cf1f563ae0
+    image: docker.io/chremoas/chremoas-ng@sha256:3e39309e8ff2182845045ec6b9ae7ad3a0002ac4170a38fb8a9bbf978b0a3ccb
     restart: always
     ports:
       - "3000:3000"
