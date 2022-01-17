@@ -193,11 +193,10 @@ func Confirm(authCode, sender string, deps common.Dependencies) string {
 		QueryContext(ctx)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
-		if err.(*pq.Error).Code == "23505" {
-			return common.SendError("User already authenticated")
+		if err.(*pq.Error).Code != "23505" {
+			deps.Logger.Error(err)
+			return common.SendError("Error linking user with character")
 		}
-		deps.Logger.Error(err)
-		return common.SendError("Error linking user with character")
 	}
 
 	// get corp ticker
