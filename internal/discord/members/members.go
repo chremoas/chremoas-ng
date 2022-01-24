@@ -70,7 +70,22 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				return
 			}
 
-			if common.IgnoreRole(body.RoleID) {
+			// We have the role's ID but the ignore list is the role names so let's look it up
+			roles, err := m.dependencies.Session.GuildRoles(m.dependencies.GuildID)
+			if err != nil {
+				m.dependencies.Logger.Errorf("Error fetching discord roles: %s", err)
+				return
+			}
+
+			var roleName string
+			for _, role := range roles {
+				if body.RoleID == role.ID {
+					roleName = role.Name
+					break
+				}
+			}
+
+			if common.IgnoreRole(roleName) {
 				err = d.Reject(false)
 				if err != nil {
 					m.dependencies.Logger.Errorf("Error Nacking invalid (ignored role) Role Add message: %s", err)
