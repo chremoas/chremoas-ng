@@ -7,6 +7,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
 	"github.com/chremoas/chremoas-ng/internal/common"
+	"go.uber.org/zap"
 
 	"github.com/chremoas/chremoas-ng/internal/roles"
 )
@@ -31,24 +32,14 @@ Subcommands:
 func (c Command) Role(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
 	_, err := s.ChannelMessageSend(m.ChannelID, c.doRole(s, m, ctx))
 	if err != nil {
-		switch v := err.(type) {
-		case *discordgo.RESTError:
-			fmt.Printf("Response: %v\n", v.Response)
-			fmt.Printf("Message: %v\n", v.Message)
-			fmt.Printf("Request: %v\n", v.Request)
-			fmt.Printf("ResponseBody: %v\n", v.ResponseBody)
-		default:
-			fmt.Printf("2Response: %v\n", err.(discordgo.RESTError).Response)
-			fmt.Printf("2Message: %v\n", err.(discordgo.RESTError).Message)
-			fmt.Printf("2Request: %v\n", err.(discordgo.RESTError).Request)
-			fmt.Printf("2ResponseBody: %v\n", err.(discordgo.RESTError).ResponseBody)
-			//c.logger.Errorf("Error sending command: %s", v)
-		}
+		c.dependencies.Logger.Error("Error sending command",
+			zap.Error(err), zap.String("command", "role"))
 	}
 }
 
 func (c Command) doRole(_ *discordgo.Session, m *discordgo.Message, _ *mux.Context) string {
-	c.dependencies.Logger.Infof("Received: %s", m.Content)
+	c.dependencies.Logger.Info("Received",
+		zap.String("content", m.Content), zap.String("command", "role"))
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {

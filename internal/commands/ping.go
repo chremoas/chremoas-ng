@@ -5,6 +5,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
+	"go.uber.org/zap"
 )
 
 // This function will be called (due to AddHandler above) every time a new
@@ -13,6 +14,7 @@ func (c Command) Ping(s *discordgo.Session, m *discordgo.Message, ctx *mux.Conte
 	fmt.Println("Got a ping!")
 	_, err := s.ChannelMessageSend(m.ChannelID, "Pong!")
 	if err != nil {
-		c.dependencies.Logger.Errorf("Error sending command: %s", err)
+		c.dependencies.Logger.Error("Error sending command",
+			zap.Error(err), zap.String("command", "ping"))
 	}
 }

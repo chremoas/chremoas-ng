@@ -8,6 +8,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
 	"github.com/chremoas/chremoas-ng/internal/sigs"
+	"go.uber.org/zap"
 
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/roles"
@@ -38,12 +39,14 @@ Subcommands:
 func (c Command) Sig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
 	_, err := s.ChannelMessageSend(m.ChannelID, c.doSig(s, m, ctx))
 	if err != nil {
-		c.dependencies.Logger.Errorf("Error sending command: %s", err)
+		c.dependencies.Logger.Error("Error sending command",
+			zap.Error(err), zap.String("command", "sig"))
 	}
 }
 
 func (c Command) doSig(_ *discordgo.Session, m *discordgo.Message, _ *mux.Context) string {
-	c.dependencies.Logger.Infof("Received: %s", m.Content)
+	c.dependencies.Logger.Info("Received",
+		zap.String("content", m.Content), zap.String("command", "sig"))
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {

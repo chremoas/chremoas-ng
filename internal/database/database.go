@@ -10,12 +10,12 @@ import (
 	"go.uber.org/zap"
 )
 
-func New(logger *zap.SugaredLogger) (*sq.StatementBuilderType, error) {
+func New(logger *zap.Logger) (*sq.StatementBuilderType, error) {
 	var (
 		err error
 	)
 
-	//ignoredRoles = viper.GetStringSlice("bot.ignoredRoles")
+	// ignoredRoles = viper.GetStringSlice("bot.ignoredRoles")
 
 	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
 		viper.GetString("database.host"),
@@ -27,13 +27,13 @@ func New(logger *zap.SugaredLogger) (*sq.StatementBuilderType, error) {
 
 	ldb, err := sqlx.Connect(viper.GetString("database.driver"), dsn)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("Error connecting to DB", zap.Error(err))
 		return nil, err
 	}
 
 	err = ldb.Ping()
 	if err != nil {
-		logger.Error(err)
+		logger.Error("Error pinging DB", zap.Error(err))
 		return nil, err
 	}
 
@@ -58,20 +58,20 @@ func New(logger *zap.SugaredLogger) (*sq.StatementBuilderType, error) {
 
 		switch err {
 		case nil:
-			logger.Infof("%s (%d) found", k, id)
+			logger.Info("permission found", zap.String("permission", k), zap.Int("id", id))
 		case sql.ErrNoRows:
-			logger.Infof("%s NOT found, creating", k)
+			logger.Info("permission NOT found, creating", zap.String("permission", k))
 			err = db.Insert("permissions").
 				Columns("name", "description").
 				Values(k, v).
 				Suffix("RETURNING \"id\"").
 				Scan(&id)
 			if err != nil {
-				logger.Error(err)
+				logger.Error("Error inserting permissions", zap.Error(err))
 				return nil, err
 			}
 		default:
-			logger.Error(err)
+			logger.Error("Error checking permissions", zap.Error(err))
 			return nil, err
 		}
 	}

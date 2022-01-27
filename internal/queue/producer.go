@@ -10,12 +10,12 @@ import (
 type Producer struct {
 	conn       *amqp.Connection
 	channel    *amqp.Channel
-	logger     *zap.SugaredLogger
+	logger     *zap.Logger
 	exchange   string
 	routingKey string
 }
 
-func NewPublisher(amqpURI, exchange, exchangeType, routingKey string, logger *zap.SugaredLogger) (*Producer, error) {
+func NewPublisher(amqpURI, exchange, exchangeType, routingKey string, logger *zap.Logger) (*Producer, error) {
 	var err error
 
 	p := &Producer{
@@ -26,7 +26,7 @@ func NewPublisher(amqpURI, exchange, exchangeType, routingKey string, logger *za
 		routingKey: routingKey,
 	}
 
-	logger.Infof("dialing %q", sanitizeURI(amqpURI))
+	logger.Info("dialing queue", zap.String("queue URI", sanitizeURI(amqpURI)))
 	p.conn, err = amqp.Dial(amqpURI)
 	if err != nil {
 		return nil, fmt.Errorf("Dial: %s", err)
@@ -38,7 +38,8 @@ func NewPublisher(amqpURI, exchange, exchangeType, routingKey string, logger *za
 		return nil, fmt.Errorf("Channel: %s", err)
 	}
 
-	logger.Infof("got Channel, declaring %q Exchange (%q)", exchangeType, exchange)
+	logger.Info("got Channel, declaring Exchange",
+		zap.String("exchange type", exchangeType), zap.String("exchange", exchange))
 	if err := p.channel.ExchangeDeclare(
 		p.exchange,   // name
 		exchangeType, // type
@@ -83,6 +84,6 @@ func (p Producer) Publish(body []byte) error {
 func (p Producer) Shutdown() {
 	err := p.conn.Close()
 	if err != nil {
-		p.logger.Errorf("Error closing connection: %s", err, err)
+		p.logger.Error("Error closing connection", zap.Error(err))
 	}
 }

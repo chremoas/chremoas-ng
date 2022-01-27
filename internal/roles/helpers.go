@@ -8,6 +8,7 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
+	"go.uber.org/zap"
 )
 
 func getRoleID(name string, deps common.Dependencies) (int, error) {
@@ -42,14 +43,14 @@ func queueUpdate(role payloads.Role, action payloads.Action, deps common.Depende
 
 	b, err := json.Marshal(payload)
 	if err != nil {
-		deps.Logger.Errorf("error marshalling json for queue: %s", err)
+		deps.Logger.Error("error marshalling json for queue", zap.Error(err))
 		return err
 	}
 
 	deps.Logger.Debug("Submitting role queue message")
 	err = deps.RolesProducer.Publish(b)
 	if err != nil {
-		deps.Logger.Errorf("error publishing message: %s", err)
+		deps.Logger.Error("error publishing message", zap.Error(err))
 		return err
 	}
 
@@ -75,12 +76,12 @@ func GetRoleMembers(sig bool, name string, deps common.Dependencies) ([]int, err
 		Where(sq.Eq{"role_nick": name}).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("error getting role filters", zap.Error(err))
 		return nil, err
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
-			deps.Logger.Error(err)
+			deps.Logger.Error("error closing row", zap.Error(err))
 		}
 	}()
 
@@ -101,12 +102,12 @@ func GetRoleMembers(sig bool, name string, deps common.Dependencies) ([]int, err
 		Having("count(*) = ?", len(filterList)).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("error getting filter memberhship", zap.Error(err))
 		return nil, err
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
-			deps.Logger.Error(err)
+			deps.Logger.Error("error closing row", zap.Error(err))
 		}
 	}()
 
@@ -145,12 +146,12 @@ func GetRoles(sig bool, shortName *string, deps common.Dependencies) ([]payloads
 	rows, err := q.QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error getting %ss: %s", roleType[sig], err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error getting role", zap.Error(err), zap.Bool("sig", sig))
 		return nil, newErr
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
-			deps.Logger.Error(err)
+			deps.Logger.Error("error closing row", zap.Error(err))
 		}
 	}()
 
@@ -171,7 +172,7 @@ func GetRoles(sig bool, shortName *string, deps common.Dependencies) ([]payloads
 		)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
-			deps.Logger.Error(newErr)
+			deps.Logger.Error("error scanning role", zap.Error(err), zap.Bool("sig", sig))
 			return nil, newErr
 		}
 		charTotal += len(role.ShortName) + len(role.Name) + 15 // Guessing on bool excess

@@ -11,7 +11,7 @@ import (
 	_ "github.com/spf13/viper/remote"
 )
 
-func New(filename string, logger *zap.SugaredLogger) (*Configuration, error) {
+func New(filename string, logger *zap.Logger) (*Configuration, error) {
 	var fileRead, remoteRead bool
 	var fileReadErr, remoteReadErr error
 	var c Configuration
@@ -39,7 +39,11 @@ func New(filename string, logger *zap.SugaredLogger) (*Configuration, error) {
 		if consul != nil {
 			// TODO: This is very rigid. Let's find a better way.
 			configPath := fmt.Sprintf("/%s/config", configNameSpace)
-			logger.Infof("Using %s config %s from %s", configType, configPath, consul.(string))
+			logger.Info("Using config",
+				zap.String("configType", configType),
+				zap.String("configPath", configPath),
+				zap.Any("consul", consul),
+			)
 			err := viper.AddRemoteProvider("consul", consul.(string), configPath)
 			if err == nil {
 				viper.SetConfigType(configType) // because there is no file extension in a stream of bytes, supported extensions are "json", "toml", "yaml", "yml", "properties", "props", "prop"

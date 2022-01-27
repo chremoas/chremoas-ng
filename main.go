@@ -25,6 +25,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 
 	"github.com/chremoas/chremoas-ng/internal/auth/web"
 	"github.com/chremoas/chremoas-ng/internal/commands"
@@ -47,7 +48,7 @@ func main() {
 	}
 
 	logger := log.New(environment, debug)
-	logger.Infof("Environment: %s Debug: %s", environment, dbg)
+	logger.Info("Starting up", zap.String("env", environment), zap.Bool("debug", debug))
 	dependencies := common.Dependencies{Logger: logger, Context: context.Background()}
 
 	// Print out a fancy logo!
@@ -91,9 +92,9 @@ func main() {
 
 	debugAddr := fmt.Sprintf("%s:%d", viper.GetString("net.host"), viper.GetInt("net.debugPort"))
 	go func() {
-		dependencies.Logger.Infof("main: Debug Listening %s", debugAddr)
+		dependencies.Logger.Info("main: Debug Listener", zap.String("debugAddr", debugAddr))
 		if err = http.ListenAndServe(debugAddr, http.DefaultServeMux); err != nil {
-			dependencies.Logger.Errorf("main: Debug Listener closed: %v", err)
+			dependencies.Logger.Error("main: Debug Listener closed", zap.Error(err))
 		}
 	}()
 
@@ -102,7 +103,7 @@ func main() {
 
 	dependencies.DB, err = database.New(dependencies.Logger)
 	if err != nil {
-		dependencies.Logger.Fatalf("error opening connection to PostgreSQL: %s\n", err)
+		dependencies.Logger.Fatal("error opening connection to PostgreSQL", zap.Error(err))
 	}
 
 	// =========================================================================
@@ -110,13 +111,13 @@ func main() {
 
 	dependencies.Session, err = discordgo.New("Bot " + viper.GetString("bot.token"))
 	if err != nil {
-		dependencies.Logger.Fatalf("Error starting session: %s", err)
+		dependencies.Logger.Fatal("Error starting session", zap.Error(err))
 	}
 
 	defer func() {
 		err := dependencies.Session.Close()
 		if err != nil {
-			dependencies.Logger.Errorf("Error closing discord connection: %s", err)
+			dependencies.Logger.Error("Error closing discord connection", zap.Error(err))
 		}
 	}()
 
@@ -151,39 +152,43 @@ func main() {
 
 	// Consumers
 	members := discordMembers.New(dependencies)
-	membersConsumer, err := queue.NewConsumer(queueURI, "members", "direct", "members", "members", "members", members.HandleMessage, dependencies.Logger)
+	membersConsumer, err := queue.NewConsumer(queueURI, "members", "direct", "members",
+		"members", "members", members.HandleMessage, dependencies.Logger)
 	if err != nil {
-		dependencies.Logger.Errorf("Error setting up members consumer: %s", err)
+		dependencies.Logger.Error("Error setting up members consumer", zap.Error(err))
 	}
 	defer func() {
 		err := membersConsumer.Shutdown()
 		if err != nil {
-			dependencies.Logger.Errorf("error shutting down members consumer: %s", err)
+			dependencies.Logger.Error("error shutting down members consumer", zap.Error(err))
 		}
 	}()
 
 	roles := discordRoles.New(dependencies)
-	rolesConsumer, err := queue.NewConsumer(queueURI, "roles", "direct", "roles", "roles", "roles", roles.HandleMessage, dependencies.Logger)
+	rolesConsumer, err := queue.NewConsumer(queueURI, "roles", "direct", "roles",
+		"roles", "roles", roles.HandleMessage, dependencies.Logger)
 	if err != nil {
-		dependencies.Logger.Errorf("Error setting up members consumer: %s", err)
+		dependencies.Logger.Error("Error setting up members consumer", zap.Error(err))
 	}
 	defer func() {
 		err := rolesConsumer.Shutdown()
 		if err != nil {
-			dependencies.Logger.Errorf("error shutting down roles consumer: %s", err)
+			dependencies.Logger.Error("error shutting down roles consumer", zap.Error(err))
 		}
 	}()
 
 	// Producers
-	dependencies.MembersProducer, err = queue.NewPublisher(queueURI, "members", "direct", "members", dependencies.Logger)
+	dependencies.MembersProducer, err = queue.NewPublisher(queueURI, "members", "direct",
+		"members", dependencies.Logger)
 	if err != nil {
-		dependencies.Logger.Errorf("Error setting up members producer: %s", err)
+		dependencies.Logger.Error("Error setting up members producer", zap.Error(err))
 	}
 	defer dependencies.MembersProducer.Shutdown()
 
-	dependencies.RolesProducer, err = queue.NewPublisher(queueURI, "roles", "direct", "roles", dependencies.Logger)
+	dependencies.RolesProducer, err = queue.NewPublisher(queueURI, "roles", "direct",
+		"roles", dependencies.Logger)
 	if err != nil {
-		dependencies.Logger.Errorf("Error setting up roles producer: %s", err)
+		dependencies.Logger.Error("Error setting up roles producer", zap.Error(err))
 	}
 	defer dependencies.RolesProducer.Shutdown()
 
@@ -209,14 +214,14 @@ func main() {
 	for _, route := range commandList {
 		_, err = Router.Route(route.command, route.desc, route.handler)
 		if err != nil {
-			dependencies.Logger.Warnf("Failed to load route: %s", route.command)
+			dependencies.Logger.Warn("Failed to load route", zap.String("route", route.command))
 		}
 	}
 
 	// Open a websocket connection to Discord
 	err = dependencies.Session.Open()
 	if err != nil {
-		dependencies.Logger.Fatalf("error opening connection to Discord: %s\n", err)
+		dependencies.Logger.Fatal("error opening connection to Discord", zap.Error(err))
 	}
 
 	// =========================================================================
@@ -231,7 +236,7 @@ func main() {
 
 	authWeb, err := web.New(dependencies)
 	if err != nil {
-		dependencies.Logger.Fatalf("Error starting authWeb: %s", err)
+		dependencies.Logger.Fatal("Error starting authWeb", zap.Error(err))
 	}
 
 	webUI := http.Server{
@@ -249,7 +254,7 @@ func main() {
 
 	// Start the service listening for requests.
 	go func() {
-		dependencies.Logger.Infof("main: auth-web listening on %s", webUI.Addr)
+		dependencies.Logger.Info("main: auth-web listening", zap.String("webUI.Addr", webUI.Addr))
 		serverErrors <- webUI.ListenAndServe()
 	}()
 
@@ -267,10 +272,10 @@ func main() {
 	// Blocking main and waiting for shutdown.
 	select {
 	case err = <-serverErrors:
-		dependencies.Logger.Fatal(err)
+		dependencies.Logger.Fatal("server error", zap.Error(err))
 
 	case sig := <-shutdown:
-		dependencies.Logger.Infof("main: %v: Start shutdown", sig)
+		dependencies.Logger.Info("main: Start shutdown", zap.Any("signal", sig))
 
 		// Give outstanding requests a deadline for completion.
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
@@ -280,9 +285,9 @@ func main() {
 		if err = webUI.Shutdown(ctx); err != nil {
 			err = webUI.Close()
 			if err != nil {
-				dependencies.Logger.Fatalf("Error stopping API: %s", err)
+				dependencies.Logger.Fatal("Error stopping API", zap.Error(err))
 			}
-			dependencies.Logger.Fatalf("could not stop server gracefully: %s", err)
+			dependencies.Logger.Fatal("could not stop server gracefully", zap.Error(err))
 		}
 	}
 

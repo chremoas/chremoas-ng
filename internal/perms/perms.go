@@ -9,6 +9,7 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/lib/pq"
+	"go.uber.org/zap"
 )
 
 func List(deps common.Dependencies) string {
@@ -25,13 +26,13 @@ func List(deps common.Dependencies) string {
 		From("permissions").
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("error getting permissions", zap.Error(err))
 		return common.SendFatal(err.Error())
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -40,7 +41,7 @@ func List(deps common.Dependencies) string {
 		err = rows.Scan(&filter.Name, &filter.Description)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning permissions row: %s", err)
-			deps.Logger.Error(newErr)
+			deps.Logger.Error("error scanning permissions", zap.Error(err))
 			return common.SendFatal(newErr.Error())
 		}
 
@@ -77,13 +78,13 @@ func Add(name, description, author string, deps common.Dependencies) string {
 			return common.SendError(fmt.Sprintf("permission `%s` already exists", name))
 		}
 		newErr := fmt.Errorf("error inserting permission: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error inserting permissions", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -107,13 +108,13 @@ func Delete(name, author string, deps common.Dependencies) string {
 		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error deleting permission: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error deleting permissions", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -136,13 +137,13 @@ func ListMembers(name string, deps common.Dependencies) string {
 		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error getting permission membership list: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error getting permissions membership list", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -151,7 +152,7 @@ func ListMembers(name string, deps common.Dependencies) string {
 		err = rows.Scan(&userID)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning permission_membership userID: %s", err)
-			deps.Logger.Error(newErr)
+			deps.Logger.Error("error scanning permission_membership userID", zap.Error(err))
 			return common.SendFatal(newErr.Error())
 		}
 		buffer.WriteString(fmt.Sprintf("\t<@%s>\n", common.GetUsername(userID, deps.Session)))
@@ -191,7 +192,7 @@ func AddMember(user, permission, author string, deps common.Dependencies) string
 		Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permissionID: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error scanning permissionID", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 
@@ -205,13 +206,13 @@ func AddMember(user, permission, author string, deps common.Dependencies) string
 			return common.SendError(fmt.Sprintf("<@%s> already a member of `%s`", userID, permission))
 		}
 		newErr := fmt.Errorf("error inserting permission: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error inserting permission", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -244,7 +245,7 @@ func RemoveMember(user, permission, author string, deps common.Dependencies) str
 		Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permisionID: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error scanning permissionID", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 
@@ -254,13 +255,13 @@ func RemoveMember(user, permission, author string, deps common.Dependencies) str
 		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error deleting permission: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error deleting permission", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -289,13 +290,13 @@ func UserPerms(user string, deps common.Dependencies) string {
 		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error getting user perms: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error getting user perms", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -303,7 +304,7 @@ func UserPerms(user string, deps common.Dependencies) string {
 	for rows.Next() {
 		err = rows.Scan(&permission)
 		if err != nil {
-			deps.Logger.Errorf("Error scanning permission id: %s", err)
+			deps.Logger.Error("Error scanning permission id", zap.Error(err))
 			return common.SendFatal(err.Error())
 		}
 		buffer.WriteString(fmt.Sprintf("\t%s\n", permission))
@@ -328,8 +329,7 @@ func CanPerform(authorID, permission string, deps common.Dependencies) bool {
 		Where(sq.Eq{"name": permission}).
 		Scan(&permissionID)
 	if err != nil {
-		newErr := fmt.Errorf("error scanning permisionID: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error scanning permissionID", zap.Error(err))
 		return false
 	}
 	err = deps.DB.Select("COUNT(*)").
@@ -338,8 +338,7 @@ func CanPerform(authorID, permission string, deps common.Dependencies) bool {
 		Where(sq.Eq{"permission": permissionID}).
 		Scan(&count)
 	if err != nil {
-		newErr := fmt.Errorf("error scanning permission count: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error scanning permission count", zap.Error(err))
 		return false
 	}
 

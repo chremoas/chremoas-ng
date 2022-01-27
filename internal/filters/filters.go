@@ -13,6 +13,7 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
 	"github.com/lib/pq"
+	"go.uber.org/zap"
 )
 
 func List(deps common.Dependencies) string {
@@ -28,13 +29,13 @@ func List(deps common.Dependencies) string {
 		From("filters").
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("error getting filter", zap.Error(err))
 		return common.SendFatal(err.Error())
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -43,7 +44,7 @@ func List(deps common.Dependencies) string {
 		err = rows.Scan(&filter.Name, &filter.Description)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning filter row: %s", err)
-			deps.Logger.Error(newErr)
+			deps.Logger.Error("error scanning filter row", zap.Error(err))
 			return common.SendFatal(newErr.Error())
 		}
 
@@ -82,7 +83,7 @@ func Add(name, description string, deps common.Dependencies) (string, int) {
 			return common.SendError(fmt.Sprintf("filter `%s` already exists", name)), -1
 		}
 		newErr := fmt.Errorf("error inserting filter: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error inserting filter", zap.Error(err))
 		return common.SendFatal(newErr.Error()), -1
 	}
 
@@ -109,13 +110,13 @@ func Delete(name string, deps common.Dependencies) (string, int) {
 		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error deleting filter: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error deleting filter", zap.Error(err))
 		return common.SendFatal(newErr.Error()), -1
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -123,7 +124,7 @@ func Delete(name string, deps common.Dependencies) (string, int) {
 		err = rows.Scan(&id)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning filters id: %s", err)
-			deps.Logger.Error(newErr)
+			deps.Logger.Error("error scanning filters", zap.Error(err))
 			return common.SendFatal(newErr.Error()), -1
 		}
 	}
@@ -147,13 +148,13 @@ func ListMembers(name string, deps common.Dependencies) string {
 		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error getting filter membership list: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error getting filter membership list", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -162,7 +163,7 @@ func ListMembers(name string, deps common.Dependencies) string {
 		err = rows.Scan(&userID)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning filter_membership userID: %s", err)
-			deps.Logger.Error(newErr)
+			deps.Logger.Error("error scanning filter_membership userID", zap.Error(err))
 			return common.SendFatal(newErr.Error())
 		}
 		buffer.WriteString(fmt.Sprintf("\t%s\n", common.GetUsername(userID, deps.Session)))
@@ -215,11 +216,11 @@ func AddMember(userID, filter string, deps common.Dependencies) string {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
 		}
 		newErr := fmt.Errorf("error scanning filterID: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error scanning filterID", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 
-	deps.Logger.Infof("Got userID:%s filterID:%d", userID, filterID)
+	deps.Logger.Info("Got member info", zap.String("userID", userID), zap.Int("filterID", filterID))
 
 	rows, err := deps.DB.Insert("filter_membership").
 		Columns("filter", "user_id").
@@ -231,13 +232,13 @@ func AddMember(userID, filter string, deps common.Dependencies) string {
 			return common.SendError(fmt.Sprintf("<@%s> already a member of `%s`", userID, filter))
 		}
 		newErr := fmt.Errorf("error inserting filter: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error inserting filter", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -292,7 +293,7 @@ func RemoveMember(userID, filter string, deps common.Dependencies) string {
 		Scan(&filterID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning filterID: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error scanning filterID", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 
@@ -303,13 +304,13 @@ func RemoveMember(userID, filter string, deps common.Dependencies) string {
 		QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error deleting filter: %s", err)
-		deps.Logger.Error(newErr)
+		deps.Logger.Error("error deleting filter", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -341,17 +342,18 @@ func QueueUpdate(action payloads.Action, memberID, roleID string, deps common.De
 
 	b, err := json.Marshal(payload)
 	if err != nil {
-		deps.Logger.Errorf("error marshalling queue message: %s", err)
+		deps.Logger.Error("error marshalling queue message", zap.Error(err))
 	}
 
 	if roleID == "0" {
 		// no point submitting a message as it'll be ignored anyway
-		deps.Logger.Debugf("Not submitting member queue message with roleID == 0: %+v", payload)
+		deps.Logger.Debug("Not submitting member queue message with roleID == 0", zap.Any("payload", payload))
+		return
 	}
 
-	deps.Logger.Debugf("Submitting member queue message: %+v", payload)
+	deps.Logger.Debug("Submitting member queue message", zap.Any("payload", payload))
 	err = deps.MembersProducer.Publish(b)
 	if err != nil {
-		deps.Logger.Errorf("error publishing message: %s", err)
+		deps.Logger.Error("error publishing message", zap.Error(err))
 	}
 }

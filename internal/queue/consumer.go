@@ -12,13 +12,13 @@ type Consumer struct {
 	channel *amqp.Channel
 	tag     string
 	done    chan error
-	logger  *zap.SugaredLogger
+	logger  *zap.Logger
 	handler func(deliveries <-chan amqp.Delivery, done chan error)
 }
 
 func NewConsumer(amqpURI, exchange, exchangeType, queueName, key, ctag string,
 	handler func(deliveries <-chan amqp.Delivery, done chan error),
-	logger *zap.SugaredLogger) (*Consumer, error) {
+	logger *zap.Logger) (*Consumer, error) {
 	c := &Consumer{
 		conn:    nil,
 		channel: nil,
@@ -30,7 +30,7 @@ func NewConsumer(amqpURI, exchange, exchangeType, queueName, key, ctag string,
 
 	var err error
 
-	logger.Infof("dialing %q", sanitizeURI(amqpURI))
+	logger.Info("dialing queue", zap.String("queue URI", sanitizeURI(amqpURI)))
 	c.conn, err = amqp.Dial(amqpURI)
 	if err != nil {
 		return nil, fmt.Errorf("Dial: %s", err)
@@ -40,13 +40,13 @@ func NewConsumer(amqpURI, exchange, exchangeType, queueName, key, ctag string,
 		fmt.Printf("closing: %s", <-c.conn.NotifyClose(make(chan *amqp.Error)))
 	}()
 
-	logger.Infof("got Connection, getting Channel")
+	logger.Info("got Connection, getting Channel")
 	c.channel, err = c.conn.Channel()
 	if err != nil {
 		return nil, fmt.Errorf("Channel: %s", err)
 	}
 
-	logger.Infof("got Channel, declaring Exchange (%q)", exchange)
+	logger.Info("got Channel, declaring Exchange", zap.String("exchange", exchange))
 	if err = c.channel.ExchangeDeclare(
 		exchange,     // name of the exchange
 		exchangeType, // type
@@ -59,21 +59,25 @@ func NewConsumer(amqpURI, exchange, exchangeType, queueName, key, ctag string,
 		return nil, fmt.Errorf("Exchange Declare: %s", err)
 	}
 
-	logger.Infof("declared Exchange, declaring Queue %q", queueName)
+	logger.Info("declared Exchange, declaring Queue", zap.String("queue", queueName))
 	queue, err := c.channel.QueueDeclare(
-		queueName,                        // name of the queue
-		true,                             // durable
-		false,                            // delete when unused
-		false,                            // exclusive
-		false,                            // noWait
+		queueName, // name of the queue
+		true,      // durable
+		false,     // delete when unused
+		false,     // exclusive
+		false,     // noWait
 		nil,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("Queue Declare: %s", err)
 	}
 
-	logger.Infof("declared Queue (%q %d messages, %d consumers), binding to Exchange (key %q)",
-		queue.Name, queue.Messages, queue.Consumers, key)
+	logger.Info("declared Queue, binding to Exchange",
+		zap.String("name", queue.Name),
+		zap.Int("messages", queue.Messages),
+		zap.Int("consumers", queue.Consumers),
+		zap.String("exchange key", key),
+	)
 
 	if err = c.channel.QueueBind(
 		queue.Name, // name of the queue
@@ -85,7 +89,7 @@ func NewConsumer(amqpURI, exchange, exchangeType, queueName, key, ctag string,
 		return nil, fmt.Errorf("Queue Bind: %s", err)
 	}
 
-	logger.Infof("Queue bound to Exchange, starting Consume (consumer tag %q)", c.tag)
+	logger.Info("Queue bound to Exchange, starting Consume", zap.String("consumer tag", c.tag))
 	deliveries, err := c.channel.Consume(
 		queue.Name, // name
 		c.tag,      // consumerTag,
@@ -114,7 +118,7 @@ func (c *Consumer) Shutdown() error {
 		return fmt.Errorf("AMQP connection close error: %s", err)
 	}
 
-	defer c.logger.Infof("AMQP shutdown OK")
+	defer c.logger.Info("AMQP shutdown OK")
 
 	// wait for handle() to exit
 	return <-c.done

@@ -7,6 +7,7 @@ import (
 
 	"github.com/bhechinger/go-sets"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
+	"go.uber.org/zap"
 )
 
 const (
@@ -37,13 +38,13 @@ func GetUserRoles(sig bool, userID string, deps Dependencies) ([]payloads.Role, 
 		Suffix("getMemberRoles(?, ?)", userID, strconv.FormatBool(sig)).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("error getting role membership", zap.Error(err), zap.String("user id", userID))
 		return nil, fmt.Errorf("error getting user %ss (%s): %s", roleType[sig], userID, err)
 	}
 
 	defer func() {
 		if err = rows.Close(); err != nil {
-			deps.Logger.Error(err)
+			deps.Logger.Error("error closing row", zap.Error(err))
 		}
 	}()
 
@@ -57,7 +58,7 @@ func GetUserRoles(sig bool, userID string, deps Dependencies) ([]payloads.Role, 
 		)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
-			deps.Logger.Error(newErr)
+			deps.Logger.Error("error scanning row", zap.Error(newErr))
 			return nil, newErr
 		}
 

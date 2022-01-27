@@ -7,6 +7,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
 	"github.com/chremoas/chremoas-ng/internal/auth"
+	"go.uber.org/zap"
 )
 
 const authHelpStr = `
@@ -18,12 +19,14 @@ Usage: !auth <token>
 func (c Command) Auth(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
 	_, err := s.ChannelMessageSend(m.ChannelID, c.doAuth(s, m, ctx))
 	if err != nil {
-		c.dependencies.Logger.Errorf("Error sending command: %s", err)
+		c.dependencies.Logger.Error("Error sending command",
+			zap.Error(err), zap.String("command", "auth"))
 	}
 }
 
 func (c Command) doAuth(_ *discordgo.Session, m *discordgo.Message, _ *mux.Context) string {
-	c.dependencies.Logger.Infof("Received: %s", m.Content)
+	c.dependencies.Logger.Info("Received",
+		zap.String("content", m.Content), zap.String("command", "auth"))
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {

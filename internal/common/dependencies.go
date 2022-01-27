@@ -10,7 +10,7 @@ import (
 )
 
 type Dependencies struct {
-	Logger          *zap.SugaredLogger
+	Logger          *zap.Logger
 	DB              *sq.StatementBuilderType
 	MembersProducer *queue.Producer
 	RolesProducer   *queue.Producer

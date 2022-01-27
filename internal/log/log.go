@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-func New(environment string, debug bool) *zap.SugaredLogger {
+func New(environment string, debug bool) *zap.Logger {
 	var logger *zap.Logger
 
 	if environment == "prod" {
@@ -23,9 +23,9 @@ func New(environment string, debug bool) *zap.SugaredLogger {
 			errorUnlessEnabled,
 		)
 
-		return zap.New(core).Sugar()
+		return zap.New(core)
 	}
 
 	logger, _ = zap.NewDevelopment()
-	return logger.Sugar()
+	return logger
 }

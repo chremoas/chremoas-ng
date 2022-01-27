@@ -18,6 +18,7 @@ import (
 	"github.com/dimfeld/httptreemux"
 	"github.com/gregjones/httpcache"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 const (
@@ -70,7 +71,7 @@ func New(deps common.Dependencies) (*Web, error) {
 	templates := template.New("auth-web")
 	_, err := templates.ParseFS(content, "templates/*.html")
 	if err != nil {
-		deps.Logger.Errorf("Error parsing templates: %s", err)
+		deps.Logger.Error("Error parsing templates", zap.Error(err))
 		return nil, err
 	}
 
@@ -101,14 +102,14 @@ func (web Web) readiness(w http.ResponseWriter, _ *http.Request) {
 	}
 	err := json.NewEncoder(w).Encode(status)
 	if err != nil {
-		web.dependencies.Logger.Errorf("Error encoding status: %s", err)
+		web.dependencies.Logger.Error("Error encoding status", zap.Error(err))
 	}
 }
 
 func (web Web) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	err := web.templates.ExecuteTemplate(w, "index.html", nil)
 	if err != nil {
-		web.dependencies.Logger.Error("Error executing index: %s", err)
+		web.dependencies.Logger.Error("Error executing index", zap.Error(err))
 	}
 }
 
@@ -123,14 +124,14 @@ func (web Web) handleEveLogin(w http.ResponseWriter, r *http.Request) {
 	b := make([]byte, 16)
 	_, err := rand.Read(b)
 	if err != nil {
-		web.dependencies.Logger.Error("Error generating rangom string: %s", err)
+		web.dependencies.Logger.Error("Error generating random string", zap.Error(err))
 	}
 	state := base64.URLEncoding.EncodeToString(b)
 
 	// Save the state to the session to validate with the response.
 	err = sess.Set("state", state)
 	if err != nil {
-		web.dependencies.Logger.Errorf("Error setting state: %s", err)
+		web.dependencies.Logger.Error("Error setting state", zap.Error(err))
 	}
 
 	// Build the authorize URL
@@ -165,7 +166,7 @@ func (web Web) handleEveCallback(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		web.dependencies.Logger.Errorf("Error executing authd template: %s", err)
+		web.dependencies.Logger.Error("Error executing auth template", zap.Error(err))
 	}
 }
 

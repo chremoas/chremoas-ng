@@ -7,6 +7,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
 	"github.com/chremoas/chremoas-ng/internal/perms"
+	"go.uber.org/zap"
 )
 
 const permsHelpStr = `
@@ -27,12 +28,14 @@ Subcommands:
 func (c Command) Perms(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
 	_, err := s.ChannelMessageSend(m.ChannelID, c.doPerms(s, m, ctx))
 	if err != nil {
-		c.dependencies.Logger.Errorf("Error sending command: %s", err)
+		c.dependencies.Logger.Error("Error sending command",
+			zap.Error(err), zap.String("command", "perms"))
 	}
 }
 
 func (c Command) doPerms(_ *discordgo.Session, m *discordgo.Message, _ *mux.Context) string {
-	c.dependencies.Logger.Infof("Received: %s", m.Content)
+	c.dependencies.Logger.Info("Received",
+		zap.String("content", m.Content), zap.String("command", "perms"))
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {

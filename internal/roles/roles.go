@@ -15,6 +15,7 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
 	"github.com/lib/pq"
+	"go.uber.org/zap"
 )
 
 var (
@@ -94,7 +95,7 @@ func ListMembers(sig bool, name string, deps common.Dependencies) string {
 		buffer bytes.Buffer
 	)
 
-	deps.Logger.Debugf("Listing members for %s: %s", roleType[sig], name)
+	deps.Logger.Debug("Listing members", zap.Bool("sig", sig), zap.String("name", name))
 
 	members, err := GetRoleMembers(sig, name, deps)
 	if err != nil {
@@ -207,7 +208,8 @@ func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependen
 		if err.(*pq.Error).Code == "23505" {
 			return common.SendError(fmt.Sprintf("%s `%s` (%s) already exists", roleType[sig], name, ticker))
 		}
-		deps.Logger.Error(err)
+		deps.Logger.Error("error adding role", zap.Error(err), zap.Bool("sig", sig),
+			zap.String("name", name), zap.String("ticker", ticker))
 		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
 	}
 
@@ -234,13 +236,14 @@ func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependen
 		Values(roleID, filterID).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("erro radding role_filter", zap.Error(err), zap.Bool("sig", sig),
+			zap.Int("role", roleID), zap.Int("filter", filterID))
 		return common.SendFatal(fmt.Sprintf("error adding role_filter for %s: %s", roleType[sig], err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -279,7 +282,8 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
 		}
-		deps.Logger.Error(err)
+		deps.Logger.Error("error deleting role", zap.Error(err), zap.Bool("sig", sig),
+			zap.String("ticker", ticker))
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
 
@@ -288,13 +292,14 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 		Where(sq.Eq{"sig": sig}).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("error deleting role", zap.Error(err), zap.Bool("sig", sig),
+			zap.String("ticker", ticker))
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -302,7 +307,7 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 		err = rows.Scan(&roleID)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning role id: %s", err)
-			deps.Logger.Error(newErr)
+			deps.Logger.Error("error scanning role id", zap.Error(err))
 			return common.SendFatal(newErr.Error())
 		}
 	}
@@ -314,13 +319,14 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 		Where(sq.Eq{"filter": filterID}).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
-		return common.SendFatal(fmt.Sprintf("error deleting filter_membershipts for %s: %s", roleType[sig], err))
+		deps.Logger.Error("error deleting filter_membership", zap.Error(err), zap.Bool("sig", sig),
+			zap.Int("filter", filterID))
+		return common.SendFatal(fmt.Sprintf("error deleting filter_memberships for %s: %s", roleType[sig], err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -328,13 +334,14 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 		Where(sq.Eq{"role": roleID}).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("error deleting role_filters", zap.Error(err), zap.Bool("sig", sig),
+			zap.Int("role", roleID))
 		return common.SendFatal(fmt.Sprintf("error deleting role_filters %s: %s", roleType[sig], err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -416,13 +423,15 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 		Where(sq.Eq{"sig": sig}).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("error adding role", zap.Error(err), zap.Bool("sig", sig),
+			zap.String("name", name))
 		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
 	}
 
 	role, err := GetChremoasRole(sig, ticker, deps)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("error fetching role", zap.Error(err), zap.Bool("sig", sig),
+			zap.String("ticker", ticker))
 		return common.SendFatal(fmt.Sprintf("error fetching %s from db: %s", roleType[sig], err))
 	}
 
@@ -445,12 +454,13 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 			Where(sq.Eq{"name": role.Name}).
 			QueryContext(ctx)
 		if err != nil {
-			deps.Logger.Errorf("error updating role's ID: %s", err)
+			deps.Logger.Error("error updating role's ID", zap.Error(err),
+				zap.String("name", role.Name), zap.String("id", dRole.ID))
 		}
 		defer func() {
 			err := rows.Close()
 			if err != nil {
-				deps.Logger.Errorf("error closing database: %s", err)
+				deps.Logger.Error("error closing database", zap.Error(err))
 			}
 		}()
 	}
@@ -463,7 +473,7 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 		role.Hoist != dRole.Hoist ||
 		role.Color != dRole.Color ||
 		role.Permissions != dRole.Permissions {
-		deps.Logger.Infof("Roles differ for %s", name)
+		deps.Logger.Info("Roles differ", zap.String("name", name))
 
 		err = queueUpdate(role, payloads.Upsert, deps)
 		if err != nil {
@@ -535,13 +545,14 @@ func ListFilters(sig bool, ticker string, deps common.Dependencies) string {
 		Where(sq.Eq{"roles.sig": sig}).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("error fetching filters", zap.Error(err),
+			zap.String("ticker", ticker), zap.Bool("sig", sig))
 		return common.SendFatal(fmt.Sprintf("error fetching filters: %s", err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -552,7 +563,7 @@ func ListFilters(sig bool, ticker string, deps common.Dependencies) string {
 		}
 		err = rows.Scan(&filter)
 		if err != nil {
-			deps.Logger.Error(err)
+			deps.Logger.Error("error scanning filters", zap.Error(err))
 			return common.SendFatal(fmt.Sprintf("error scanning row filters: %s", err))
 		}
 
@@ -592,7 +603,7 @@ func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) string
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
 		}
-		deps.Logger.Error(err)
+		deps.Logger.Error("error fetching filter id", zap.Error(err), zap.String("filter", filter))
 		return common.SendFatal(fmt.Sprintf("error fetching filter id: %s", err))
 	}
 
@@ -605,7 +616,8 @@ func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) string
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
 		}
-		deps.Logger.Error(err)
+		deps.Logger.Error("error fetching role", zap.Error(err), zap.Bool("sig", sig),
+			zap.String("ticker", ticker))
 		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
 	}
 
@@ -614,13 +626,14 @@ func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) string
 		Values(roleID, filterID).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("error inserting role_filter", zap.Error(err),
+			zap.Int("role", roleID), zap.Int("filter", filterID))
 		return common.SendFatal(fmt.Sprintf("error inserting role_filter: %s", err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -653,7 +666,7 @@ func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) str
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
 		}
-		deps.Logger.Error(err)
+		deps.Logger.Error("error fetching filter", zap.Error(err), zap.String("filter", filter))
 		return common.SendFatal(fmt.Sprintf("error fetching filter id: %s", err))
 	}
 
@@ -666,7 +679,8 @@ func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) str
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
 		}
-		deps.Logger.Error(err)
+		deps.Logger.Error("error fetching role", zap.Error(err), zap.Bool("sig", sig),
+			zap.String("ticker", ticker))
 		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
 	}
 
@@ -675,13 +689,14 @@ func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) str
 		Where(sq.Eq{"filter": filterID}).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error(err)
+		deps.Logger.Error("error deleting role_filter", zap.Error(err),
+			zap.Int("role", roleID), zap.Int("filter", filterID))
 		return common.SendFatal(fmt.Sprintf("error deleting role_filter: %s", err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Errorf("error closing database: %s", err)
+			deps.Logger.Error("error closing database", zap.Error(err))
 		}
 	}()
 

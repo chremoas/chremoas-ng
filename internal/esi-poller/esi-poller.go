@@ -9,6 +9,7 @@ import (
 	"github.com/antihax/goesi/esi"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/gregjones/httpcache"
+	"go.uber.org/zap"
 )
 
 type AuthEsiPoller interface {
@@ -19,6 +20,7 @@ type AuthEsiPoller interface {
 
 type authEsiPoller struct {
 	dependencies common.Dependencies
+	logger       *zap.Logger
 	tickTime     time.Duration
 	ticker       *time.Ticker
 	esiClient    *goesi.APIClient
@@ -26,11 +28,12 @@ type authEsiPoller struct {
 }
 
 func New(userAgent string, deps common.Dependencies) AuthEsiPoller {
-	deps.Logger.Info("ESI Poller: Setting up Auth ESI Poller")
+	deps.Logger.Info("Setting up Auth ESI Poller", zap.String("component", "esi-poller"))
 	httpClient := httpcache.NewMemoryCacheTransport().Client()
 
 	return &authEsiPoller{
 		dependencies: deps,
+		logger:       deps.Logger.With(zap.String("component", "esi-poller")),
 		tickTime:     time.Minute * 60,
 		esiClient:    goesi.NewAPIClient(httpClient, userAgent),
 		ctx:          deps.Context,
@@ -40,7 +43,7 @@ func New(userAgent string, deps common.Dependencies) AuthEsiPoller {
 func (aep *authEsiPoller) Start() {
 	aep.ticker = time.NewTicker(aep.tickTime)
 
-	aep.dependencies.Logger.Info("ESI Poller: Starting polling loop")
+	aep.logger.Info("Starting polling loop")
 	go func() {
 		aep.Poll()
 		for range aep.ticker.C {
@@ -50,7 +53,7 @@ func (aep *authEsiPoller) Start() {
 }
 
 func (aep *authEsiPoller) Stop() {
-	aep.dependencies.Logger.Info("Stopping ESI Poller")
+	aep.logger.Info("Stopping poller")
 	aep.ticker.Stop()
 }
 
@@ -63,36 +66,36 @@ func (aep *authEsiPoller) Poll() {
 		err        error
 	)
 
-	aep.dependencies.Logger.Info("ESI Poller: calling syncRoles()")
+	aep.logger.Info("calling syncRoles()")
 	count, errorCount, err = aep.syncRoles()
 	if err == nil {
-		aep.dependencies.Logger.Infof("ESI Poller: syncRoles() processed %d entries (%d errors)", count, errorCount)
+		aep.logger.Info("syncRoles() completed", zap.Int("count", count), zap.Int("errorCount", errorCount))
 	} else {
-		aep.dependencies.Logger.Error(err)
+		aep.logger.Error("error synchronizing discord roles", zap.Error(err))
 	}
 
-	aep.dependencies.Logger.Info("ESI Poller: Calling updateAlliances()")
+	aep.logger.Info("Calling updateAlliances()")
 	count, errorCount, err = aep.updateAlliances()
 	if err == nil {
-		aep.dependencies.Logger.Infof("ESI Poller: updateAlliances() processed %d entries (%d errors)", count, errorCount)
+		aep.logger.Info("updateAlliances() completed", zap.Int("count", count), zap.Int("errorCount", errorCount))
 	} else {
-		aep.dependencies.Logger.Error(err)
+		aep.logger.Error("error updating alliances", zap.Error(err))
 	}
 
-	aep.dependencies.Logger.Info("ESI Poller: Calling updateCorporations()")
+	aep.logger.Info("Calling updateCorporations()")
 	count, errorCount, err = aep.updateCorporations()
 	if err == nil {
-		aep.dependencies.Logger.Infof("ESI Poller: updateCorporations() processed %d entries (%d errors)", count, errorCount)
+		aep.logger.Info("updateCorporations() completed.", zap.Int("count", count), zap.Int("errorCount", errorCount))
 	} else {
-		aep.dependencies.Logger.Error(err)
+		aep.logger.Error("error updating corporations", zap.Error(err))
 	}
 
-	aep.dependencies.Logger.Info("ESI Poller: Calling updateCharacters()")
+	aep.logger.Info("Calling updateCharacters()")
 	count, errorCount, err = aep.updateCharacters()
 	if err == nil {
-		aep.dependencies.Logger.Infof("ESI Poller: updateCharacters() processed %d entries (%d errors)", count, errorCount)
+		aep.logger.Info("updateCharacters() completed", zap.Int("count", count), zap.Int("errorCount", errorCount))
 	} else {
-		aep.dependencies.Logger.Error(err)
+		aep.logger.Error("error updating characters", zap.Error(err))
 	}
 }
 
@@ -105,20 +108,20 @@ func (aep *authEsiPoller) notFound(err error) error {
 	case esi.GenericSwaggerError:
 		switch v := err.(esi.GenericSwaggerError).Model().(type) {
 		case esi.GetAlliancesAllianceIdNotFound:
-			aep.dependencies.Logger.Debug("Alliance not found")
+			aep.logger.Debug("Alliance not found")
 			return nil
 		case esi.GetCorporationsCorporationIdNotFound:
-			aep.dependencies.Logger.Debug("Corporation not found")
+			aep.logger.Debug("Corporation not found")
 			return nil
 		case esi.GetCharactersCharacterIdNotFound:
-			aep.dependencies.Logger.Debug("Character not found")
+			aep.logger.Debug("Character not found")
 			return nil
 		default:
-			aep.dependencies.Logger.Errorf("API Error: %s (%T)", err, v)
+			aep.logger.Error("API Error", zap.Error(err), zap.Any("errorType", v))
 			return err
 		}
 	default:
-		aep.dependencies.Logger.Errorf("Other Error: %s", err)
+		aep.logger.Error("Other Error", zap.Error(err))
 		return err
 	}
 }

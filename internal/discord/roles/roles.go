@@ -9,6 +9,7 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.uber.org/zap"
 )
 
 // var matchDiscordError = regexp.MustCompile(`^The role '.*' already exists$`)
@@ -24,19 +25,18 @@ func New(deps common.Dependencies) *Role {
 }
 
 func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
-	r.dependencies.Logger.Info("Started roles message handling")
-	defer r.dependencies.Logger.Info("Completed roles message handling")
+	logger := r.dependencies.Logger.With(zap.String("queue", "role"))
+
+	logger.Info("Started roles message handling")
+	defer logger.Info("Completed roles message handling")
 
 	for d := range deliveries {
 		if len(d.Body) == 0 {
-			err := d.Ack(false)
-			if err != nil {
-				r.dependencies.Logger.Errorf("Message has zero length body: %s", err)
-			}
+			logger.Error("Message has zero length body", zap.Any("delivery", d))
 
-			err = d.Reject(false)
+			err := d.Reject(false)
 			if err != nil {
-				r.dependencies.Logger.Errorf("Error Acking message: %s", err)
+				logger.Error("Error ACKing message", zap.Error(err))
 			}
 
 			continue
@@ -45,22 +45,22 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 		var body payloads.RolePayload
 		err := json.Unmarshal(d.Body, &body)
 		if err != nil {
-			r.dependencies.Logger.Errorf("error unmarshalling payload: %s", err)
+			logger.Error("error unmarshalling payload", zap.Error(err))
 
 			err = d.Reject(false)
 			if err != nil {
-				r.dependencies.Logger.Errorf("Error Acking message: %s", err)
+				logger.Error("Error ACKing message", zap.Error(err))
 			}
 
 			continue
 		}
 
 		if common.IgnoreRole(body.Role.Name) {
-			r.dependencies.Logger.Infof("Ignoring request for role %s", body.Role.Name)
+			logger.Info("Ignoring request for role", zap.String("role", body.Role.Name))
 
 			err = d.Reject(false)
 			if err != nil {
-				r.dependencies.Logger.Errorf("Error Acking message: %s", err)
+				logger.Error("Error ACKing message", zap.Error(err))
 			}
 
 			continue
@@ -72,14 +72,14 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 		case payloads.Delete:
 			err = r.delete(body)
 		default:
-			r.dependencies.Logger.Errorf("Unknown action: %s", body.Action)
+			logger.Error("Unknown action", zap.Any("action", body.Action))
 		}
 
 		if err != nil {
 			// we want to retry the message
 			err = d.Reject(true)
 			if err != nil {
-				r.dependencies.Logger.Errorf("Error Nacking message: %s", err)
+				logger.Error("Error NACKing message", zap.Error(err))
 			}
 
 			continue
@@ -87,16 +87,18 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 
 		err = d.Ack(false)
 		if err != nil {
-			r.dependencies.Logger.Errorf("Error Acking message: %s", err)
+			logger.Error("Error ACKing message", zap.Error(err))
 		}
 	}
 
-	r.dependencies.Logger.Infof("roles/HandleMessage: deliveries channel closed")
+	logger.Info("roles/HandleMessage: deliveries channel closed")
 	done <- nil
 }
 
 // Only return an error if we want to keep the message and try again.
 func (r Role) upsert(role payloads.RolePayload) error {
+	logger := r.dependencies.Logger.With(zap.String("queue", "role"))
+
 	var err error
 	var sync bool
 
@@ -104,11 +106,11 @@ func (r Role) upsert(role payloads.RolePayload) error {
 	defer cancel()
 
 	// Only one thing should write to discord at a time
-	r.dependencies.Logger.Debug("role.upsert() acquiring lock")
+	logger.Debug("role.upsert() acquiring lock")
 	r.dependencies.Session.Lock()
 	defer func() {
 		r.dependencies.Session.Unlock()
-		r.dependencies.Logger.Debug("role.upsert() released lock")
+		logger.Debug("role.upsert() released lock")
 	}()
 
 	err = r.dependencies.DB.Select("sync").
@@ -116,13 +118,14 @@ func (r Role) upsert(role payloads.RolePayload) error {
 		Where(sq.Eq{"name": role.Role.Name}).
 		Scan(&sync)
 	if err != nil {
-		r.dependencies.Logger.Errorf("Error getting role sync status: %s", err)
+		logger.Error("Error getting role sync status",
+			zap.Error(err), zap.String("role", role.Role.Name))
 		return err
 	}
 
 	// If this role isn't set to sync, ignore it.
 	if !sync {
-		r.dependencies.Logger.Debugf("role.upsert(): Skipping role not set to sync: %s", role.Role.Name)
+		logger.Debug("role.upsert(): Skipping role not set to sync", zap.String("role", role.Role.Name))
 		return nil
 	}
 
@@ -130,28 +133,35 @@ func (r Role) upsert(role payloads.RolePayload) error {
 	if r.exists(role.Role.Name, role.GuildID) {
 		// Update an existing role
 		if role.GuildID == "" || role.Role.ID == "" || role.Role.Name == "" {
-			r.dependencies.Logger.Errorf("role.update() missing data: guildID=%s roleID=%s roleName=%s",
-				role.GuildID, role.Role.ID, role.Role.Name)
+			logger.Error("role.update() missing data",
+				zap.String("guild id", role.GuildID),
+				zap.String("role id", role.Role.ID),
+				zap.String("role", role.Role.Name))
 			return nil
 		}
 
-		r.dependencies.Logger.Infof("Update role `%s` with ID `%s`", role.Role.Name, role.Role.ID)
+		logger.Info("Updated role",
+			zap.String("name", role.Role.Name), zap.String("id", role.Role.ID))
 	} else {
 		// Create a new role
 		newRole, err := r.dependencies.Session.GuildRoleCreate(role.GuildID)
 		if err != nil {
-			r.dependencies.Logger.Errorf("Error creating role: %s", err)
+			logger.Error("Error creating role", zap.Error(err))
 			return err
 		}
 
-		r.dependencies.Logger.Infof("Create role `%s` with ID `%s`", role.Role.Name, newRole.ID)
+		logger.Info("Create role",
+			zap.String("guild id", role.GuildID),
+			zap.String("role id", newRole.ID),
+			zap.String("role", role.Role.Name))
 
 		_, err = r.dependencies.DB.Update("roles").
 			Set("chat_id", newRole.ID).
 			Where(sq.Eq{"name": role.Role.Name}).
 			QueryContext(ctx)
 		if err != nil {
-			r.dependencies.Logger.Errorf("Error updating role id in db: %s", err)
+			logger.Error("Error updating role id in db",
+				zap.Error(err), zap.String("role", role.Role.Name))
 			return err
 		}
 
@@ -161,45 +171,55 @@ func (r Role) upsert(role payloads.RolePayload) error {
 	_, err = r.dependencies.Session.GuildRoleEdit(role.GuildID, role.Role.ID, role.Role.Name, role.Role.Color, role.Role.Hoist,
 		role.Role.Permissions, role.Role.Mentionable)
 	if err != nil {
-		r.dependencies.Logger.Errorf("Error editing role %s (%s): %s", role.Role.Name, role.Role.ID, err)
+		logger.Error("Error editing role",
+			zap.String("name", role.Role.Name),
+			zap.String("id", role.Role.ID),
+			zap.Error(err))
 		return err
 	}
 
-	r.dependencies.Logger.Infof("Upserted '%s' to discord", role.Role.Name)
+	logger.Info("Upserted role to discord", zap.String("name", role.Role.Name))
 
 	return nil
 }
 
 // Only return an error if we want to keep the message and try again.
 func (r Role) delete(role payloads.RolePayload) error {
+	logger := r.dependencies.Logger.With(zap.String("queue", "role"))
+
 	// Only one thing should write to discord at a time
-	r.dependencies.Logger.Debug("role.delete() acquiring lock")
+	logger.Debug("acquiring lock")
 	r.dependencies.Session.Lock()
 	defer func() {
 		r.dependencies.Session.Unlock()
-		r.dependencies.Logger.Debug("role.delete() released lock")
+		logger.Debug("released lock")
 	}()
 
 	err := r.dependencies.Session.GuildRoleDelete(role.GuildID, role.Role.ID)
 	if err != nil {
 		if err.(*discordgo.RESTError).Response.StatusCode == 404 {
-			r.dependencies.Logger.Warnf("Role doesn't exist in discord: %s", role.Role.ID)
+			logger.Warn("Role doesn't exist in discord", zap.String("role", role.Role.ID))
 			return nil
 		}
-		r.dependencies.Logger.Errorf("Error deleting role %s (%s): %s", role.Role.Name, role.Role.ID, err)
+		logger.Error("Error deleting role",
+			zap.String("name", role.Role.Name),
+			zap.String("id", role.Role.ID),
+			zap.Error(err))
 		return err
 	}
 
-	r.dependencies.Logger.Infof("Deleted '%s' from discord", role.Role.Name)
+	logger.Info("Deleted role from discord", zap.String("role", role.Role.Name))
 
 	return nil
 }
 
 // Maybe ditch this in favor of just trying to create and if that fails update. Maybe.
 func (r Role) exists(name, guildID string) bool {
+	logger := r.dependencies.Logger.With(zap.String("queue", "role"))
+
 	roles, err := r.dependencies.Session.GuildRoles(guildID)
 	if err != nil {
-		r.dependencies.Logger.Errorf("Error fetching discord roles: %s", err)
+		logger.Error("Error fetching discord roles", zap.Error(err))
 		return true
 	}
 
