@@ -250,7 +250,10 @@ func AddMember(userID, filter string, deps common.Dependencies) string {
 	addSet := after.Difference(before)
 
 	if addSet.Len() == 0 {
-		return common.SendError(fmt.Sprintf("<@%s> already a member of: `%s`", userID, filter))
+		/* TODO: this error is not always correct. If someone joins a sig they aren't a member of all filters of
+		 * it appears like they aren't in it.
+		 */
+		return common.SendError(fmt.Sprintf("<@%s> already a member of: `%s` (maybe )", userID, filter))
 	}
 
 	for _, role := range addSet.ToSlice() {
