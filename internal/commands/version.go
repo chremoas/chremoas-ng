@@ -15,9 +15,12 @@ var version string
 // This function will be called (due to AddHandler above) every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (c Command) Version(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
+	logger := c.dependencies.Logger.With(zap.String("command", "version"))
+
+	logger.Info("Received chat command", zap.String("content", m.Content))
+
 	_, err := s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("```Version: %s```", version))
 	if err != nil {
-		c.dependencies.Logger.Error("Error sending command",
-			zap.Error(err), zap.String("command", "version"))
+		logger.Error("Error sending command", zap.Error(err))
 	}
 }

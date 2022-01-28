@@ -26,16 +26,17 @@ Subcommands:
 // Perms will be called (due to AddHandler above) every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (c Command) Perms(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
-	_, err := s.ChannelMessageSend(m.ChannelID, c.doPerms(s, m, ctx))
+	logger := c.dependencies.Logger.With(zap.String("command", "perms"))
+
+	_, err := s.ChannelMessageSend(m.ChannelID, c.doPerms(m, logger))
 	if err != nil {
-		c.dependencies.Logger.Error("Error sending command",
-			zap.Error(err), zap.String("command", "perms"))
+		logger.Error("Error sending command", zap.Error(err))
 	}
 }
 
-func (c Command) doPerms(_ *discordgo.Session, m *discordgo.Message, _ *mux.Context) string {
-	c.dependencies.Logger.Info("Received",
-		zap.String("content", m.Content), zap.String("command", "perms"))
+func (c Command) doPerms(m *discordgo.Message, logger *zap.Logger) string {
+	logger.Info("Received chat command", zap.String("content", m.Content))
+
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {
