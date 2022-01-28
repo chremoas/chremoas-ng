@@ -244,7 +244,11 @@ func (aep authEsiPoller) queueUpdate(role payloads.Role, action payloads.Action)
 		return err
 	}
 
-	logger.Debug("Submitting role queue message", zap.String("role", role.Name))
+	logger.Debug("Submitting role queue message",
+		zap.String("name", role.Name),
+		zap.String("id", role.ID),
+		zap.Int64("chat_id", role.ChatID),
+	)
 	err = aep.dependencies.RolesProducer.Publish(b)
 	if err != nil {
 		logger.Error("error publishing message", zap.Error(err), zap.String("role", role.Name))

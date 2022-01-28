@@ -47,7 +47,11 @@ func queueUpdate(role payloads.Role, action payloads.Action, deps common.Depende
 		return err
 	}
 
-	deps.Logger.Debug("Submitting role queue message")
+	deps.Logger.Debug("Submitting role queue message",
+		zap.String("name", role.Name),
+		zap.String("id", role.ID),
+		zap.Int64("chat_id", role.ChatID),
+	)
 	err = deps.RolesProducer.Publish(b)
 	if err != nil {
 		deps.Logger.Error("error publishing message", zap.Error(err))
