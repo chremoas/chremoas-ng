@@ -69,20 +69,20 @@ func GetUserRoles(sig bool, userID string, deps Dependencies) ([]payloads.Role, 
 }
 
 func GetMembership(userID string, deps Dependencies) (*sets.StringSet, error) {
-	sigsBefore, err := GetUserRoles(Sig, userID, deps)
+	sigs, err := GetUserRoles(Sig, userID, deps)
 	if err != nil {
 		return nil, err
 	}
 
-	rolesBefore, err := GetUserRoles(Role, userID, deps)
+	roles, err := GetUserRoles(Role, userID, deps)
 	if err != nil {
 		return nil, err
 	}
 
-	before := RoleToSet(sigsBefore)
-	before.Merge(RoleToSet(rolesBefore))
+	output := RoleToSet(sigs)
+	output.Merge(RoleToSet(roles))
 
-	return before, nil
+	return output, nil
 }
 
 func RoleToSet(roles []payloads.Role) *sets.StringSet {
