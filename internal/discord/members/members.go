@@ -56,7 +56,8 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				return
 			}
 
-			logger.Debug("Handling message", zap.String("member ID", body.MemberID))
+			logger.Debug("Handling message", zap.Any("payload", body))
+
 			m.dependencies.Session.Lock()
 			defer func() {
 				m.dependencies.Session.Unlock()

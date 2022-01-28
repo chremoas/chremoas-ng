@@ -66,6 +66,8 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 			continue
 		}
 
+		logger.Debug("Handling message", zap.Any("payload", body))
+
 		switch body.Action {
 		case payloads.Upsert:
 			err = r.upsert(body)
