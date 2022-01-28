@@ -106,11 +106,9 @@ func (r Role) upsert(role payloads.RolePayload) error {
 	defer cancel()
 
 	// Only one thing should write to discord at a time
-	logger.Debug("role.upsert() acquiring lock")
 	r.dependencies.Session.Lock()
 	defer func() {
 		r.dependencies.Session.Unlock()
-		logger.Debug("role.upsert() released lock")
 	}()
 
 	err = r.dependencies.DB.Select("sync").
@@ -125,7 +123,6 @@ func (r Role) upsert(role payloads.RolePayload) error {
 
 	// If this role isn't set to sync, ignore it.
 	if !sync {
-		logger.Debug("role.upsert(): Skipping role not set to sync", zap.String("role", role.Role.Name))
 		return nil
 	}
 
@@ -188,11 +185,9 @@ func (r Role) delete(role payloads.RolePayload) error {
 	logger := r.dependencies.Logger.With(zap.String("queue", "role"))
 
 	// Only one thing should write to discord at a time
-	logger.Debug("acquiring lock")
 	r.dependencies.Session.Lock()
 	defer func() {
 		r.dependencies.Session.Unlock()
-		logger.Debug("released lock")
 	}()
 
 	err := r.dependencies.Session.GuildRoleDelete(role.GuildID, role.Role.ID)

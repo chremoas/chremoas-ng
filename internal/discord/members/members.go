@@ -57,11 +57,9 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 			}
 
 			logger.Debug("Handling message", zap.String("member ID", body.MemberID))
-			logger.Debug("handler acquiring lock")
 			m.dependencies.Session.Lock()
 			defer func() {
 				m.dependencies.Session.Unlock()
-				logger.Debug("handler released lock")
 			}()
 
 			if body.RoleID == "0" {
@@ -112,7 +110,6 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				}
 
 				if !sync {
-					logger.Debug("Skipping role not set to sync", zap.String("role", body.RoleID))
 					err = d.Reject(false)
 					if err != nil {
 						logger.Error("Error NACKing role not set to sync",
