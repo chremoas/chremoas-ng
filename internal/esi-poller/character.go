@@ -85,11 +85,14 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 		}
 
 		// We need the old corp Ticker to remove from the filter
-		var oldCorp string
-		err = aep.dependencies.DB.Select("ticker").
+		var (
+			oldCorp       string
+			oldAllianceID int
+		)
+		err = aep.dependencies.DB.Select("ticker", "alliance_id").
 			From("corporations").
 			Where(sq.Eq{"id": character.CorporationID}).
-			Scan(&oldCorp)
+			Scan(&oldCorp, &oldAllianceID)
 		if err != nil {
 			logger.Error("error getting old corp info", zap.Error(err),
 				zap.String("character", character.Name),
@@ -103,11 +106,14 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 		}
 
 		// We need the new corp Ticker to add to the filter
-		var newCorp string
-		err = aep.dependencies.DB.Select("ticker").
+		var (
+			newCorp       string
+			newAllianceID int
+		)
+		err = aep.dependencies.DB.Select("ticker", "alliance_id").
 			From("corporations").
 			Where(sq.Eq{"id": response.CorporationId}).
-			Scan(&newCorp)
+			Scan(&newCorp, &newAllianceID)
 		if err != nil {
 			logger.Error("error getting new corp info", zap.Error(err),
 				zap.String("character", character.Name),
@@ -134,6 +140,36 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 		filters.RemoveMember(discordID, oldCorp, aep.dependencies)
 		logger.Debug("adding user to corp", zap.String("user", discordID), zap.String("corp", newCorp))
 		filters.AddMember(discordID, newCorp, aep.dependencies)
+
+		if newAllianceID != oldAllianceID {
+			// new corp is in a different alliance, gotta switch those.
+
+			var oldAlliance, newAlliance string
+			err = aep.dependencies.DB.Select("ticker").
+				From("alliances").
+				Where(sq.Eq{"id": oldAllianceID}).
+				Scan(&oldAlliance)
+			if err != nil {
+				logger.Error("error getting old alliance ticker", zap.Error(err),
+					zap.Int("allianceID", oldAllianceID))
+				return err
+			}
+
+			err = aep.dependencies.DB.Select("ticker").
+				From("alliances").
+				Where(sq.Eq{"id": newAllianceID}).
+				Scan(&newAlliance)
+			if err != nil {
+				logger.Error("error getting new alliance ticker", zap.Error(err),
+					zap.Int("allianceID", newAllianceID))
+				return err
+			}
+
+			logger.Debug("removing user from alliance", zap.String("user", discordID), zap.String("alliance", oldAlliance))
+			filters.RemoveMember(discordID, oldAlliance, aep.dependencies)
+			logger.Debug("adding user to alliance", zap.String("user", discordID), zap.String("alliance", newAlliance))
+			filters.AddMember(discordID, newAlliance, aep.dependencies)
+		}
 	}
 
 	// We need the chatID of the user, so let's get that.
