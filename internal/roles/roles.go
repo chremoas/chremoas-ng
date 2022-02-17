@@ -33,13 +33,15 @@ const (
 
 var roleType = map[bool]string{Role: "role", Sig: "sig"}
 
-func List(sig, all bool, deps common.Dependencies) string {
+func List(sig, all bool, deps common.Dependencies) []*common.Embed {
 	var buffer bytes.Buffer
+	var embeds []*common.Embed
 	var roleList = make(map[string]string)
 
 	roles, err := GetRoles(sig, nil, deps)
 	if err != nil {
-		return common.SendFatal(err.Error())
+		return nil
+		// return common.SendFatal(err.Error())
 	}
 
 	for _, role := range roles {
@@ -50,19 +52,31 @@ func List(sig, all bool, deps common.Dependencies) string {
 	}
 
 	if len(roleList) == 0 {
-		return common.SendError(fmt.Sprintf("No %ss\n", clientType[sig]))
+		return nil
+		// return common.SendError(fmt.Sprintf("No %ss\n", clientType[sig]))
 	}
 
-	buffer.WriteString(fmt.Sprintf("%ss:\n", clientType[sig]))
 	for role := range roleList {
 		if sig {
-			buffer.WriteString(fmt.Sprintf("\t%s: %s\n", role, roleList[role]))
+			buffer.WriteString(fmt.Sprintf("%s: %s\n", role, roleList[role]))
 		} else {
-			buffer.WriteString(fmt.Sprintf("\t%s\n", role))
+			buffer.WriteString(fmt.Sprintf("%s\n", role))
 		}
 	}
 
-	return fmt.Sprintf("```%s```", buffer.String())
+	embed1 := common.NewEmbed()
+	embed1.SetTitle(clientType[sig] + "s")
+	embed1.SetDescription(buffer.String())
+	embeds = append(embeds, embed1)
+
+	embed2 := common.NewEmbed()
+	embed2.SetDescription("fakesig1: This is fake\nfakesig2: This is also fake")
+	embeds = append(embeds, embed2)
+	return embeds
+
+	// _, err := s.ChannelMessageSendComplex(m.ChannelID, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+	//
+	// return fmt.Sprintf("```%s```", buffer.String())
 }
 
 func Keys() string {

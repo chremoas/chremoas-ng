@@ -6,7 +6,6 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
-	"github.com/chremoas/chremoas-ng/internal/common"
 	"go.uber.org/zap"
 
 	"github.com/chremoas/chremoas-ng/internal/roles"
@@ -48,35 +47,35 @@ func (c Command) doRole(m *discordgo.Message, logger *zap.Logger) string {
 	}
 
 	switch cmdStr[1] {
-	case "list":
-		if len(cmdStr) < 3 {
-			return roles.List(roles.Role, false, c.dependencies)
-		}
-
-		switch cmdStr[2] {
-		case "all":
-			return roles.List(roles.Role, true, c.dependencies)
-
-		case "members":
-			if len(cmdStr) < 4 {
-				return "Usage: !role list members <role_name>"
-			}
-			return roles.ListMembers(roles.Role, cmdStr[3], c.dependencies)
-
-		case "membership":
-			if len(cmdStr) < 4 {
-				return roles.ListUserRoles(roles.Role, m.Author.ID, c.dependencies)
-			}
-
-			if !common.IsDiscordUser(cmdStr[3]) {
-				return common.SendError("member name must be a discord user")
-			}
-
-			return roles.ListUserRoles(roles.Role, common.ExtractUserId(cmdStr[3]), c.dependencies)
-
-		default:
-			return "Usage: !role list members <role_name>"
-		}
+	// case "list":
+	// 	if len(cmdStr) < 3 {
+	// 		return roles.List(roles.Role, false, c.dependencies)
+	// 	}
+	//
+	// 	switch cmdStr[2] {
+	// 	case "all":
+	// 		return roles.List(roles.Role, true, c.dependencies)
+	//
+	// 	case "members":
+	// 		if len(cmdStr) < 4 {
+	// 			return "Usage: !role list members <role_name>"
+	// 		}
+	// 		return roles.ListMembers(roles.Role, cmdStr[3], c.dependencies)
+	//
+	// 	case "membership":
+	// 		if len(cmdStr) < 4 {
+	// 			return roles.ListUserRoles(roles.Role, m.Author.ID, c.dependencies)
+	// 		}
+	//
+	// 		if !common.IsDiscordUser(cmdStr[3]) {
+	// 			return common.SendError("member name must be a discord user")
+	// 		}
+	//
+	// 		return roles.ListUserRoles(roles.Role, common.ExtractUserId(cmdStr[3]), c.dependencies)
+	//
+	// 	default:
+	// 		return "Usage: !role list members <role_name>"
+	// 	}
 
 	case "create":
 		if len(cmdStr) < 4 {

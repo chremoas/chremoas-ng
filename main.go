@@ -31,7 +31,6 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/commands"
 	"github.com/chremoas/chremoas-ng/internal/config"
 	"github.com/chremoas/chremoas-ng/internal/database"
-	esiPoller "github.com/chremoas/chremoas-ng/internal/esi-poller"
 	"github.com/chremoas/chremoas-ng/internal/log"
 	"github.com/chremoas/chremoas-ng/internal/queue"
 )
@@ -260,10 +259,10 @@ func main() {
 
 	// =========================================================================
 	// Start the ESI Poller thread.
-	userAgent := "chremoas-ng Ramdar Chinken on TweetFleet Slack https://github.com/chremoas/chremoas-ng"
-	esi := esiPoller.New(userAgent, dependencies)
-	esi.Start()
-	defer esi.Stop()
+	// userAgent := "chremoas-ng Ramdar Chinken on TweetFleet Slack https://github.com/chremoas/chremoas-ng"
+	// esi := esiPoller.New(userAgent, dependencies)
+	// esi.Start()
+	// defer esi.Stop()
 
 	// =========================================================================
 	// Main loop
