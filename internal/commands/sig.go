@@ -60,13 +60,13 @@ func (c Command) doSig(m *discordgo.Message, logger *zap.Logger) []*discordgo.Me
 	switch cmdStr[1] {
 	case "list":
 		if len(cmdStr) < 3 {
-			return common.SendError("Shit be busted, yo")
+			return common.SendError("Shit be busted, yo (check pinned message for sig list)")
 			// return roles.List(roles.Sig, false, c.dependencies)
 		}
 
 		switch cmdStr[2] {
 		case "all":
-			return common.SendError("Shit be busted, yo")
+			return common.SendError("Shit be busted, yo (check pinned message for sig list)")
 			// return roles.List(roles.Sig, true, c.dependencies)
 
 		case "members":

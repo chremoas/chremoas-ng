@@ -52,13 +52,13 @@ func (c Command) doRole(m *discordgo.Message, logger *zap.Logger) []*discordgo.M
 	switch cmdStr[1] {
 	case "list":
 		if len(cmdStr) < 3 {
-			return common.SendError("Shit be busted, yo")
+			return common.SendError("Shit be busted, yo (you probably don't care about this one)")
 			// return roles.List(roles.Role, false, c.dependencies)
 		}
 
 		switch cmdStr[2] {
 		case "all":
-			return common.SendError("Shit be busted, yo")
+			return common.SendError("Shit be busted, yo (you probably don't care about this one)")
 			// return roles.List(roles.Role, true, c.dependencies)
 
 		case "members":
