@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 )
 
@@ -14,12 +15,15 @@ func New(deps common.Dependencies) *Command {
 	}
 }
 
-func getHelp(title, usage, subCommands string) []*common.Embed {
-	var embeds []*common.Embed
+func getHelp(title, usage, subCommands string) []*discordgo.MessageSend {
+	var embeds []*discordgo.MessageSend
 
 	embed := common.NewEmbed()
 	embed.SetTitle(title)
 	embed.AddField("Usage", usage)
-	embed.AddField("Subcommands", subCommands)
-	return append(embeds, embed)
+	if subCommands != "" {
+		embed.AddField("Subcommands", subCommands)
+	}
+
+	return append(embeds, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 }

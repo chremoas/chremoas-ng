@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
 	"github.com/chremoas/chremoas-ng/internal/roles"
@@ -160,7 +161,7 @@ func Create(_ context.Context, request *CreateRequest, deps common.Dependencies)
 	return &authCode, nil
 }
 
-func Confirm(authCode, sender string, deps common.Dependencies) string {
+func Confirm(authCode, sender string, deps common.Dependencies) []*discordgo.MessageSend {
 	var (
 		err            error
 		characterID    int
@@ -180,6 +181,11 @@ func Confirm(authCode, sender string, deps common.Dependencies) string {
 		Where(sq.Eq{"code": authCode}).
 		Scan(&characterID, &used)
 	if err != nil {
+		// if err.(*pq.Error).Code == "23505" {
+		// 	return common.SendError(fmt.Sprintf("%s `%s` (%s) already exists", roleType[sig], name, ticker))
+		// }
+		// deps.Logger.Debug("sql error", zap.Any("code", err), zap.String("type", fmt.Sprintf("%t", err)))
+		// err is a string?
 		deps.Logger.Error("error getting authentication code", zap.Error(err), zap.String("auth code", authCode))
 		return common.SendError(fmt.Sprintf("Error getting authentication code: %s", authCode))
 	}

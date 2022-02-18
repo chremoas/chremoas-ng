@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
@@ -16,10 +17,11 @@ import (
 	"go.uber.org/zap"
 )
 
-func List(deps common.Dependencies) string {
+func List(deps common.Dependencies) []*discordgo.MessageSend {
 	var (
-		buffer bytes.Buffer
-		filter payloads.Filter
+		buffer   bytes.Buffer
+		filter   payloads.Filter
+		messages []*discordgo.MessageSend
 	)
 
 	ctx, cancel := context.WithCancel(deps.Context)
@@ -39,7 +41,6 @@ func List(deps common.Dependencies) string {
 		}
 	}()
 
-	buffer.WriteString("Filters:\n")
 	for rows.Next() {
 		err = rows.Scan(&filter.Name, &filter.Description)
 		if err != nil {
@@ -48,7 +49,7 @@ func List(deps common.Dependencies) string {
 			return common.SendFatal(newErr.Error())
 		}
 
-		buffer.WriteString(fmt.Sprintf("\t%s: %s\n", filter.Name, filter.Description))
+		buffer.WriteString(fmt.Sprintf("%s: %s\n", filter.Name, filter.Description))
 	}
 
 	if buffer.Len() == 0 {
@@ -59,10 +60,13 @@ func List(deps common.Dependencies) string {
 		return common.SendError("too many filters (exceeds Discord 2k character limit)")
 	}
 
-	return fmt.Sprintf("```%s```", buffer.String())
+	embed := common.NewEmbed()
+	embed.SetTitle("Filters")
+	embed.SetDescription(buffer.String())
+	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 }
 
-func AuthedAdd(name, description string, author string, deps common.Dependencies) (string, int) {
+func AuthedAdd(name, description string, author string, deps common.Dependencies) ([]*discordgo.MessageSend, int) {
 	if !perms.CanPerform(author, "role_admins", deps) {
 		return common.SendError("User doesn't have permission to this command"), -1
 	}
@@ -70,7 +74,7 @@ func AuthedAdd(name, description string, author string, deps common.Dependencies
 	return Add(name, description, deps)
 }
 
-func Add(name, description string, deps common.Dependencies) (string, int) {
+func Add(name, description string, deps common.Dependencies) ([]*discordgo.MessageSend, int) {
 	var id int
 	err := deps.DB.Insert("filters").
 		Columns("name", "description").
@@ -90,7 +94,7 @@ func Add(name, description string, deps common.Dependencies) (string, int) {
 	return common.SendSuccess(fmt.Sprintf("Created filter `%s`", name)), id
 }
 
-func AuthedDelete(name string, author string, deps common.Dependencies) (string, int) {
+func AuthedDelete(name string, author string, deps common.Dependencies) ([]*discordgo.MessageSend, int) {
 	if !perms.CanPerform(author, "role_admins", deps) {
 		return common.SendError("User doesn't have permission to this command"), -1
 	}
@@ -98,7 +102,7 @@ func AuthedDelete(name string, author string, deps common.Dependencies) (string,
 	return Delete(name, deps)
 }
 
-func Delete(name string, deps common.Dependencies) (string, int) {
+func Delete(name string, deps common.Dependencies) ([]*discordgo.MessageSend, int) {
 	var id int
 
 	ctx, cancel := context.WithCancel(deps.Context)
@@ -132,10 +136,11 @@ func Delete(name string, deps common.Dependencies) (string, int) {
 	return common.SendSuccess(fmt.Sprintf("Deleted filter `%s`", name)), id
 }
 
-func ListMembers(name string, deps common.Dependencies) string {
+func ListMembers(name string, deps common.Dependencies) []*discordgo.MessageSend {
 	var (
-		userID int
-		buffer bytes.Buffer
+		userID   int
+		buffer   bytes.Buffer
+		messages []*discordgo.MessageSend
 	)
 
 	ctx, cancel := context.WithCancel(deps.Context)
@@ -158,7 +163,6 @@ func ListMembers(name string, deps common.Dependencies) string {
 		}
 	}()
 
-	buffer.WriteString(fmt.Sprintf("Filter membership (%s):\n", name))
 	for rows.Next() {
 		err = rows.Scan(&userID)
 		if err != nil {
@@ -166,7 +170,7 @@ func ListMembers(name string, deps common.Dependencies) string {
 			deps.Logger.Error("error scanning filter_membership userID", zap.Error(err))
 			return common.SendFatal(newErr.Error())
 		}
-		buffer.WriteString(fmt.Sprintf("\t%s\n", common.GetUsername(userID, deps.Session)))
+		buffer.WriteString(fmt.Sprintf("%s\n", common.GetUsername(userID, deps.Session)))
 	}
 
 	if buffer.Len() == 0 {
@@ -177,10 +181,13 @@ func ListMembers(name string, deps common.Dependencies) string {
 		return common.SendError("too many filter members (exceeds Discord 2k character limit)")
 	}
 
-	return buffer.String()
+	embed := common.NewEmbed()
+	embed.SetTitle(fmt.Sprintf("Filter membership (%s)", name))
+	embed.SetDescription(buffer.String())
+	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 }
 
-func AuthedAddMember(userID, filter, author string, deps common.Dependencies) string {
+func AuthedAddMember(userID, filter, author string, deps common.Dependencies) []*discordgo.MessageSend {
 	if !perms.CanPerform(author, "role_admins", deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
@@ -188,7 +195,7 @@ func AuthedAddMember(userID, filter, author string, deps common.Dependencies) st
 	return AddMember(userID, filter, deps)
 }
 
-func AddMember(userID, filter string, deps common.Dependencies) string {
+func AddMember(userID, filter string, deps common.Dependencies) []*discordgo.MessageSend {
 	var filterID int
 
 	ctx, cancel := context.WithCancel(deps.Context)
@@ -263,7 +270,7 @@ func AddMember(userID, filter string, deps common.Dependencies) string {
 	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, filter))
 }
 
-func AuthedRemoveMember(userID, filter, author string, deps common.Dependencies) string {
+func AuthedRemoveMember(userID, filter, author string, deps common.Dependencies) []*discordgo.MessageSend {
 	if !perms.CanPerform(author, "role_admins", deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
@@ -271,7 +278,7 @@ func AuthedRemoveMember(userID, filter, author string, deps common.Dependencies)
 	return RemoveMember(userID, filter, deps)
 }
 
-func RemoveMember(userID, filter string, deps common.Dependencies) string {
+func RemoveMember(userID, filter string, deps common.Dependencies) []*discordgo.MessageSend {
 	var filterID int
 
 	ctx, cancel := context.WithCancel(deps.Context)
