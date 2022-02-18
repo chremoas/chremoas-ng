@@ -30,7 +30,6 @@ func (c Command) Perms(s *discordgo.Session, m *discordgo.Message, ctx *mux.Cont
 	for _, message := range c.doPerms(m, logger) {
 		_, err := s.ChannelMessageSendComplex(m.ChannelID, message)
 
-		// _, err := s.ChannelMessageSend(m.ChannelID, c.doSig(m, logger))
 		if err != nil {
 			logger.Error("Error sending command", zap.Error(err))
 		}

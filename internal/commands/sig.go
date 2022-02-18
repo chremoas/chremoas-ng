@@ -42,7 +42,6 @@ func (c Command) Sig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Contex
 	for _, message := range c.doSig(m, logger) {
 		_, err := s.ChannelMessageSendComplex(m.ChannelID, message)
 
-		// _, err := s.ChannelMessageSend(m.ChannelID, c.doSig(m, logger))
 		if err != nil {
 			logger.Error("Error sending command", zap.Error(err))
 		}

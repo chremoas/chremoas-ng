@@ -29,7 +29,6 @@ func (c Command) Filter(s *discordgo.Session, m *discordgo.Message, ctx *mux.Con
 	for _, message := range c.doFilter(m, logger) {
 		_, err := s.ChannelMessageSendComplex(m.ChannelID, message)
 
-		// _, err := s.ChannelMessageSend(m.ChannelID, c.doSig(m, logger))
 		if err != nil {
 			logger.Error("Error sending command", zap.Error(err))
 		}

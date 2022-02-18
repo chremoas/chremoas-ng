@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -34,8 +35,6 @@ const (
 var roleType = map[bool]string{Role: "role", Sig: "sig"}
 
 func List(sig, all bool, deps common.Dependencies) []*discordgo.MessageSend {
-	var buffer bytes.Buffer
-	var messages []*discordgo.MessageSend
 	var roleList = make(map[string]string)
 
 	roles, err := GetRoles(sig, nil, deps)
@@ -56,22 +55,66 @@ func List(sig, all bool, deps common.Dependencies) []*discordgo.MessageSend {
 		// return common.SendError(fmt.Sprintf("No %ss\n", clientType[sig]))
 	}
 
-	for role := range roleList {
+	keys := make([]string, 0, len(roleList))
+	for k := range roleList {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var (
+		charCount  int
+		firstChunk = true
+		buffer     bytes.Buffer
+		messages   []*discordgo.MessageSend
+	)
+	// This code is horrifically ugly and I absolutely hate it but it works so I'm leaving it be for now.
+	for _, k := range keys {
 		if sig {
-			buffer.WriteString(fmt.Sprintf("%s: %s\n", role, roleList[role]))
+			if charCount+len(k)+len(roleList[k])+2 > common.EmbedLimitDescription {
+				// send the current one and start a new one
+				embed := common.NewEmbed()
+				if firstChunk {
+					embed.SetTitle(clientType[sig] + "s")
+					firstChunk = false
+				}
+				embed.SetDescription(buffer.String())
+				deps.Logger.Debug("debug", zap.String("sig buffer", buffer.String()))
+				messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+				buffer.Reset()
+				charCount = len(k) + len(roleList[k]) + 2
+				buffer.WriteString(fmt.Sprintf("%s: %s\n", k, roleList[k]))
+			} else {
+				charCount += charCount + len(k) + len(roleList[k]) + 2
+				buffer.WriteString(fmt.Sprintf("%s: %s\n", k, roleList[k]))
+			}
 		} else {
-			buffer.WriteString(fmt.Sprintf("%s\n", role))
+			if charCount+len(k)+1 > common.EmbedLimitDescription {
+				// send the current one and start a new one
+				embed := common.NewEmbed()
+				if firstChunk {
+					embed.SetTitle(clientType[sig] + "s")
+					firstChunk = false
+				}
+				embed.SetDescription(buffer.String())
+				messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+				deps.Logger.Debug("debug", zap.String("role buffer", buffer.String()))
+				buffer.Reset()
+				charCount = len(k) + 1
+				buffer.WriteString(fmt.Sprintf("%s\n", k))
+			} else {
+				charCount += charCount + len(k) + 1
+				buffer.WriteString(fmt.Sprintf("%s\n", k))
+			}
 		}
 	}
 
-	embed1 := common.NewEmbed()
-	embed1.SetTitle(clientType[sig] + "s")
-	embed1.SetDescription(buffer.String())
-	messages = append(messages, &discordgo.MessageSend{Embed: embed1.GetMessageEmbed()})
-
-	embed2 := common.NewEmbed()
-	embed2.SetDescription("fakesig1: This is fake\nfakesig2: This is also fake")
-	messages = append(messages, &discordgo.MessageSend{Embed: embed2.GetMessageEmbed()})
+	deps.Logger.Debug("debug", zap.String("leftover buffer", buffer.String()))
+	embed := common.NewEmbed()
+	if firstChunk {
+		embed.SetTitle(clientType[sig] + "s")
+	}
+	embed.SetDescription(buffer.String())
+	messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 
 	return messages
 }
