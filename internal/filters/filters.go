@@ -260,7 +260,7 @@ func AddMember(userID, filter string, deps common.Dependencies) []*discordgo.Mes
 		/* TODO: this error is not always correct. If someone joins a sig they aren't a member of all filters of
 		 * it appears like they aren't in it.
 		 */
-		return common.SendError(fmt.Sprintf("<@%s> already a member of: `%s` (maybe )", userID, filter))
+		return common.SendError(fmt.Sprintf("<@%s> already a member of: `%s` (maybe)", userID, filter))
 	}
 
 	for _, role := range addSet.ToSlice() {

@@ -40,11 +40,19 @@ import (
 const Version = "v0.0.0"
 
 func main() {
+	var (
+		debug bool
+		err   error
+	)
+
 	environment := os.Getenv("ENVIRONMENT")
 	dbg := os.Getenv("DEBUG")
-	debug, err := strconv.ParseBool(dbg)
-	if err != nil {
-		fmt.Printf("Error parsing DEBUG '%s' is not a boolean value", dbg)
+	if dbg != "" {
+		debug, err = strconv.ParseBool(dbg)
+		if err != nil {
+			fmt.Printf("Error parsing DEBUG '%s' is not a boolean value", dbg)
+			return
+		}
 	}
 
 	logger := log.New(environment, debug)
