@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -10,33 +9,34 @@ import (
 	"go.uber.org/zap"
 )
 
-const authHelpStr = `
-Usage: !auth <token>
-`
+const authUsage = `!auth <token>`
 
 // This function will be called (due to AddHandler above) every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (c Command) Auth(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
 	logger := c.dependencies.Logger.With(zap.String("command", "auth"))
 
-	_, err := s.ChannelMessageSend(m.ChannelID, c.doAuth(m, logger))
-	if err != nil {
-		logger.Error("Error sending command", zap.Error(err))
+	for _, message := range c.doAuth(m, logger) {
+		_, err := s.ChannelMessageSendComplex(m.ChannelID, message)
+
+		if err != nil {
+			logger.Error("Error sending command", zap.Error(err))
+		}
 	}
 }
 
-func (c Command) doAuth(m *discordgo.Message, logger *zap.Logger) string {
+func (c Command) doAuth(m *discordgo.Message, logger *zap.Logger) []*discordgo.MessageSend {
 	logger.Info("Received chat command", zap.String("content", m.Content))
 
 	cmdStr := strings.Split(m.Content, " ")
 
 	if len(cmdStr) < 2 {
-		return fmt.Sprintf("```%s```", authHelpStr)
+		return getHelp("!auth help", authUsage, "")
 	}
 
 	switch cmdStr[1] {
 	case "help":
-		return fmt.Sprintf("```%s```", authHelpStr)
+		return getHelp("!auth help", authUsage, "")
 
 	default:
 		return auth.Confirm(cmdStr[1], m.Author.ID, c.dependencies)

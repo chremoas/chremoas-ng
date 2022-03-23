@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
@@ -41,28 +42,28 @@ func New(member, sig, author string, deps common.Dependencies) (*Sig, error) {
 
 	return &Sig{
 		dependencies: deps,
-		role:   role[0],
-		sig:    sig,
-		userID: member,
-		author: author,
+		role:         role[0],
+		sig:          sig,
+		userID:       member,
+		author:       author,
 	}, nil
 }
 
-func (s Sig) Add() string {
+func (s Sig) Add() []*discordgo.MessageSend {
 	if !perms.CanPerform(s.author, "sig_admins", s.dependencies) {
 		return common.SendError("User not authorized")
 	}
 	return filters.AddMember(s.userID, s.sig, s.dependencies)
 }
 
-func (s Sig) Remove() string {
+func (s Sig) Remove() []*discordgo.MessageSend {
 	if !perms.CanPerform(s.author, "sig_admins", s.dependencies) {
 		return common.SendError("User not authorized")
 	}
 	return filters.RemoveMember(s.userID, s.sig, s.dependencies)
 }
 
-func (s Sig) Join() string {
+func (s Sig) Join() []*discordgo.MessageSend {
 	if !s.role.Joinable {
 		return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", s.sig))
 	}
@@ -70,7 +71,7 @@ func (s Sig) Join() string {
 	return filters.AddMember(s.userID, s.sig, s.dependencies)
 }
 
-func (s Sig) Leave() string {
+func (s Sig) Leave() []*discordgo.MessageSend {
 	if !s.role.Joinable {
 		return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", s.sig))
 	}

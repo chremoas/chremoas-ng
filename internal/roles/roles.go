@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -33,13 +34,13 @@ const (
 
 var roleType = map[bool]string{Role: "role", Sig: "sig"}
 
-func List(sig, all bool, deps common.Dependencies) string {
-	var buffer bytes.Buffer
+func List(sig, all bool, deps common.Dependencies) []*discordgo.MessageSend {
 	var roleList = make(map[string]string)
 
 	roles, err := GetRoles(sig, nil, deps)
 	if err != nil {
-		return common.SendFatal(err.Error())
+		return nil
+		// return common.SendFatal(err.Error())
 	}
 
 	for _, role := range roles {
@@ -50,49 +51,113 @@ func List(sig, all bool, deps common.Dependencies) string {
 	}
 
 	if len(roleList) == 0 {
-		return common.SendError(fmt.Sprintf("No %ss\n", clientType[sig]))
+		return nil
+		// return common.SendError(fmt.Sprintf("No %ss\n", clientType[sig]))
 	}
 
-	buffer.WriteString(fmt.Sprintf("%ss:\n", clientType[sig]))
-	for role := range roleList {
+	keys := make([]string, 0, len(roleList))
+	for k := range roleList {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var (
+		charCount  int
+		firstChunk = true
+		buffer     bytes.Buffer
+		messages   []*discordgo.MessageSend
+	)
+	// This code is horrifically ugly and I absolutely hate it but it works so I'm leaving it be for now.
+	for _, k := range keys {
 		if sig {
-			buffer.WriteString(fmt.Sprintf("\t%s: %s\n", role, roleList[role]))
+			if charCount+len(k)+len(roleList[k])+2 > common.EmbedLimitDescription {
+				// send the current one and start a new one
+				embed := common.NewEmbed()
+				if firstChunk {
+					embed.SetTitle(clientType[sig] + "s")
+					firstChunk = false
+				}
+				embed.SetDescription(buffer.String())
+				deps.Logger.Debug("debug", zap.String("sig buffer", buffer.String()))
+				messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+				buffer.Reset()
+				charCount = len(k) + len(roleList[k]) + 2
+				buffer.WriteString(fmt.Sprintf("%s: %s\n", k, roleList[k]))
+			} else {
+				charCount += charCount + len(k) + len(roleList[k]) + 2
+				buffer.WriteString(fmt.Sprintf("%s: %s\n", k, roleList[k]))
+			}
 		} else {
-			buffer.WriteString(fmt.Sprintf("\t%s\n", role))
+			if charCount+len(k)+1 > common.EmbedLimitDescription {
+				// send the current one and start a new one
+				embed := common.NewEmbed()
+				if firstChunk {
+					embed.SetTitle(clientType[sig] + "s")
+					firstChunk = false
+				}
+				embed.SetDescription(buffer.String())
+				messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+				deps.Logger.Debug("debug", zap.String("role buffer", buffer.String()))
+				buffer.Reset()
+				charCount = len(k) + 1
+				buffer.WriteString(fmt.Sprintf("%s\n", k))
+			} else {
+				charCount += charCount + len(k) + 1
+				buffer.WriteString(fmt.Sprintf("%s\n", k))
+			}
 		}
 	}
 
-	return fmt.Sprintf("```%s```", buffer.String())
+	deps.Logger.Debug("debug", zap.String("leftover buffer", buffer.String()))
+	embed := common.NewEmbed()
+	if firstChunk {
+		embed.SetTitle(clientType[sig] + "s")
+	}
+	embed.SetDescription(buffer.String())
+	messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+
+	return messages
 }
 
-func Keys() string {
-	var buffer bytes.Buffer
-	buffer.WriteString("```")
+func Keys() []*discordgo.MessageSend {
+	var (
+		buffer   bytes.Buffer
+		messages []*discordgo.MessageSend
+	)
 
 	for _, key := range roleKeys {
 		buffer.WriteString(fmt.Sprintf("%s\n", key))
 	}
 
-	buffer.WriteString("```")
-	return buffer.String()
+	embed := common.NewEmbed()
+	embed.SetTitle("Keys")
+	embed.SetDescription(buffer.String())
+
+	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 }
 
-func Types() string {
-	var buffer bytes.Buffer
-	buffer.WriteString("```")
+func Types() []*discordgo.MessageSend {
+	var (
+		buffer   bytes.Buffer
+		messages []*discordgo.MessageSend
+	)
 
 	for _, key := range roleTypes {
 		buffer.WriteString(fmt.Sprintf("%s\n", key))
 	}
 
-	buffer.WriteString("```")
-	return buffer.String()
+	embed := common.NewEmbed()
+	embed.SetTitle("Types")
+	embed.SetDescription(buffer.String())
+
+	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 }
 
 // ListMembers lists all userIDs that match all the filters for a role.
-func ListMembers(sig bool, name string, deps common.Dependencies) string {
+func ListMembers(sig bool, name string, deps common.Dependencies) []*discordgo.MessageSend {
 	var (
-		buffer bytes.Buffer
+		buffer   bytes.Buffer
+		messages []*discordgo.MessageSend
 	)
 
 	deps.Logger.Debug("Listing members", zap.Bool("sig", sig), zap.String("name", name))
@@ -107,15 +172,19 @@ func ListMembers(sig bool, name string, deps common.Dependencies) string {
 	}
 
 	for _, userID := range members {
-		buffer.WriteString(fmt.Sprintf("\t%s\n", common.GetUsername(userID, deps.Session)))
+		buffer.WriteString(fmt.Sprintf("%s\n", common.GetUsername(userID, deps.Session)))
 	}
 
-	return fmt.Sprintf("```%d member(s) in %s:\n%s```", len(members), name, buffer.String())
+	embed := common.NewEmbed()
+	embed.SetTitle(fmt.Sprintf("%d member(s) in %s", len(members), name))
+	embed.SetDescription(buffer.String()) // TODO check if description is really what I want here.
+	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 }
 
-func ListUserRoles(sig bool, userID string, deps common.Dependencies) string {
+func ListUserRoles(sig bool, userID string, deps common.Dependencies) []*discordgo.MessageSend {
 	var (
-		buffer bytes.Buffer
+		buffer   bytes.Buffer
+		messages []*discordgo.MessageSend
 	)
 
 	roles, err := common.GetUserRoles(sig, userID, deps)
@@ -131,11 +200,18 @@ func ListUserRoles(sig bool, userID string, deps common.Dependencies) string {
 		buffer.WriteString(fmt.Sprintf("%s - %s\n", role.ShortName, role.Name))
 	}
 
-	return fmt.Sprintf("```%s```", buffer.String())
+	embed := common.NewEmbed()
+	embed.SetTitle(fmt.Sprintf("Roles for %s", common.GetUsername(userID, deps.Session)))
+	embed.SetDescription(buffer.String())
+
+	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 }
 
-func Info(sig bool, ticker string, deps common.Dependencies) string {
-	var buffer bytes.Buffer
+func Info(sig bool, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
+	var (
+		buffer   bytes.Buffer
+		messages []*discordgo.MessageSend
+	)
 
 	// if !canPerform {
 	//	return common.SendError("User doesn't have permission to this command")
@@ -163,10 +239,14 @@ func Info(sig bool, ticker string, deps common.Dependencies) string {
 	}
 	buffer.WriteString(fmt.Sprintf("Sync: %t\n", roles[0].Sync))
 
-	return fmt.Sprintf("```%s```", buffer.String())
+	embed := common.NewEmbed()
+	embed.SetTitle(fmt.Sprintf("Info for %s %s", roleType[sig], roles[0].Name))
+	embed.SetDescription(buffer.String())
+
+	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 }
 
-func AuthedAdd(sig, joinable bool, ticker, name, chatType, author string, deps common.Dependencies) string {
+func AuthedAdd(sig, joinable bool, ticker, name, chatType, author string, deps common.Dependencies) []*discordgo.MessageSend {
 	if !perms.CanPerform(author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
@@ -174,7 +254,7 @@ func AuthedAdd(sig, joinable bool, ticker, name, chatType, author string, deps c
 	return Add(sig, joinable, ticker, name, chatType, deps)
 }
 
-func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependencies) string {
+func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependencies) []*discordgo.MessageSend {
 	var roleID int
 
 	ctx, cancel := context.WithCancel(deps.Context)
@@ -252,10 +332,17 @@ func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependen
 		return common.SendFatal(fmt.Sprintf("error adding role for %s: %s", roleType[sig], err))
 	}
 
-	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Created %s `%s`", roleType[sig], ticker)))
+	messages := common.SendSuccess(fmt.Sprintf("Created %s `%s`", roleType[sig], ticker))
+
+	embed := common.NewEmbed()
+	embed.SetTitle("filter response")
+	messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+	messages = append(messages, filterResponse...)
+
+	return messages
 }
 
-func AuthedDestroy(sig bool, ticker, author string, deps common.Dependencies) string {
+func AuthedDestroy(sig bool, ticker, author string, deps common.Dependencies) []*discordgo.MessageSend {
 	if !perms.CanPerform(author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
@@ -263,7 +350,7 @@ func AuthedDestroy(sig bool, ticker, author string, deps common.Dependencies) st
 	return Destroy(sig, ticker, deps)
 }
 
-func Destroy(sig bool, ticker string, deps common.Dependencies) string {
+func Destroy(sig bool, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
 	var chatID, roleID int
 
 	ctx, cancel := context.WithCancel(deps.Context)
@@ -350,10 +437,17 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) string {
 		return common.SendFatal(fmt.Sprintf("error deleting role for %s: %s", roleType[sig], err))
 	}
 
-	return fmt.Sprintf("%s%s", filterResponse, common.SendSuccess(fmt.Sprintf("Destroyed %s `%s`", roleType[sig], ticker)))
+	messages := common.SendSuccess(fmt.Sprintf("Destroyed %s `%s`", roleType[sig], ticker))
+
+	embed := common.NewEmbed()
+	embed.SetTitle("filter response")
+	messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+	messages = append(messages, filterResponse...)
+
+	return messages
 }
 
-func AuthedUpdate(sig bool, ticker, key, value, author string, deps common.Dependencies) string {
+func AuthedUpdate(sig bool, ticker, key, value, author string, deps common.Dependencies) []*discordgo.MessageSend {
 	if !perms.CanPerform(author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
@@ -368,7 +462,7 @@ func AuthedUpdate(sig bool, ticker, key, value, author string, deps common.Depen
 	return Update(sig, ticker, values, deps)
 }
 
-func Update(sig bool, ticker string, values map[string]string, deps common.Dependencies) string {
+func Update(sig bool, ticker string, values map[string]string, deps common.Dependencies) []*discordgo.MessageSend {
 	var (
 		name string
 		sync bool
@@ -527,11 +621,12 @@ func GetDiscordRole(name string, deps common.Dependencies) (*discordgo.Role, err
 	return nil, fmt.Errorf("no such role: %s", name)
 }
 
-func ListFilters(sig bool, ticker string, deps common.Dependencies) string {
+func ListFilters(sig bool, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
 	var (
-		buffer  bytes.Buffer
-		filter  string
-		results bool
+		buffer   bytes.Buffer
+		filter   string
+		results  bool
+		messages []*discordgo.MessageSend
 	)
 
 	ctx, cancel := context.WithCancel(deps.Context)
@@ -558,7 +653,6 @@ func ListFilters(sig bool, ticker string, deps common.Dependencies) string {
 
 	for rows.Next() {
 		if !results {
-			buffer.WriteString(fmt.Sprintf("Filters for %s\n", ticker))
 			results = true
 		}
 		err = rows.Scan(&filter)
@@ -567,17 +661,20 @@ func ListFilters(sig bool, ticker string, deps common.Dependencies) string {
 			return common.SendFatal(fmt.Sprintf("error scanning row filters: %s", err))
 		}
 
-		buffer.WriteString(fmt.Sprintf("\t%s\n", filter))
+		buffer.WriteString(fmt.Sprintf("%s\n", filter))
 	}
 
 	if results {
-		return fmt.Sprintf("```%s```", buffer.String())
+		embed := common.NewEmbed()
+		embed.SetTitle(fmt.Sprintf("Filters for %s", ticker))
+		embed.SetDescription(buffer.String())
+		return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 	} else {
 		return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
 	}
 }
 
-func AuthedAddFilter(sig bool, filter, ticker, author string, deps common.Dependencies) string {
+func AuthedAddFilter(sig bool, filter, ticker, author string, deps common.Dependencies) []*discordgo.MessageSend {
 	if !perms.CanPerform(author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
@@ -585,7 +682,7 @@ func AuthedAddFilter(sig bool, filter, ticker, author string, deps common.Depend
 	return AddFilter(sig, filter, ticker, deps)
 }
 
-func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) string {
+func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
 	var (
 		err      error
 		filterID int
@@ -640,7 +737,7 @@ func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) string
 	return common.SendSuccess(fmt.Sprintf("Added filter %s to role %s", filter, ticker))
 }
 
-func AuthedRemoveFilter(sig bool, filter, ticker, author string, deps common.Dependencies) string {
+func AuthedRemoveFilter(sig bool, filter, ticker, author string, deps common.Dependencies) []*discordgo.MessageSend {
 	if !perms.CanPerform(author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
@@ -648,7 +745,7 @@ func AuthedRemoveFilter(sig bool, filter, ticker, author string, deps common.Dep
 	return RemoveFilter(sig, filter, ticker, deps)
 }
 
-func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) string {
+func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
 	var (
 		err      error
 		filterID int

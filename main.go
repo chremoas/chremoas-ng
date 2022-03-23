@@ -21,6 +21,7 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/common"
 	discordMembers "github.com/chremoas/chremoas-ng/internal/discord/members"
 	discordRoles "github.com/chremoas/chremoas-ng/internal/discord/roles"
+	esiPoller "github.com/chremoas/chremoas-ng/internal/esi-poller"
 	"github.com/gregjones/httpcache"
 	_ "github.com/lib/pq"
 	"github.com/spf13/pflag"
@@ -31,7 +32,6 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/commands"
 	"github.com/chremoas/chremoas-ng/internal/config"
 	"github.com/chremoas/chremoas-ng/internal/database"
-	esiPoller "github.com/chremoas/chremoas-ng/internal/esi-poller"
 	"github.com/chremoas/chremoas-ng/internal/log"
 	"github.com/chremoas/chremoas-ng/internal/queue"
 )
@@ -40,11 +40,19 @@ import (
 const Version = "v0.0.0"
 
 func main() {
+	var (
+		debug bool
+		err   error
+	)
+
 	environment := os.Getenv("ENVIRONMENT")
 	dbg := os.Getenv("DEBUG")
-	debug, err := strconv.ParseBool(dbg)
-	if err != nil {
-		fmt.Printf("Error parsing DEBUG '%s' is not a boolean value", dbg)
+	if dbg != "" {
+		debug, err = strconv.ParseBool(dbg)
+		if err != nil {
+			fmt.Printf("Error parsing DEBUG '%s' is not a boolean value", dbg)
+			return
+		}
 	}
 
 	logger := log.New(environment, debug)
