@@ -1,8 +1,10 @@
 package queue
 
 import (
+	"context"
 	"fmt"
 
+	sl "github.com/bhechinger/spiffylogger"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
 )
@@ -12,25 +14,26 @@ type Consumer struct {
 	channel *amqp.Channel
 	tag     string
 	done    chan error
-	logger  *zap.Logger
 	handler func(deliveries <-chan amqp.Delivery, done chan error)
 }
 
-func NewConsumer(amqpURI, exchange, exchangeType, queueName, key, ctag string,
-	handler func(deliveries <-chan amqp.Delivery, done chan error),
-	logger *zap.Logger) (*Consumer, error) {
+func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName, key, ctag string,
+	handler func(deliveries <-chan amqp.Delivery, done chan error)) (*Consumer, error) {
+
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	c := &Consumer{
 		conn:    nil,
 		channel: nil,
 		tag:     ctag,
 		done:    make(chan error),
-		logger:  logger,
 		handler: handler,
 	}
 
 	var err error
 
-	logger.Info("dialing queue", zap.String("queue URI", sanitizeURI(amqpURI)))
+	sp.Info("dialing queue", zap.String("queue URI", sanitizeURI(amqpURI)))
 	c.conn, err = amqp.Dial(amqpURI)
 	if err != nil {
 		return nil, fmt.Errorf("Dial: %s", err)
@@ -40,13 +43,13 @@ func NewConsumer(amqpURI, exchange, exchangeType, queueName, key, ctag string,
 		fmt.Printf("closing: %s", <-c.conn.NotifyClose(make(chan *amqp.Error)))
 	}()
 
-	logger.Info("got Connection, getting Channel")
+	sp.Info("got Connection, getting Channel")
 	c.channel, err = c.conn.Channel()
 	if err != nil {
 		return nil, fmt.Errorf("Channel: %s", err)
 	}
 
-	logger.Info("got Channel, declaring Exchange", zap.String("exchange", exchange))
+	sp.Info("got Channel, declaring Exchange", zap.String("exchange", exchange))
 	if err = c.channel.ExchangeDeclare(
 		exchange,     // name of the exchange
 		exchangeType, // type
@@ -59,7 +62,7 @@ func NewConsumer(amqpURI, exchange, exchangeType, queueName, key, ctag string,
 		return nil, fmt.Errorf("Exchange Declare: %s", err)
 	}
 
-	logger.Info("declared Exchange, declaring Queue", zap.String("queue", queueName))
+	sp.Info("declared Exchange, declaring Queue", zap.String("queue", queueName))
 	queue, err := c.channel.QueueDeclare(
 		queueName, // name of the queue
 		true,      // durable
@@ -72,7 +75,7 @@ func NewConsumer(amqpURI, exchange, exchangeType, queueName, key, ctag string,
 		return nil, fmt.Errorf("Queue Declare: %s", err)
 	}
 
-	logger.Info("declared Queue, binding to Exchange",
+	sp.Info("declared Queue, binding to Exchange",
 		zap.String("name", queue.Name),
 		zap.Int("messages", queue.Messages),
 		zap.Int("consumers", queue.Consumers),
@@ -89,7 +92,7 @@ func NewConsumer(amqpURI, exchange, exchangeType, queueName, key, ctag string,
 		return nil, fmt.Errorf("Queue Bind: %s", err)
 	}
 
-	logger.Info("Queue bound to Exchange, starting Consume", zap.String("consumer tag", c.tag))
+	sp.Info("Queue bound to Exchange, starting Consume", zap.String("consumer tag", c.tag))
 	deliveries, err := c.channel.Consume(
 		queue.Name, // name
 		c.tag,      // consumerTag,
@@ -108,7 +111,10 @@ func NewConsumer(amqpURI, exchange, exchangeType, queueName, key, ctag string,
 	return c, nil
 }
 
-func (c *Consumer) Shutdown() error {
+func (c *Consumer) Shutdown(ctx context.Context) error {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	// will close() the deliveries channel
 	if err := c.channel.Cancel(c.tag, true); err != nil {
 		return fmt.Errorf("consumer cancel failed: %s", err)
@@ -118,7 +124,7 @@ func (c *Consumer) Shutdown() error {
 		return fmt.Errorf("AMQP connection close error: %s", err)
 	}
 
-	defer c.logger.Info("AMQP shutdown OK")
+	defer sp.Info("AMQP shutdown OK")
 
 	// wait for handle() to exit
 	return <-c.done

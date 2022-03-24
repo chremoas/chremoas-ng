@@ -40,3 +40,12 @@ func middleware(next http.HandlerFunc) http.HandlerFunc {
 		next.ServeHTTP(rw, req.WithContext(ctx))
 	})
 }
+
+// Inject the ctx with logger and spans
+func addLoggerMiddleware(ctx context.Context, next http.HandlerFunc) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(ctx)
+
+		next.ServeHTTP(w, r)
+	})
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
@@ -13,17 +14,21 @@ import (
 )
 
 // Make sure the roles we have in the db match what's in discord
-func (aep authEsiPoller) syncRoles() (int, int, error) {
+func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.With(zap.String("sub-component", "roles"))
+
 	var (
 		count         int
 		errorCount    int
 		roles         []*discordgo.Role
 		discordRoles  = make(map[string]payloads.Role)
 		chremoasRoles = make(map[string]payloads.Role)
-		logger        = aep.logger.With(zap.String("sub-component", "roles"))
 	)
 
-	ctx, cancel := context.WithCancel(aep.ctx)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	roles, err := aep.dependencies.Session.GuildRoles(aep.dependencies.GuildID)
@@ -53,12 +58,12 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 		Where(sq.Eq{"sync": "true"}).
 		QueryContext(ctx)
 	if err != nil {
-		logger.Error("error selecting role", zap.Error(err))
+		sp.Error("error selecting role", zap.Error(err))
 		return -1, -1, fmt.Errorf("error getting role list from db: %w", err)
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
-			logger.Error("error closing row", zap.Error(err))
+			sp.Error("error closing row", zap.Error(err))
 		}
 	}()
 
@@ -75,7 +80,7 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 			&role.Permissions,
 		)
 		if err != nil {
-			logger.Error("error scanning role fields", zap.Error(err))
+			sp.Error("error scanning role fields", zap.Error(err))
 			errorCount += 1
 			continue
 		}
@@ -83,13 +88,13 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 		// Check if we need to update the role ID in the database
 		if val, ok := discordRoles[role.Name]; ok {
 			if val.ID != role.ID {
-				logger.Info("Discord role ID doesn't match what we have", zap.String("discord id", val.ID), zap.String("chrmoas id", role.ID))
+				sp.Info("Discord role ID doesn't match what we have", zap.String("discord id", val.ID), zap.String("chrmoas id", role.ID))
 				_, err = aep.dependencies.DB.Update("roles").
 					Set("chat_id", val.ID).
 					Where(sq.Eq{"name": role.Name}).
 					QueryContext(ctx)
 				if err != nil {
-					logger.Error("Error updating role id in db",
+					sp.Error("Error updating role id in db",
 						zap.Error(err), zap.String("role", role.Name))
 					continue
 				}
@@ -101,15 +106,15 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 		chremoasRoles[role.Name] = role
 	}
 
-	logger.Debug("current roles", zap.Any("chremoas", chremoasRoles))
-	logger.Debug("current roles", zap.Any("discord", discordRoles))
+	sp.Debug("current roles", zap.Any("chremoas", chremoasRoles))
+	sp.Debug("current roles", zap.Any("discord", discordRoles))
 
 	// Delete roles from discord that aren't in the bot
 	rolesToDelete := difference(discordRoles, chremoasRoles)
 	for _, role := range rolesToDelete {
-		err := aep.queueUpdate(role, payloads.Delete)
+		err := aep.queueUpdate(ctx, role, payloads.Delete)
 		if err != nil {
-			logger.Error("error updating role",
+			sp.Error("error updating role",
 				zap.Error(err), zap.String("action", "delete"),
 				zap.String("role", role.Name), zap.String("id", role.ID))
 			errorCount += 1
@@ -122,9 +127,9 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 	// Add roles to discord that are in the bot
 	rolesToAdd := difference(chremoasRoles, discordRoles)
 	for _, role := range rolesToAdd {
-		err := aep.queueUpdate(role, payloads.Upsert)
+		err := aep.queueUpdate(ctx, role, payloads.Upsert)
 		if err != nil {
-			logger.Error("error updating role",
+			sp.Error("error updating role",
 				zap.Error(err), zap.String("action", "add"),
 				zap.String("role", role.Name), zap.String("id", role.ID))
 			errorCount += 1
@@ -134,11 +139,11 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 		count += 1
 	}
 
-	rolesToUpdate := interDiff(chremoasRoles, discordRoles, aep.dependencies)
+	rolesToUpdate := interDiff(ctx, chremoasRoles, discordRoles, aep.dependencies)
 	for _, role := range rolesToUpdate {
-		err := aep.queueUpdate(role, payloads.Upsert)
+		err := aep.queueUpdate(ctx, role, payloads.Upsert)
 		if err != nil {
-			logger.Error("error updating role",
+			sp.Error("error updating role",
 				zap.Error(err), zap.String("action", "update"),
 				zap.String("role", role.Name), zap.String("id", role.ID))
 			errorCount += 1
@@ -154,14 +159,18 @@ func (aep authEsiPoller) syncRoles() (int, int, error) {
 // interDiff finds the intersection of the two maps of roles and then checks if there are any
 // differences between what we (chremoas) thinks the roles should be and what they actually are
 // in discord.
-func interDiff(chremoasMap, discordMap map[string]payloads.Role, deps common.Dependencies) []payloads.Role {
+func interDiff(ctx context.Context, chremoasMap, discordMap map[string]payloads.Role, deps common.Dependencies) []payloads.Role {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.With(zap.String("sub-component", "roles"))
+
 	var (
 		roleList []string
 		output   []payloads.Role
-		logger   = deps.Logger.With(zap.String("sub-component", "roles"))
 	)
 
-	ctx, cancel := context.WithCancel(deps.Context)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// find the intersection and make as list
@@ -182,12 +191,12 @@ func interDiff(chremoasMap, discordMap map[string]payloads.Role, deps common.Dep
 					Where(sq.Eq{"name": r}).
 					QueryContext(ctx)
 				if err != nil {
-					logger.Error("error updating role's chat_id", zap.Error(err), zap.String("chat_id", discordMap[r].ID))
+					sp.Error("error updating role's chat_id", zap.Error(err), zap.String("chat_id", discordMap[r].ID))
 				}
 				defer func() {
 					err := rows.Close()
 					if err != nil {
-						logger.Error("error closing database", zap.Error(err))
+						sp.Error("error closing database", zap.Error(err))
 					}
 				}()
 			}()
@@ -197,7 +206,7 @@ func interDiff(chremoasMap, discordMap map[string]payloads.Role, deps common.Dep
 			chremoasMap[r].Hoist != discordMap[r].Hoist ||
 			chremoasMap[r].Color != discordMap[r].Color ||
 			chremoasMap[r].Permissions != discordMap[r].Permissions {
-			logger.Info("roles differ", zap.String("name", r))
+			sp.Info("roles differ", zap.String("name", r))
 
 			output = append(output, chremoasMap[r])
 		}
@@ -229,8 +238,11 @@ func difference(map1, map2 map[string]payloads.Role) []payloads.Role {
 	return output
 }
 
-func (aep authEsiPoller) queueUpdate(role payloads.Role, action payloads.Action) error {
-	logger := aep.logger.With(zap.String("sub-component", "roles"))
+func (aep authEsiPoller) queueUpdate(ctx context.Context, role payloads.Role, action payloads.Action) error {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.With(zap.String("sub-component", "roles"))
 
 	payload := payloads.RolePayload{
 		Action:  action,
@@ -240,18 +252,18 @@ func (aep authEsiPoller) queueUpdate(role payloads.Role, action payloads.Action)
 
 	b, err := json.Marshal(payload)
 	if err != nil {
-		logger.Error("error marshalling json for queue", zap.Error(err), zap.Any("payload", payload))
+		sp.Error("error marshalling json for queue", zap.Error(err), zap.Any("payload", payload))
 		return err
 	}
 
-	logger.Debug("Submitting role queue message",
+	sp.Debug("Submitting role queue message",
 		zap.String("name", role.Name),
 		zap.String("id", role.ID),
 		zap.Int64("chat_id", role.ChatID),
 	)
-	err = aep.dependencies.RolesProducer.Publish(b)
+	err = aep.dependencies.RolesProducer.Publish(ctx, b)
 	if err != nil {
-		logger.Error("error publishing message", zap.Error(err), zap.String("role", role.Name))
+		sp.Error("error publishing message", zap.Error(err), zap.String("role", role.Name))
 		return err
 	}
 

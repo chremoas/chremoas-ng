@@ -1,9 +1,11 @@
 package sigs
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
@@ -20,7 +22,10 @@ type Sig struct {
 	author       string
 }
 
-func New(member, sig, author string, deps common.Dependencies) (*Sig, error) {
+func New(ctx context.Context, member, sig, author string, deps common.Dependencies) (*Sig, error) {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	_, err := strconv.Atoi(member)
 	if err != nil {
 		if !common.IsDiscordUser(member) {
@@ -29,7 +34,7 @@ func New(member, sig, author string, deps common.Dependencies) (*Sig, error) {
 		member = common.ExtractUserId(member)
 	}
 
-	role, err := roles.GetRoles(roles.Sig, &sig, deps)
+	role, err := roles.GetRoles(ctx, roles.Sig, &sig, deps)
 	if err != nil {
 		return nil, err
 	}
@@ -49,32 +54,44 @@ func New(member, sig, author string, deps common.Dependencies) (*Sig, error) {
 	}, nil
 }
 
-func (s Sig) Add() []*discordgo.MessageSend {
-	if !perms.CanPerform(s.author, "sig_admins", s.dependencies) {
+func (s Sig) Add(ctx context.Context) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	if !perms.CanPerform(ctx, s.author, "sig_admins", s.dependencies) {
 		return common.SendError("User not authorized")
 	}
-	return filters.AddMember(s.userID, s.sig, s.dependencies)
+	return filters.AddMember(ctx, s.userID, s.sig, s.dependencies)
 }
 
-func (s Sig) Remove() []*discordgo.MessageSend {
-	if !perms.CanPerform(s.author, "sig_admins", s.dependencies) {
+func (s Sig) Remove(ctx context.Context) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	if !perms.CanPerform(ctx, s.author, "sig_admins", s.dependencies) {
 		return common.SendError("User not authorized")
 	}
-	return filters.RemoveMember(s.userID, s.sig, s.dependencies)
+	return filters.RemoveMember(ctx, s.userID, s.sig, s.dependencies)
 }
 
-func (s Sig) Join() []*discordgo.MessageSend {
+func (s Sig) Join(ctx context.Context) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	if !s.role.Joinable {
 		return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", s.sig))
 	}
 
-	return filters.AddMember(s.userID, s.sig, s.dependencies)
+	return filters.AddMember(ctx, s.userID, s.sig, s.dependencies)
 }
 
-func (s Sig) Leave() []*discordgo.MessageSend {
+func (s Sig) Leave(ctx context.Context) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	if !s.role.Joinable {
 		return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", s.sig))
 	}
 
-	return filters.RemoveMember(s.userID, s.sig, s.dependencies)
+	return filters.RemoveMember(ctx, s.userID, s.sig, s.dependencies)
 }

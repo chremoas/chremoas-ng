@@ -1,9 +1,11 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"os"
 
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
@@ -11,7 +13,10 @@ import (
 	_ "github.com/spf13/viper/remote"
 )
 
-func New(filename string, logger *zap.Logger) (*Configuration, error) {
+func New(ctx context.Context, filename string) (*Configuration, error) {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var fileRead, remoteRead bool
 	var fileReadErr, remoteReadErr error
 	var c Configuration
@@ -29,7 +34,7 @@ func New(filename string, logger *zap.Logger) (*Configuration, error) {
 	viper.SetConfigFile(filename)
 
 	if fileReadErr = viper.ReadInConfig(); fileReadErr == nil {
-		logger.Info("Successfully read local config file")
+		sp.Info("Successfully read local config file")
 		fileRead = true
 	}
 
@@ -39,7 +44,7 @@ func New(filename string, logger *zap.Logger) (*Configuration, error) {
 		if consul != nil {
 			// TODO: This is very rigid. Let's find a better way.
 			configPath := fmt.Sprintf("/%s/config", configNameSpace)
-			logger.Info("Using config",
+			sp.Info("Using config",
 				zap.String("configType", configType),
 				zap.String("configPath", configPath),
 				zap.Any("consul", consul),
@@ -49,11 +54,11 @@ func New(filename string, logger *zap.Logger) (*Configuration, error) {
 				viper.SetConfigType(configType) // because there is no file extension in a stream of bytes, supported extensions are "json", "toml", "yaml", "yml", "properties", "props", "prop"
 
 				if remoteReadErr = viper.ReadRemoteConfig(); remoteReadErr == nil {
-					logger.Info("Successfully read remote config")
+					sp.Info("Successfully read remote config")
 					remoteRead = true
 				}
 			} else {
-				logger.Info(err.Error())
+				sp.Info(err.Error())
 			}
 		}
 	}

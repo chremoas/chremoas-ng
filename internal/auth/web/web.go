@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"crypto/rand"
 	"embed"
 	"encoding/base64"
@@ -13,6 +14,7 @@ import (
 	"github.com/antihax/goesi"
 	"github.com/antihax/goesi/esi"
 	"github.com/astaxie/beego/session"
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/auth"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/dimfeld/httptreemux"
@@ -44,9 +46,13 @@ type ResultModel struct {
 type Web struct {
 	dependencies common.Dependencies
 	templates    *template.Template
+	ctx          context.Context
 }
 
-func New(deps common.Dependencies) (*Web, error) {
+func New(ctx context.Context, deps common.Dependencies) (*Web, error) {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	// Setup our required globals.
 	globalSessions, _ = session.NewManager("memory", &session.ManagerConfig{CookieName: "gosessionid", EnableSetCookie: true, Gclifetime: 600})
 	go globalSessions.GC()
@@ -71,21 +77,21 @@ func New(deps common.Dependencies) (*Web, error) {
 	templates := template.New("auth-web")
 	_, err := templates.ParseFS(content, "templates/*.html")
 	if err != nil {
-		deps.Logger.Error("Error parsing templates", zap.Error(err))
+		sp.Error("Error parsing templates", zap.Error(err))
 		return nil, err
 	}
 
-	return &Web{dependencies: deps, templates: templates}, nil
+	return &Web{dependencies: deps, templates: templates, ctx: ctx}, nil
 }
 
-func (web Web) Auth() *httptreemux.ContextMux {
+func (web Web) Auth(ctx context.Context) *httptreemux.ContextMux {
 	mux := httptreemux.NewContextMux()
 
-	mux.Handle(http.MethodGet, "/ready", web.readiness)
-	mux.Handle(http.MethodGet, "/static/*path", web.serveFiles)
-	mux.Handle(http.MethodGet, "/", middleware(web.handleIndex))
-	mux.Handle(http.MethodGet, "/login", middleware(web.handleEveLogin))
-	mux.Handle(http.MethodGet, viper.GetString("oauth.callBackUrl"), middleware(web.handleEveCallback))
+	mux.Handle(http.MethodGet, "/ready", addLoggerMiddleware(web.ctx, web.readiness))
+	mux.Handle(http.MethodGet, "/static/*path", addLoggerMiddleware(web.ctx, web.serveFiles))
+	mux.Handle(http.MethodGet, "/", addLoggerMiddleware(web.ctx, middleware(web.handleIndex)))
+	mux.Handle(http.MethodGet, "/login", addLoggerMiddleware(web.ctx, middleware(web.handleEveLogin)))
+	mux.Handle(http.MethodGet, viper.GetString("oauth.callBackUrl"), addLoggerMiddleware(web.ctx, middleware(web.handleEveCallback)))
 
 	return mux
 }
@@ -95,6 +101,9 @@ func (web Web) serveFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (web Web) readiness(w http.ResponseWriter, _ *http.Request) {
+	_, sp := sl.OpenSpan(web.ctx)
+	defer sp.Close()
+
 	status := struct {
 		Status string
 	}{
@@ -102,18 +111,24 @@ func (web Web) readiness(w http.ResponseWriter, _ *http.Request) {
 	}
 	err := json.NewEncoder(w).Encode(status)
 	if err != nil {
-		web.dependencies.Logger.Error("Error encoding status", zap.Error(err))
+		sp.Error("Error encoding status", zap.Error(err))
 	}
 }
 
 func (web Web) handleIndex(w http.ResponseWriter, _ *http.Request) {
+	_, sp := sl.OpenSpan(web.ctx)
+	defer sp.Close()
+
 	err := web.templates.ExecuteTemplate(w, "index.html", nil)
 	if err != nil {
-		web.dependencies.Logger.Error("Error executing index", zap.Error(err))
+		sp.Error("Error executing index", zap.Error(err))
 	}
 }
 
 func (web Web) handleEveLogin(w http.ResponseWriter, r *http.Request) {
+	_, sp := sl.OpenSpan(web.ctx)
+	defer sp.Close()
+
 	// Get the users session
 	sess, _ := globalSessions.SessionStart(w, r)
 
@@ -124,14 +139,14 @@ func (web Web) handleEveLogin(w http.ResponseWriter, r *http.Request) {
 	b := make([]byte, 16)
 	_, err := rand.Read(b)
 	if err != nil {
-		web.dependencies.Logger.Error("Error generating random string", zap.Error(err))
+		sp.Error("Error generating random string", zap.Error(err))
 	}
 	state := base64.URLEncoding.EncodeToString(b)
 
 	// Save the state to the session to validate with the response.
 	err = sess.Set("state", state)
 	if err != nil {
-		web.dependencies.Logger.Error("Error setting state", zap.Error(err))
+		sp.Error("Error setting state", zap.Error(err))
 	}
 
 	// Build the authorize URL
@@ -143,6 +158,9 @@ func (web Web) handleEveLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (web Web) handleEveCallback(w http.ResponseWriter, r *http.Request) {
+	_, sp := sl.OpenSpan(web.ctx)
+	defer sp.Close()
+
 	sess, _ := globalSessions.SessionStart(w, r)
 	if sess == nil {
 		fmt.Print("No session, redirecting to /\n")
@@ -166,11 +184,14 @@ func (web Web) handleEveCallback(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		web.dependencies.Logger.Error("Error executing auth template", zap.Error(err))
+		sp.Error("Error executing auth template", zap.Error(err))
 	}
 }
 
 func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store) (*string, error) {
+	ctx, sp := sl.OpenSpan(r.Context())
+	defer sp.Close()
+
 	state := r.FormValue("state")
 	code := r.FormValue("code")
 	stateValidate := sess.Get("state")
@@ -251,7 +272,7 @@ func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store
 		}
 	}
 
-	authCode, err := auth.Create(r.Context(), request, web.dependencies)
+	authCode, err := auth.Create(ctx, request, web.dependencies)
 
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("Had an issue authing internally: (%s)", err))

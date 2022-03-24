@@ -1,10 +1,12 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
 	"github.com/chremoas/chremoas-ng/internal/sigs"
@@ -37,19 +39,25 @@ const (
 // Sig will be called (due to AddHandler above) every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (c Command) Sig(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
-	logger := c.dependencies.Logger.With(zap.String("command", "sig"))
+	spCtx, sp := sl.OpenSpan(c.ctx)
+	defer sp.Close()
 
-	for _, message := range c.doSig(m, logger) {
+	sp.With(zap.String("command", "sig"))
+
+	for _, message := range c.doSig(spCtx, m) {
 		_, err := s.ChannelMessageSendComplex(m.ChannelID, message)
 
 		if err != nil {
-			logger.Error("Error sending command", zap.Error(err))
+			sp.Error("Error sending command", zap.Error(err))
 		}
 	}
 }
 
-func (c Command) doSig(m *discordgo.Message, logger *zap.Logger) []*discordgo.MessageSend {
-	logger.Info("Received chat command", zap.String("content", m.Content))
+func (c Command) doSig(ctx context.Context, m *discordgo.Message) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.Info("Received chat command", zap.String("content", m.Content))
 
 	cmdStr := strings.Split(m.Content, " ")
 
@@ -73,18 +81,18 @@ func (c Command) doSig(m *discordgo.Message, logger *zap.Logger) []*discordgo.Me
 			if len(cmdStr) < 4 {
 				return getHelp("!sig list members help", "!sig list members <sig_name>", "")
 			}
-			return roles.ListMembers(roles.Sig, cmdStr[3], c.dependencies)
+			return roles.ListMembers(ctx, roles.Sig, cmdStr[3], c.dependencies)
 
 		case "membership":
 			if len(cmdStr) < 4 {
-				return roles.ListUserRoles(roles.Sig, m.Author.ID, c.dependencies)
+				return roles.ListUserRoles(ctx, roles.Sig, m.Author.ID, c.dependencies)
 			}
 
 			if !common.IsDiscordUser(cmdStr[3]) {
 				return common.SendError("member name must be a discord user")
 			}
 
-			return roles.ListUserRoles(roles.Sig, common.ExtractUserId(cmdStr[3]), c.dependencies)
+			return roles.ListUserRoles(ctx, roles.Sig, common.ExtractUserId(cmdStr[3]), c.dependencies)
 
 		default:
 			return getHelp("!sig list help", "!sig list <sub-command>", sigSubcommands)
@@ -98,26 +106,26 @@ func (c Command) doSig(m *discordgo.Message, logger *zap.Logger) []*discordgo.Me
 			if err != nil {
 				return common.SendError(fmt.Sprintf("Error parsing joinable `%s` is not a bool value", cmdStr[3]))
 			}
-			return roles.AuthedAdd(roles.Sig, joinable, cmdStr[2], strings.Join(cmdStr[4:], " "), "discord", m.Author.ID, c.dependencies)
+			return roles.AuthedAdd(ctx, roles.Sig, joinable, cmdStr[2], strings.Join(cmdStr[4:], " "), "discord", m.Author.ID, c.dependencies)
 		}
 
 	case "destroy":
 		if len(cmdStr) < 3 {
 			return getHelp("!sig destroy help", "!sig destroy <sig_name>", "")
 		}
-		return roles.AuthedDestroy(roles.Sig, cmdStr[2], m.Author.ID, c.dependencies)
+		return roles.AuthedDestroy(ctx, roles.Sig, cmdStr[2], m.Author.ID, c.dependencies)
 
 	case "info":
 		if len(cmdStr) < 3 {
 			return getHelp("!sig info help", "!sig info <sig_name>", "")
 		}
-		return roles.Info(roles.Sig, cmdStr[2], c.dependencies)
+		return roles.Info(ctx, roles.Sig, cmdStr[2], c.dependencies)
 
 	case "set":
 		if len(cmdStr) < 5 {
 			return getHelp("!sig set help", "!sig set <sig_name> <key> <value>", "")
 		}
-		return roles.AuthedUpdate(roles.Sig, cmdStr[2], cmdStr[3], cmdStr[4], m.Author.ID, c.dependencies)
+		return roles.AuthedUpdate(ctx, roles.Sig, cmdStr[2], cmdStr[3], cmdStr[4], m.Author.ID, c.dependencies)
 
 	case "add":
 		var (
@@ -127,11 +135,11 @@ func (c Command) doSig(m *discordgo.Message, logger *zap.Logger) []*discordgo.Me
 		if len(cmdStr) < 4 {
 			return getHelp("!sig add help", "!sig add <user> <sig>", "")
 		}
-		sig, err = sigs.New(cmdStr[2], cmdStr[3], m.Author.ID, c.dependencies)
+		sig, err = sigs.New(ctx, cmdStr[2], cmdStr[3], m.Author.ID, c.dependencies)
 		if err != nil {
 			return common.SendError(err.Error())
 		}
-		return sig.Add()
+		return sig.Add(ctx)
 
 	case "remove":
 		var (
@@ -141,11 +149,11 @@ func (c Command) doSig(m *discordgo.Message, logger *zap.Logger) []*discordgo.Me
 		if len(cmdStr) < 4 {
 			return getHelp("!sig remove help", "!sig remove <user> <sig>", "")
 		}
-		sig, err = sigs.New(cmdStr[2], cmdStr[3], m.Author.ID, c.dependencies)
+		sig, err = sigs.New(ctx, cmdStr[2], cmdStr[3], m.Author.ID, c.dependencies)
 		if err != nil {
 			return common.SendError(err.Error())
 		}
-		return sig.Remove()
+		return sig.Remove(ctx)
 
 	case "join":
 		var (
@@ -155,11 +163,11 @@ func (c Command) doSig(m *discordgo.Message, logger *zap.Logger) []*discordgo.Me
 		if len(cmdStr) < 3 {
 			return getHelp("!sig join help", "!sig join <sig>", "")
 		}
-		sig, err = sigs.New(m.Author.ID, cmdStr[2], m.Author.ID, c.dependencies)
+		sig, err = sigs.New(ctx, m.Author.ID, cmdStr[2], m.Author.ID, c.dependencies)
 		if err != nil {
 			return common.SendError(err.Error())
 		}
-		return sig.Join()
+		return sig.Join(ctx)
 
 	case "leave":
 		var (
@@ -169,11 +177,11 @@ func (c Command) doSig(m *discordgo.Message, logger *zap.Logger) []*discordgo.Me
 		if len(cmdStr) < 3 {
 			return getHelp("!sig leave help", "!sig leave <sig>", "")
 		}
-		sig, err = sigs.New(m.Author.ID, cmdStr[2], m.Author.ID, c.dependencies)
+		sig, err = sigs.New(ctx, m.Author.ID, cmdStr[2], m.Author.ID, c.dependencies)
 		if err != nil {
 			return common.SendError(err.Error())
 		}
-		return sig.Leave()
+		return sig.Leave(ctx)
 
 	case "keys":
 		return roles.Keys()
@@ -191,19 +199,19 @@ func (c Command) doSig(m *discordgo.Message, logger *zap.Logger) []*discordgo.Me
 			if len(cmdStr) < 4 {
 				return getHelp("!sig filter list help", "!sig filter list <role>", "")
 			}
-			return roles.ListFilters(roles.Sig, cmdStr[3], c.dependencies)
+			return roles.ListFilters(ctx, roles.Sig, cmdStr[3], c.dependencies)
 
 		case "add":
 			if len(cmdStr) < 5 {
 				return getHelp("!sig filter add help", "!sig filter add <filter> <role>", "")
 			}
-			return roles.AuthedAddFilter(roles.Sig, cmdStr[3], cmdStr[4], m.Author.ID, c.dependencies)
+			return roles.AuthedAddFilter(ctx, roles.Sig, cmdStr[3], cmdStr[4], m.Author.ID, c.dependencies)
 
 		case "remove":
 			if len(cmdStr) < 5 {
 				return getHelp("!sig filter remove help", "!sig filter remove <filter> <role>", "")
 			}
-			return roles.AuthedRemoveFilter(roles.Sig, cmdStr[3], cmdStr[4], m.Author.ID, c.dependencies)
+			return roles.AuthedRemoveFilter(ctx, roles.Sig, cmdStr[3], cmdStr[4], m.Author.ID, c.dependencies)
 
 		default:
 			return getHelp("!sig filter list help", "!sig filter list <role>", "")

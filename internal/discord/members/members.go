@@ -1,9 +1,11 @@
 package members
 
 import (
+	"context"
 	"encoding/json"
 
 	sq "github.com/Masterminds/squirrel"
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -12,32 +14,37 @@ import (
 
 type Member struct {
 	dependencies common.Dependencies
+	ctx          context.Context
 }
 
-func New(deps common.Dependencies) *Member {
+func New(ctx context.Context, deps common.Dependencies) *Member {
 	return &Member{
 		dependencies: deps,
+		ctx:          ctx,
 	}
 }
 
 func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
-	logger := m.dependencies.Logger.With(zap.String("queue", "members"))
+	_, sp := sl.OpenSpan(m.ctx)
+	defer sp.Close()
 
-	logger.Info("Started members message handling")
-	defer logger.Info("Completed members message handling")
+	sp.With(zap.String("queue", "members"))
+
+	sp.Info("Started members message handling")
+	defer sp.Info("Completed members message handling")
 
 	for d := range deliveries {
 		func() {
 			if len(d.Body) == 0 {
-				logger.Info("message body was empty")
+				sp.Info("message body was empty")
 				err := d.Ack(false)
 				if err != nil {
-					logger.Error("Error ACKing message", zap.Error(err))
+					sp.Error("Error ACKing message", zap.Error(err))
 				}
 
 				err = d.Reject(false)
 				if err != nil {
-					logger.Error("Error ACKing message", zap.Error(err))
+					sp.Error("Error ACKing message", zap.Error(err))
 				}
 
 				return
@@ -46,17 +53,17 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 			var body payloads.MemberPayload
 			err := json.Unmarshal(d.Body, &body)
 			if err != nil {
-				logger.Error("error unmarshalling payload", zap.Error(err))
+				sp.Error("error unmarshalling payload", zap.Error(err))
 
 				err = d.Reject(false)
 				if err != nil {
-					logger.Error("Error ACKing message", zap.Error(err))
+					sp.Error("Error ACKing message", zap.Error(err))
 				}
 
 				return
 			}
 
-			logger.Debug("Handling message", zap.Any("payload", body))
+			sp.Debug("Handling message", zap.Any("payload", body))
 
 			m.dependencies.Session.Lock()
 			defer func() {
@@ -66,7 +73,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 			if body.RoleID == "0" {
 				err = d.Reject(false)
 				if err != nil {
-					logger.Error("Error NACKing invalid (RoleID==0) Role Add message: %s", zap.Error(err))
+					sp.Error("Error NACKing invalid (RoleID==0) Role Add message: %s", zap.Error(err))
 				}
 
 				return
@@ -75,7 +82,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 			// We have the role's ID but the ignore list is the role names so let's look it up
 			roles, err := m.dependencies.Session.GuildRoles(m.dependencies.GuildID)
 			if err != nil {
-				logger.Error("Error fetching discord roles", zap.Error(err))
+				sp.Error("Error fetching discord roles", zap.Error(err))
 				return
 			}
 
@@ -90,7 +97,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 			if common.IgnoreRole(roleName) {
 				err = d.Reject(false)
 				if err != nil {
-					logger.Error("Error NACKing invalid (ignored role) Role Add message",
+					sp.Error("Error NACKing invalid (ignored role) Role Add message",
 						zap.Error(err), zap.String("role", roleName))
 				}
 
@@ -105,7 +112,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 					Where(sq.Eq{"chat_id": body.RoleID}).
 					Scan(&sync)
 				if err != nil {
-					logger.Error("Error getting role sync status",
+					sp.Error("Error getting role sync status",
 						zap.Error(err), zap.String("role", body.RoleID))
 					return
 				}
@@ -113,7 +120,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				if !sync {
 					err = d.Reject(false)
 					if err != nil {
-						logger.Error("Error NACKing role not set to sync",
+						sp.Error("Error NACKing role not set to sync",
 							zap.Error(err), zap.String("role", body.RoleID))
 					}
 
@@ -122,14 +129,14 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 
 				err = m.dependencies.Session.GuildMemberRoleAdd(body.GuildID, body.MemberID, body.RoleID)
 				if err != nil {
-					logger.Error("Error adding role to user",
+					sp.Error("Error adding role to user",
 						zap.String("role", body.RoleID),
 						zap.String("member id", body.MemberID),
 						zap.Error(err))
 
 					err = d.Reject(true)
 					if err != nil {
-						logger.Error("Error NACKing Role Add message: %s", zap.Error(err))
+						sp.Error("Error NACKing Role Add message: %s", zap.Error(err))
 					}
 
 					return
@@ -138,26 +145,26 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 			case payloads.Delete:
 				err = m.dependencies.Session.GuildMemberRoleRemove(body.GuildID, body.MemberID, body.RoleID)
 				if err != nil {
-					logger.Error("Error removing role from user",
+					sp.Error("Error removing role from user",
 						zap.String("role", body.RoleID),
 						zap.String("member id", body.MemberID),
 						zap.Error(err))
 
 					err = d.Reject(true)
 					if err != nil {
-						logger.Error("Error NACKing Role Remove message", zap.Error(err))
+						sp.Error("Error NACKing Role Remove message", zap.Error(err))
 					}
 
 					return
 				}
 
 			default:
-				logger.Error("Unknown action", zap.Any("action", body.Action))
+				sp.Error("Unknown action", zap.Any("action", body.Action))
 			}
 
 			err = d.Ack(false)
 			if err != nil {
-				logger.Error("Error ACKing message", zap.Error(err))
+				sp.Error("Error ACKing message", zap.Error(err))
 			}
 		}()
 	}

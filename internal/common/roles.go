@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/bhechinger/go-sets"
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"go.uber.org/zap"
 )
@@ -17,12 +18,13 @@ const (
 
 var roleType = map[bool]string{Role: "role", Sig: "sig"}
 
-func GetUserRoles(sig bool, userID string, deps Dependencies) ([]payloads.Role, error) {
-	var (
-		roles []payloads.Role
-	)
+func GetUserRoles(ctx context.Context, sig bool, userID string, deps Dependencies) ([]payloads.Role, error) {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
 
-	ctx, cancel := context.WithCancel(deps.Context)
+	var roles []payloads.Role
+
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	_, err := strconv.Atoi(userID)
@@ -38,13 +40,13 @@ func GetUserRoles(sig bool, userID string, deps Dependencies) ([]payloads.Role, 
 		Suffix("getMemberRoles(?, ?)", userID, strconv.FormatBool(sig)).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error("error getting role membership", zap.Error(err), zap.String("user id", userID))
+		sp.Error("error getting role membership", zap.Error(err), zap.String("user id", userID))
 		return nil, fmt.Errorf("error getting user %ss (%s): %s", roleType[sig], userID, err)
 	}
 
 	defer func() {
 		if err = rows.Close(); err != nil {
-			deps.Logger.Error("error closing row", zap.Error(err))
+			sp.Error("error closing row", zap.Error(err))
 		}
 	}()
 
@@ -58,7 +60,7 @@ func GetUserRoles(sig bool, userID string, deps Dependencies) ([]payloads.Role, 
 		)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
-			deps.Logger.Error("error scanning row", zap.Error(newErr))
+			sp.Error("error scanning row", zap.Error(newErr))
 			return nil, newErr
 		}
 
@@ -68,13 +70,16 @@ func GetUserRoles(sig bool, userID string, deps Dependencies) ([]payloads.Role, 
 	return roles, nil
 }
 
-func GetMembership(userID string, deps Dependencies) (*sets.StringSet, error) {
-	sigs, err := GetUserRoles(Sig, userID, deps)
+func GetMembership(ctx context.Context, userID string, deps Dependencies) (*sets.StringSet, error) {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sigs, err := GetUserRoles(ctx, Sig, userID, deps)
 	if err != nil {
 		return nil, err
 	}
 
-	roles, err := GetUserRoles(Role, userID, deps)
+	roles, err := GetUserRoles(ctx, Role, userID, deps)
 	if err != nil {
 		return nil, err
 	}

@@ -38,6 +38,9 @@ github.com/astaxie/beego/utils
 # github.com/bhechinger/go-sets v0.0.4
 ## explicit
 github.com/bhechinger/go-sets
+# github.com/bhechinger/spiffylogger v0.1.6
+## explicit
+github.com/bhechinger/spiffylogger
 # github.com/bketelsen/crypt v0.0.3-0.20200106085610-5cbc8cc4026c
 github.com/bketelsen/crypt/backend
 github.com/bketelsen/crypt/backend/consul
@@ -82,6 +85,8 @@ github.com/fsnotify/fsnotify
 ## explicit
 github.com/git-chglog/git-chglog
 github.com/git-chglog/git-chglog/cmd/git-chglog
+# github.com/go-stack/stack v1.8.1
+github.com/go-stack/stack
 # github.com/gogo/protobuf v1.3.1
 ## explicit
 # github.com/golang-jwt/jwt/v4 v4.1.0
@@ -208,6 +213,8 @@ github.com/pkg/errors
 github.com/rabbitmq/amqp091-go
 # github.com/russross/blackfriday/v2 v2.0.1
 github.com/russross/blackfriday/v2
+# github.com/segmentio/ksuid v1.0.4
+github.com/segmentio/ksuid
 # github.com/shopspring/decimal v1.2.0
 github.com/shopspring/decimal
 # github.com/shurcooL/sanitized_anchor_name v1.0.0
@@ -253,11 +260,11 @@ go.opencensus.io/trace
 go.opencensus.io/trace/internal
 go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
-# go.uber.org/atomic v1.6.0
+# go.uber.org/atomic v1.7.0
 go.uber.org/atomic
-# go.uber.org/multierr v1.5.0
+# go.uber.org/multierr v1.6.0
 go.uber.org/multierr
-# go.uber.org/zap v1.16.0
+# go.uber.org/zap v1.21.0
 ## explicit
 go.uber.org/zap
 go.uber.org/zap/buffer
@@ -365,7 +372,7 @@ google.golang.org/genproto/googleapis/firestore/v1
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/status
 google.golang.org/genproto/googleapis/type/latlng
-# google.golang.org/grpc v1.31.0 => google.golang.org/grpc v1.29.1
+# google.golang.org/grpc v1.45.0 => google.golang.org/grpc v1.29.1
 google.golang.org/grpc
 google.golang.org/grpc/attributes
 google.golang.org/grpc/backoff

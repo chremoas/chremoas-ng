@@ -1,19 +1,22 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
 
-func New(logger *zap.Logger) (*sq.StatementBuilderType, error) {
-	var (
-		err error
-	)
+func New(ctx context.Context) (*sq.StatementBuilderType, error) {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	var err error
 
 	// ignoredRoles = viper.GetStringSlice("bot.ignoredRoles")
 
@@ -27,13 +30,13 @@ func New(logger *zap.Logger) (*sq.StatementBuilderType, error) {
 
 	ldb, err := sqlx.Connect(viper.GetString("database.driver"), dsn)
 	if err != nil {
-		logger.Error("Error connecting to DB", zap.Error(err))
+		sp.Error("Error connecting to DB", zap.Error(err))
 		return nil, err
 	}
 
 	err = ldb.Ping()
 	if err != nil {
-		logger.Error("Error pinging DB", zap.Error(err))
+		sp.Error("Error pinging DB", zap.Error(err))
 		return nil, err
 	}
 
@@ -58,20 +61,20 @@ func New(logger *zap.Logger) (*sq.StatementBuilderType, error) {
 
 		switch err {
 		case nil:
-			logger.Info("permission found", zap.String("permission", k), zap.Int("id", id))
+			sp.Info("permission found", zap.String("permission", k), zap.Int("id", id))
 		case sql.ErrNoRows:
-			logger.Info("permission NOT found, creating", zap.String("permission", k))
+			sp.Info("permission NOT found, creating", zap.String("permission", k))
 			err = db.Insert("permissions").
 				Columns("name", "description").
 				Values(k, v).
 				Suffix("RETURNING \"id\"").
 				Scan(&id)
 			if err != nil {
-				logger.Error("Error inserting permissions", zap.Error(err))
+				sp.Error("Error inserting permissions", zap.Error(err))
 				return nil, err
 			}
 		default:
-			logger.Error("Error checking permissions", zap.Error(err))
+			sp.Error("Error checking permissions", zap.Error(err))
 			return nil, err
 		}
 	}

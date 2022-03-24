@@ -1,8 +1,10 @@
 package commands
 
 import (
+	"context"
 	"strings"
 
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
 	"github.com/chremoas/chremoas-ng/internal/auth"
@@ -11,22 +13,28 @@ import (
 
 const authUsage = `!auth <token>`
 
-// This function will be called (due to AddHandler above) every time a new
+// Auth will be called (due to AddHandler above) every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (c Command) Auth(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
-	logger := c.dependencies.Logger.With(zap.String("command", "auth"))
+	spCtx, sp := sl.OpenSpan(c.ctx)
+	defer sp.Close()
 
-	for _, message := range c.doAuth(m, logger) {
+	sp.With(zap.String("command", "auth"))
+
+	for _, message := range c.doAuth(spCtx, m) {
 		_, err := s.ChannelMessageSendComplex(m.ChannelID, message)
 
 		if err != nil {
-			logger.Error("Error sending command", zap.Error(err))
+			sp.Error("Error sending command", zap.Error(err))
 		}
 	}
 }
 
-func (c Command) doAuth(m *discordgo.Message, logger *zap.Logger) []*discordgo.MessageSend {
-	logger.Info("Received chat command", zap.String("content", m.Content))
+func (c Command) doAuth(ctx context.Context, m *discordgo.Message) []*discordgo.MessageSend {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.Info("Received chat command", zap.String("content", m.Content))
 
 	cmdStr := strings.Split(m.Content, " ")
 
@@ -39,6 +47,6 @@ func (c Command) doAuth(m *discordgo.Message, logger *zap.Logger) []*discordgo.M
 		return getHelp("!auth help", authUsage, "")
 
 	default:
-		return auth.Confirm(cmdStr[1], m.Author.ID, c.dependencies)
+		return auth.Confirm(ctx, cmdStr[1], m.Author.ID, c.dependencies)
 	}
 }
