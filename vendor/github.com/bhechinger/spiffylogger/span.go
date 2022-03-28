@@ -225,3 +225,11 @@ func (s *Span) With(fields ...zap.Field) *Span {
 	s.fields = append(s.fields, fields...)
 	return s
 }
+
+func NewID() string {
+	id, err := ksuid.NewRandom()
+	if err != nil {
+		return "ERRID"
+	}
+	return id.String()
+}

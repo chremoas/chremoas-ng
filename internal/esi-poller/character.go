@@ -72,8 +72,8 @@ func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error
 	return count, errorCount, nil
 }
 
-func (aep *authEsiPoller) updateCharacter(_ context.Context, character auth.Character) error {
-	ctx, sp := sl.OpenSpan(context.Background())
+func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Character) error {
+	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 
 	sp.With(zap.String("sub-component", "character"))

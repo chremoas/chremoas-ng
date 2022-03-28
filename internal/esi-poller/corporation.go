@@ -146,8 +146,8 @@ func (aep *authEsiPoller) updateCorporations(ctx context.Context) (int, int, err
 	return count, errorCount, nil
 }
 
-func (aep *authEsiPoller) updateCorporation(_ context.Context, corporation auth.Corporation) error {
-	ctx, sp := sl.OpenSpan(context.Background())
+func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation auth.Corporation) error {
+	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 
 	sp.With(zap.String("sub-component", "corporation"))

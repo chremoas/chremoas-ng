@@ -14,8 +14,8 @@ import (
 )
 
 // Make sure the roles we have in the db match what's in discord
-func (aep authEsiPoller) syncRoles(_ context.Context) (int, int, error) {
-	ctx, sp := sl.OpenSpan(context.Background())
+func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
+	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 
 	sp.With(zap.String("sub-component", "roles"))
