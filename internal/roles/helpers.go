@@ -6,24 +6,26 @@ import (
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"go.uber.org/zap"
 )
 
-func getRoleID(name string, deps common.Dependencies) (int, error) {
-	var (
-		err error
-		id  int
-	)
-
-	err = deps.DB.Select("id").
-		From("roles").
-		Where(sq.Eq{"role_nick": name}).
-		Scan(&id)
-
-	return id, err
-}
+// I don't think this is actually used
+// func getRoleID(name string, deps common.Dependencies) (int, error) {
+// 	var (
+// 		err error
+// 		id  int
+// 	)
+//
+// 	err = deps.DB.Select("id").
+// 		From("roles").
+// 		Where(sq.Eq{"role_nick": name}).
+// 		Scan(&id)
+//
+// 	return id, err
+// }
 
 func validListItem(a string, list []string) bool {
 	for _, b := range list {
@@ -34,7 +36,10 @@ func validListItem(a string, list []string) bool {
 	return false
 }
 
-func queueUpdate(role payloads.Role, action payloads.Action, deps common.Dependencies) error {
+func queueUpdate(ctx context.Context, role payloads.Role, action payloads.Action, deps common.Dependencies) error {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	payload := payloads.RolePayload{
 		Action:  action,
 		GuildID: deps.GuildID,
@@ -43,18 +48,18 @@ func queueUpdate(role payloads.Role, action payloads.Action, deps common.Depende
 
 	b, err := json.Marshal(payload)
 	if err != nil {
-		deps.Logger.Error("error marshalling json for queue", zap.Error(err))
+		sp.Error("error marshalling json for queue", zap.Error(err))
 		return err
 	}
 
-	deps.Logger.Debug("Submitting role queue message",
+	sp.Debug("Submitting role queue message",
 		zap.String("name", role.Name),
 		zap.String("id", role.ID),
 		zap.Int64("chat_id", role.ChatID),
 	)
-	err = deps.RolesProducer.Publish(b)
+	err = deps.RolesProducer.Publish(ctx, b)
 	if err != nil {
-		deps.Logger.Error("error publishing message", zap.Error(err))
+		sp.Error("error publishing message", zap.Error(err))
 		return err
 	}
 
@@ -62,7 +67,10 @@ func queueUpdate(role payloads.Role, action payloads.Action, deps common.Depende
 }
 
 // GetRoleMembers lists all userIDs that match all the filters for a role.
-func GetRoleMembers(sig bool, name string, deps common.Dependencies) ([]int, error) {
+func GetRoleMembers(ctx context.Context, sig bool, name string, deps common.Dependencies) ([]int, error) {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var (
 		err        error
 		id         int
@@ -70,22 +78,25 @@ func GetRoleMembers(sig bool, name string, deps common.Dependencies) ([]int, err
 		filterList []int
 	)
 
-	ctx, cancel := context.WithCancel(deps.Context)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := deps.DB.Select("role_filters.filter").
+	query := deps.DB.Select("role_filters.filter").
 		From("role_filters").
 		InnerJoin("roles ON role_filters.role = roles.id").
 		Where(sq.Eq{"sig": sig}).
-		Where(sq.Eq{"role_nick": name}).
-		QueryContext(ctx)
+		Where(sq.Eq{"role_nick": name})
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error("error getting role filters", zap.Error(err))
+		sp.Error("error getting role filters", zap.Error(err))
 		return nil, err
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
-			deps.Logger.Error("error closing row", zap.Error(err))
+			sp.Error("error closing row", zap.Error(err))
 		}
 	}()
 
@@ -99,19 +110,22 @@ func GetRoleMembers(sig bool, name string, deps common.Dependencies) ([]int, err
 		filterList = append(filterList, id)
 	}
 
-	rows, err = deps.DB.Select("user_id").
+	query = deps.DB.Select("user_id").
 		From("filter_membership").
 		Where(sq.Eq{"filter": filterList}).
 		GroupBy("user_id").
-		Having("count(*) = ?", len(filterList)).
-		QueryContext(ctx)
+		Having("count(*) = ?", len(filterList))
+
+	common.LogSQL(sp, query)
+
+	rows, err = query.QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error("error getting filter memberhship", zap.Error(err))
+		sp.Error("error getting filter memberhship", zap.Error(err))
 		return nil, err
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
-			deps.Logger.Error("error closing row", zap.Error(err))
+			sp.Error("error closing row", zap.Error(err))
 		}
 	}()
 
@@ -129,13 +143,16 @@ func GetRoleMembers(sig bool, name string, deps common.Dependencies) ([]int, err
 }
 
 // GetRoles goes and fetches all the roles of type sig/role. If shortname is set only one role is fetched.
-func GetRoles(sig bool, shortName *string, deps common.Dependencies) ([]payloads.Role, error) {
+func GetRoles(ctx context.Context, sig bool, shortName *string, deps common.Dependencies) ([]payloads.Role, error) {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var (
 		rs        []payloads.Role
 		charTotal int
 	)
 
-	ctx, cancel := context.WithCancel(deps.Context)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	q := deps.DB.Select("color", "hoist", "joinable", "managed", "mentionable", "name", "permissions",
@@ -147,15 +164,17 @@ func GetRoles(sig bool, shortName *string, deps common.Dependencies) ([]payloads
 		q = q.Where(sq.Eq{"role_nick": shortName})
 	}
 
+	common.LogSQL(sp, q)
+
 	rows, err := q.QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error getting %ss: %s", roleType[sig], err)
-		deps.Logger.Error("error getting role", zap.Error(err), zap.Bool("sig", sig))
+		sp.Error("error getting role", zap.Error(err), zap.Bool("sig", sig))
 		return nil, newErr
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
-			deps.Logger.Error("error closing row", zap.Error(err))
+			sp.Error("error closing row", zap.Error(err))
 		}
 	}()
 
@@ -176,7 +195,7 @@ func GetRoles(sig bool, shortName *string, deps common.Dependencies) ([]payloads
 		)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
-			deps.Logger.Error("error scanning role", zap.Error(err), zap.Bool("sig", sig))
+			sp.Error("error scanning role", zap.Error(err), zap.Bool("sig", sig))
 			return nil, newErr
 		}
 		charTotal += len(role.ShortName) + len(role.Name) + 15 // Guessing on bool excess

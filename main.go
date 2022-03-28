@@ -8,14 +8,15 @@ import (
 	_ "expvar"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
 	"github.com/chremoas/chremoas-ng/internal/common"
@@ -27,12 +28,12 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/chremoas/chremoas-ng/internal/auth/web"
 	"github.com/chremoas/chremoas-ng/internal/commands"
 	"github.com/chremoas/chremoas-ng/internal/config"
 	"github.com/chremoas/chremoas-ng/internal/database"
-	"github.com/chremoas/chremoas-ng/internal/log"
 	"github.com/chremoas/chremoas-ng/internal/queue"
 )
 
@@ -40,49 +41,54 @@ import (
 const Version = "v0.0.0"
 
 func main() {
-	var (
-		debug bool
-		err   error
-	)
+	var err error
 
-	environment := os.Getenv("ENVIRONMENT")
-	dbg := os.Getenv("DEBUG")
-	if dbg != "" {
-		debug, err = strconv.ParseBool(dbg)
-		if err != nil {
-			fmt.Printf("Error parsing DEBUG '%s' is not a boolean value", dbg)
-			return
-		}
-	}
-
-	logger := log.New(environment, debug)
-	logger.Info("Starting up", zap.String("env", environment), zap.Bool("debug", debug))
-	dependencies := common.Dependencies{Logger: logger, Context: context.Background()}
+	dependencies := common.Dependencies{}
 
 	// Print out a fancy logo!
-	fmt.Printf(`
-    _________ .__                                       
-    \_   ___ \|  |_________  _____   _________    ______
-    /    \  \/|  |  \_  __ \/     \ /  _ \__  \  /  ___/
-    \     \___|   Y  \  | \/  Y Y  (  <_> ) __ \_\___ \ 
-     \______  /___|  /__|  |__|_|  /\____(____  /____  >
-            \/     \/            \/ %-9s \/     \/`+"\n\n", Version)
+	// fmt.Printf(`
+	// _________ .__
+	// \_   ___ \|  |_________  _____   _________    ______
+	//     /    \  \/|  |  \_  __ \/     \ /  _ \__  \  /  ___/
+	//     \     \___|   Y  \  | \/  Y Y  (  <_> ) __ \_\___ \
+	//      \______  /___|  /__|  |__|_|  /\____(____  /____  >
+	//             \/     \/            \/ %-9s \/     \/`+"\n\n", Version)
 
 	// =========================================================================
 	// Setup the configuration
 	// Get the config file name if we're not using consul
 
 	flag.String("configFile", "chremoas.yaml", "configuration file name")
+	flag.String("loglevel", "INFO", "Log Level")
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 	err = viper.BindPFlags(pflag.CommandLine)
 	if err != nil {
-		panic(err)
+		log.Fatalf("FATAL ERROR: failed to parse startup options: %+v", err)
 	}
 
-	_, err = config.New(viper.GetString("configFile"), logger)
+	logLevel := viper.GetString("loglevel")
+	if len(logLevel) == 0 {
+		logLevel = "INFO"
+	}
+
+	// Get Log Level as zapzore.Level
+	zl, err := zapcore.ParseLevel(logLevel)
 	if err != nil {
-		panic(err)
+		log.Fatalf("FATAL ERROR: Failed to convert log level %s: %s", logLevel, err)
+	}
+
+	// Setup logger
+	ctx := sl.NewCtxWithLogger(zl)
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.Info("Starting up", zap.String("loglevel", zl.CapitalString()))
+
+	_, err = config.New(ctx, viper.GetString("configFile"))
+	if err != nil {
+		sp.Error("Error loading config", zap.Error(err))
+		return
 	}
 
 	// put guildID somewhere useful
@@ -96,22 +102,23 @@ func main() {
 	//
 	// Not concerned with shutting this down when the application is shutdown.
 
-	dependencies.Logger.Info("main: Initializing debugging support")
+	sp.Info("main: Initializing debugging support")
 
 	debugAddr := fmt.Sprintf("%s:%d", viper.GetString("net.host"), viper.GetInt("net.debugPort"))
 	go func() {
-		dependencies.Logger.Info("main: Debug Listener", zap.String("debugAddr", debugAddr))
+		sp.Info("main: Debug Listener", zap.String("debugAddr", debugAddr))
 		if err = http.ListenAndServe(debugAddr, http.DefaultServeMux); err != nil {
-			dependencies.Logger.Error("main: Debug Listener closed", zap.Error(err))
+			sp.Error("main: Debug Listener closed", zap.Error(err))
 		}
 	}()
 
 	// =========================================================================
 	// Setup DB connection
 
-	dependencies.DB, err = database.New(dependencies.Logger)
+	dependencies.DB, err = database.New(ctx)
 	if err != nil {
-		dependencies.Logger.Fatal("error opening connection to PostgreSQL", zap.Error(err))
+		sp.Error("error opening connection to PostgreSQL", zap.Error(err))
+		return
 	}
 
 	// =========================================================================
@@ -119,13 +126,14 @@ func main() {
 
 	dependencies.Session, err = discordgo.New("Bot " + viper.GetString("bot.token"))
 	if err != nil {
-		dependencies.Logger.Fatal("Error starting session", zap.Error(err))
+		sp.Error("Error starting session", zap.Error(err))
+		return
 	}
 
 	defer func() {
 		err := dependencies.Session.Close()
 		if err != nil {
-			dependencies.Logger.Error("Error closing discord connection", zap.Error(err))
+			sp.Error("Error closing discord connection", zap.Error(err))
 		}
 	}()
 
@@ -159,50 +167,50 @@ func main() {
 	)
 
 	// Consumers
-	members := discordMembers.New(dependencies)
-	membersConsumer, err := queue.NewConsumer(queueURI, "members", "direct", "members",
-		"members", "members", members.HandleMessage, dependencies.Logger)
+	members := discordMembers.New(ctx, dependencies)
+	membersConsumer, err := queue.NewConsumer(ctx, queueURI, "members", "direct", "members",
+		"members", "members", members.HandleMessage)
 	if err != nil {
-		dependencies.Logger.Error("Error setting up members consumer", zap.Error(err))
+		sp.Error("Error setting up members consumer", zap.Error(err))
 	}
 	defer func() {
-		err := membersConsumer.Shutdown()
+		err := membersConsumer.Shutdown(ctx)
 		if err != nil {
-			dependencies.Logger.Error("error shutting down members consumer", zap.Error(err))
+			sp.Error("error shutting down members consumer", zap.Error(err))
 		}
 	}()
 
-	roles := discordRoles.New(dependencies)
-	rolesConsumer, err := queue.NewConsumer(queueURI, "roles", "direct", "roles",
-		"roles", "roles", roles.HandleMessage, dependencies.Logger)
+	roles := discordRoles.New(ctx, dependencies)
+	rolesConsumer, err := queue.NewConsumer(ctx, queueURI, "roles", "direct", "roles",
+		"roles", "roles", roles.HandleMessage)
 	if err != nil {
-		dependencies.Logger.Error("Error setting up members consumer", zap.Error(err))
+		sp.Error("Error setting up members consumer", zap.Error(err))
 	}
 	defer func() {
-		err := rolesConsumer.Shutdown()
+		err := rolesConsumer.Shutdown(ctx)
 		if err != nil {
-			dependencies.Logger.Error("error shutting down roles consumer", zap.Error(err))
+			sp.Error("error shutting down roles consumer", zap.Error(err))
 		}
 	}()
 
 	// Producers
-	dependencies.MembersProducer, err = queue.NewPublisher(queueURI, "members", "direct",
-		"members", dependencies.Logger)
+	dependencies.MembersProducer, err = queue.NewPublisher(ctx, queueURI, "members", "direct",
+		"members")
 	if err != nil {
-		dependencies.Logger.Error("Error setting up members producer", zap.Error(err))
+		sp.Error("Error setting up members producer", zap.Error(err))
 	}
-	defer dependencies.MembersProducer.Shutdown()
+	defer dependencies.MembersProducer.Shutdown(ctx)
 
-	dependencies.RolesProducer, err = queue.NewPublisher(queueURI, "roles", "direct",
-		"roles", dependencies.Logger)
+	dependencies.RolesProducer, err = queue.NewPublisher(ctx, queueURI, "roles", "direct",
+		"roles")
 	if err != nil {
-		dependencies.Logger.Error("Error setting up roles producer", zap.Error(err))
+		sp.Error("Error setting up roles producer", zap.Error(err))
 	}
-	defer dependencies.RolesProducer.Shutdown()
+	defer dependencies.RolesProducer.Shutdown(ctx)
 
 	// =========================================================================
 	// Setup commands
-	c := commands.New(dependencies)
+	c := commands.New(ctx, dependencies)
 
 	commandList := []struct {
 		command string
@@ -222,36 +230,38 @@ func main() {
 	for _, route := range commandList {
 		_, err = Router.Route(route.command, route.desc, route.handler)
 		if err != nil {
-			dependencies.Logger.Warn("Failed to load route", zap.String("route", route.command))
+			sp.Warn("Failed to load route", zap.String("route", route.command))
 		}
 	}
 
 	// Open a websocket connection to Discord
 	err = dependencies.Session.Open()
 	if err != nil {
-		dependencies.Logger.Fatal("error opening connection to Discord", zap.Error(err))
+		sp.Error("error opening connection to Discord", zap.Error(err))
+		return
 	}
 
 	// =========================================================================
 	// Start auth-web Service
 
-	dependencies.Logger.Info("main: Initializing auth-web support")
+	sp.Info("main: Initializing auth-web support")
 
 	// Make a channel to listen for an interrupt or terminate signal from the OS.
 	// Use a buffered channel because the signal package requires it.
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 
-	authWeb, err := web.New(dependencies)
+	authWeb, err := web.New(ctx, dependencies)
 	if err != nil {
-		dependencies.Logger.Fatal("Error starting authWeb", zap.Error(err))
+		sp.Error("Error starting authWeb", zap.Error(err))
+		return
 	}
 
 	webUI := http.Server{
 		Addr: fmt.Sprintf("%s:%d",
 			viper.GetString("net.host"),
 			viper.GetInt("net.webPort")),
-		Handler:      authWeb.Auth(),
+		Handler:      authWeb.Auth(ctx),
 		ReadTimeout:  time.Second * 5,
 		WriteTimeout: time.Second * 5,
 	}
@@ -262,28 +272,29 @@ func main() {
 
 	// Start the service listening for requests.
 	go func() {
-		dependencies.Logger.Info("main: auth-web listening", zap.String("webUI.Addr", webUI.Addr))
+		sp.Info("main: auth-web listening", zap.String("webUI.Addr", webUI.Addr))
 		serverErrors <- webUI.ListenAndServe()
 	}()
 
 	// =========================================================================
 	// Start the ESI Poller thread.
 	userAgent := "chremoas-ng Ramdar Chinken on TweetFleet Slack https://github.com/chremoas/chremoas-ng"
-	esi := esiPoller.New(userAgent, dependencies)
-	esi.Start()
-	defer esi.Stop()
+	esi := esiPoller.New(ctx, userAgent, dependencies)
+	esi.Start(ctx)
+	defer esi.Stop(ctx)
 
 	// =========================================================================
 	// Main loop
 
-	dependencies.Logger.Info(`Now running. Press CTRL-C to exit.`)
+	sp.Info(`Now running. Press CTRL-C to exit.`)
 	// Blocking main and waiting for shutdown.
 	select {
 	case err = <-serverErrors:
-		dependencies.Logger.Fatal("server error", zap.Error(err))
+		sp.Error("server error", zap.Error(err))
+		return
 
 	case sig := <-shutdown:
-		dependencies.Logger.Info("main: Start shutdown", zap.Any("signal", sig))
+		sp.Info("main: Start shutdown", zap.Any("signal", sig))
 
 		// Give outstanding requests a deadline for completion.
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
@@ -293,9 +304,9 @@ func main() {
 		if err = webUI.Shutdown(ctx); err != nil {
 			err = webUI.Close()
 			if err != nil {
-				dependencies.Logger.Fatal("Error stopping API", zap.Error(err))
+				sp.Error("Error stopping API", zap.Error(err))
 			}
-			dependencies.Logger.Fatal("could not stop server gracefully", zap.Error(err))
+			sp.Error("could not stop server gracefully", zap.Error(err))
 		}
 	}
 

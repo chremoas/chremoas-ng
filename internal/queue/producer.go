@@ -1,8 +1,10 @@
 package queue
 
 import (
+	"context"
 	"fmt"
 
+	sl "github.com/bhechinger/spiffylogger"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
 )
@@ -10,35 +12,36 @@ import (
 type Producer struct {
 	conn       *amqp.Connection
 	channel    *amqp.Channel
-	logger     *zap.Logger
 	exchange   string
 	routingKey string
 }
 
-func NewPublisher(amqpURI, exchange, exchangeType, routingKey string, logger *zap.Logger) (*Producer, error) {
+func NewPublisher(ctx context.Context, amqpURI, exchange, exchangeType, routingKey string) (*Producer, error) {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var err error
 
 	p := &Producer{
 		conn:       nil,
 		channel:    nil,
-		logger:     logger,
 		exchange:   exchange,
 		routingKey: routingKey,
 	}
 
-	logger.Info("dialing queue", zap.String("queue URI", sanitizeURI(amqpURI)))
+	sp.Info("dialing queue", zap.String("queue URI", sanitizeURI(amqpURI)))
 	p.conn, err = amqp.Dial(amqpURI)
 	if err != nil {
 		return nil, fmt.Errorf("Dial: %s", err)
 	}
 
-	logger.Info("got Connection, getting Channel")
+	sp.Info("got Connection, getting Channel")
 	p.channel, err = p.conn.Channel()
 	if err != nil {
 		return nil, fmt.Errorf("Channel: %s", err)
 	}
 
-	logger.Info("got Channel, declaring Exchange",
+	sp.Info("got Channel, declaring Exchange",
 		zap.String("exchange type", exchangeType), zap.String("exchange", exchange))
 	if err := p.channel.ExchangeDeclare(
 		p.exchange,   // name
@@ -52,12 +55,15 @@ func NewPublisher(amqpURI, exchange, exchangeType, routingKey string, logger *za
 		return nil, fmt.Errorf("Exchange Declare: %s", err)
 	}
 
-	logger.Info("declared Exchange")
+	sp.Info("declared Exchange")
 
 	return p, nil
 }
 
-func (p Producer) Publish(body []byte) error {
+func (p Producer) Publish(ctx context.Context, body []byte) error {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var err error
 
 	if err = p.channel.Publish(
@@ -75,15 +81,19 @@ func (p Producer) Publish(body []byte) error {
 			// a bunch of application/implementation-specific fields
 		},
 	); err != nil {
-		return fmt.Errorf("Exchange Publish: %s", err)
+		sp.Error("exchange publish", zap.Error(err))
+		return fmt.Errorf("exchange publish: %w", err)
 	}
 
 	return nil
 }
 
-func (p Producer) Shutdown() {
+func (p Producer) Shutdown(ctx context.Context) {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	err := p.conn.Close()
 	if err != nil {
-		p.logger.Error("Error closing connection", zap.Error(err))
+		sp.Error("Error closing connection", zap.Error(err))
 	}
 }

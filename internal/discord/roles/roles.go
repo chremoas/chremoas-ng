@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	sq "github.com/Masterminds/squirrel"
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
@@ -16,27 +17,32 @@ import (
 
 type Role struct {
 	dependencies common.Dependencies
+	ctx          context.Context
 }
 
-func New(deps common.Dependencies) *Role {
+func New(ctx context.Context, deps common.Dependencies) *Role {
 	return &Role{
 		dependencies: deps,
+		ctx:          ctx,
 	}
 }
 
 func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
-	logger := r.dependencies.Logger.With(zap.String("queue", "role"))
+	ctx, sp := sl.OpenSpan(r.ctx)
+	defer sp.Close()
 
-	logger.Info("Started roles message handling")
-	defer logger.Info("Completed roles message handling")
+	sp.With(zap.String("queue", "role"))
+
+	sp.Info("Started roles message handling")
+	defer sp.Info("Completed roles message handling")
 
 	for d := range deliveries {
 		if len(d.Body) == 0 {
-			logger.Error("Message has zero length body", zap.Any("delivery", d))
+			sp.Error("Message has zero length body", zap.Any("delivery", d))
 
 			err := d.Reject(false)
 			if err != nil {
-				logger.Error("Error ACKing message", zap.Error(err))
+				sp.Error("Error ACKing message", zap.Error(err))
 			}
 
 			continue
@@ -45,43 +51,43 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 		var body payloads.RolePayload
 		err := json.Unmarshal(d.Body, &body)
 		if err != nil {
-			logger.Error("error unmarshalling payload", zap.Error(err))
+			sp.Error("error unmarshalling payload", zap.Error(err))
 
 			err = d.Reject(false)
 			if err != nil {
-				logger.Error("Error ACKing message", zap.Error(err))
+				sp.Error("Error ACKing message", zap.Error(err))
 			}
 
 			continue
 		}
 
 		if common.IgnoreRole(body.Role.Name) {
-			logger.Info("Ignoring request for role", zap.String("role", body.Role.Name))
+			sp.Info("Ignoring request for role", zap.String("role", body.Role.Name))
 
 			err = d.Reject(false)
 			if err != nil {
-				logger.Error("Error ACKing message", zap.Error(err))
+				sp.Error("Error ACKing message", zap.Error(err))
 			}
 
 			continue
 		}
 
-		logger.Debug("Handling message", zap.Any("payload", body))
+		sp.Debug("Handling message", zap.Any("payload", body))
 
 		switch body.Action {
 		case payloads.Upsert:
-			err = r.upsert(body)
+			err = r.upsert(ctx, body)
 		case payloads.Delete:
-			err = r.delete(body)
+			err = r.delete(ctx, body)
 		default:
-			logger.Error("Unknown action", zap.Any("action", body.Action))
+			sp.Error("Unknown action", zap.Any("action", body.Action))
 		}
 
 		if err != nil {
 			// we want to retry the message
 			err = d.Reject(true)
 			if err != nil {
-				logger.Error("Error NACKing message", zap.Error(err))
+				sp.Error("Error NACKing message", zap.Error(err))
 			}
 
 			continue
@@ -89,22 +95,25 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 
 		err = d.Ack(false)
 		if err != nil {
-			logger.Error("Error ACKing message", zap.Error(err))
+			sp.Error("Error ACKing message", zap.Error(err))
 		}
 	}
 
-	logger.Info("roles/HandleMessage: deliveries channel closed")
+	sp.Info("roles/HandleMessage: deliveries channel closed")
 	done <- nil
 }
 
 // Only return an error if we want to keep the message and try again.
-func (r Role) upsert(role payloads.RolePayload) error {
-	logger := r.dependencies.Logger.With(zap.String("queue", "role"))
+func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.With(zap.String("queue", "role"))
 
 	var err error
 	var sync bool
 
-	ctx, cancel := context.WithCancel(r.dependencies.Context)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Only one thing should write to discord at a time
@@ -113,12 +122,15 @@ func (r Role) upsert(role payloads.RolePayload) error {
 		r.dependencies.Session.Unlock()
 	}()
 
-	err = r.dependencies.DB.Select("sync").
+	query := r.dependencies.DB.Select("sync").
 		From("roles").
-		Where(sq.Eq{"name": role.Role.Name}).
-		Scan(&sync)
+		Where(sq.Eq{"name": role.Role.Name})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&sync)
 	if err != nil {
-		logger.Error("Error getting role sync status",
+		sp.Error("Error getting role sync status",
 			zap.Error(err), zap.String("role", role.Role.Name))
 		return err
 	}
@@ -129,37 +141,40 @@ func (r Role) upsert(role payloads.RolePayload) error {
 	}
 
 	// Check and see if this role has been created in discord or not
-	if r.exists(role.Role.Name, role.GuildID) {
+	if r.exists(ctx, role.Role.Name, role.GuildID) {
 		// Update an existing role
 		if role.GuildID == "" || role.Role.ID == "" || role.Role.Name == "" {
-			logger.Error("role.update() missing data",
+			sp.Error("role.update() missing data",
 				zap.String("guild id", role.GuildID),
 				zap.String("role id", role.Role.ID),
 				zap.String("role", role.Role.Name))
 			return nil
 		}
 
-		logger.Info("Updated role",
+		sp.Info("Updated role",
 			zap.String("name", role.Role.Name), zap.String("id", role.Role.ID))
 	} else {
 		// Create a new role
 		newRole, err := r.dependencies.Session.GuildRoleCreate(role.GuildID)
 		if err != nil {
-			logger.Error("Error creating role", zap.Error(err))
+			sp.Error("Error creating role", zap.Error(err))
 			return err
 		}
 
-		logger.Info("Create role",
+		sp.Info("Create role",
 			zap.String("guild id", role.GuildID),
 			zap.String("role id", newRole.ID),
 			zap.String("role", role.Role.Name))
 
-		_, err = r.dependencies.DB.Update("roles").
+		update := r.dependencies.DB.Update("roles").
 			Set("chat_id", newRole.ID).
-			Where(sq.Eq{"name": role.Role.Name}).
-			QueryContext(ctx)
+			Where(sq.Eq{"name": role.Role.Name})
+
+		common.LogSQL(sp, update)
+
+		_, err = update.QueryContext(ctx)
 		if err != nil {
-			logger.Error("Error updating role id in db",
+			sp.Error("Error updating role id in db",
 				zap.Error(err), zap.String("role", role.Role.Name))
 			return err
 		}
@@ -170,21 +185,24 @@ func (r Role) upsert(role payloads.RolePayload) error {
 	_, err = r.dependencies.Session.GuildRoleEdit(role.GuildID, role.Role.ID, role.Role.Name, role.Role.Color, role.Role.Hoist,
 		role.Role.Permissions, role.Role.Mentionable)
 	if err != nil {
-		logger.Error("Error editing role",
+		sp.Error("Error editing role",
 			zap.String("name", role.Role.Name),
 			zap.String("id", role.Role.ID),
 			zap.Error(err))
 		return err
 	}
 
-	logger.Info("Upserted role to discord", zap.String("name", role.Role.Name))
+	sp.Info("Upserted role to discord", zap.String("name", role.Role.Name))
 
 	return nil
 }
 
 // Only return an error if we want to keep the message and try again.
-func (r Role) delete(role payloads.RolePayload) error {
-	logger := r.dependencies.Logger.With(zap.String("queue", "role"))
+func (r Role) delete(ctx context.Context, role payloads.RolePayload) error {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.With(zap.String("queue", "role"))
 
 	// Only one thing should write to discord at a time
 	r.dependencies.Session.Lock()
@@ -195,28 +213,31 @@ func (r Role) delete(role payloads.RolePayload) error {
 	err := r.dependencies.Session.GuildRoleDelete(role.GuildID, role.Role.ID)
 	if err != nil {
 		if err.(*discordgo.RESTError).Response.StatusCode == 404 {
-			logger.Warn("Role doesn't exist in discord", zap.String("role", role.Role.ID))
+			sp.Warn("Role doesn't exist in discord", zap.String("role", role.Role.ID))
 			return nil
 		}
-		logger.Error("Error deleting role",
+		sp.Error("Error deleting role",
 			zap.String("name", role.Role.Name),
 			zap.String("id", role.Role.ID),
 			zap.Error(err))
 		return err
 	}
 
-	logger.Info("Deleted role from discord", zap.String("role", role.Role.Name))
+	sp.Info("Deleted role from discord", zap.String("role", role.Role.Name))
 
 	return nil
 }
 
 // Maybe ditch this in favor of just trying to create and if that fails update. Maybe.
-func (r Role) exists(name, guildID string) bool {
-	logger := r.dependencies.Logger.With(zap.String("queue", "role"))
+func (r Role) exists(ctx context.Context, name, guildID string) bool {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.With(zap.String("queue", "role"))
 
 	roles, err := r.dependencies.Session.GuildRoles(guildID)
 	if err != nil {
-		logger.Error("Error fetching discord roles", zap.Error(err))
+		sp.Error("Error fetching discord roles", zap.Error(err))
 		return true
 	}
 

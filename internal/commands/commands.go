@@ -1,17 +1,21 @@
 package commands
 
 import (
+	"context"
+
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 )
 
 type Command struct {
 	dependencies common.Dependencies
+	ctx          context.Context
 }
 
-func New(deps common.Dependencies) *Command {
+func New(ctx context.Context, deps common.Dependencies) *Command {
 	return &Command{
 		dependencies: deps,
+		ctx:          ctx,
 	}
 }
 

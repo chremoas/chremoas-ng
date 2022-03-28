@@ -1,8 +1,10 @@
 package commands
 
 import (
+	"context"
 	"strings"
 
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/disgord/x/mux"
 	"github.com/chremoas/chremoas-ng/internal/filters"
@@ -24,19 +26,25 @@ const (
 // Filter will be called (due to AddHandler above) every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (c Command) Filter(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
-	logger := c.dependencies.Logger.With(zap.String("command", "filter"))
+	spCtx, sp := sl.OpenSpan(c.ctx)
+	defer sp.Close()
 
-	for _, message := range c.doFilter(m, logger) {
+	sp.With(zap.String("command", "filter"))
+
+	for _, message := range c.doFilter(spCtx, m) {
 		_, err := s.ChannelMessageSendComplex(m.ChannelID, message)
 
 		if err != nil {
-			logger.Error("Error sending command", zap.Error(err))
+			sp.Error("Error sending command", zap.Error(err))
 		}
 	}
 }
 
-func (c Command) doFilter(m *discordgo.Message, logger *zap.Logger) []*discordgo.MessageSend {
-	logger.Info("Received chat command", zap.String("content", m.Content))
+func (c Command) doFilter(ctx context.Context, m *discordgo.Message) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.Info("Received chat command", zap.String("content", m.Content))
 
 	cmdStr := strings.Split(m.Content, " ")
 
@@ -47,7 +55,7 @@ func (c Command) doFilter(m *discordgo.Message, logger *zap.Logger) []*discordgo
 	switch cmdStr[1] {
 	case "list":
 		if len(cmdStr) < 3 {
-			return filters.List(c.dependencies)
+			return filters.List(ctx, c.dependencies)
 		}
 
 		switch cmdStr[2] {
@@ -55,7 +63,7 @@ func (c Command) doFilter(m *discordgo.Message, logger *zap.Logger) []*discordgo
 			if len(cmdStr) < 4 {
 				return getHelp("!filter list help", "!filter list members <filter_name>", "")
 			}
-			return filters.ListMembers(cmdStr[3], c.dependencies)
+			return filters.ListMembers(ctx, cmdStr[3], c.dependencies)
 
 		default:
 			return getHelp("!filter list help", "!filter list members <filter_name>", "")
@@ -65,27 +73,27 @@ func (c Command) doFilter(m *discordgo.Message, logger *zap.Logger) []*discordgo
 		if len(cmdStr) < 4 {
 			return getHelp("!filter create help", "!filter create <filter_name> <filter_description>", "")
 		}
-		f, _ := filters.AuthedAdd(cmdStr[2], strings.Join(cmdStr[3:], " "), m.Author.ID, c.dependencies)
+		f, _ := filters.AuthedAdd(ctx, cmdStr[2], strings.Join(cmdStr[3:], " "), m.Author.ID, c.dependencies)
 		return f
 
 	case "destroy":
 		if len(cmdStr) < 3 {
 			return getHelp("!filter destroy help", "!filter destroy <filter_name>", "")
 		}
-		f, _ := filters.AuthedDelete(cmdStr[2], m.Author.ID, c.dependencies)
+		f, _ := filters.AuthedDelete(ctx, cmdStr[2], m.Author.ID, c.dependencies)
 		return f
 
 	case "add":
 		if len(cmdStr) < 4 {
 			return getHelp("!filter add help", "!filter add <user> <filter_name>", "")
 		}
-		return filters.AuthedAddMember(cmdStr[2], cmdStr[3], m.Author.ID, c.dependencies)
+		return filters.AuthedAddMember(ctx, cmdStr[2], cmdStr[3], m.Author.ID, c.dependencies)
 
 	case "remove":
 		if len(cmdStr) < 4 {
 			return getHelp("!filter remove help", "!filter remove <user> <filter_name>", "")
 		}
-		return filters.AuthedRemoveMember(cmdStr[2], cmdStr[3], m.Author.ID, c.dependencies)
+		return filters.AuthedRemoveMember(ctx, cmdStr[2], cmdStr[3], m.Author.ID, c.dependencies)
 	}
 
 	return getHelp("!filter help", filterUsage, filterSubcommands)

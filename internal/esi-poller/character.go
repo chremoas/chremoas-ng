@@ -7,6 +7,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bhechinger/go-sets"
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/auth"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
@@ -14,28 +15,35 @@ import (
 	"go.uber.org/zap"
 )
 
-func (aep *authEsiPoller) updateCharacters() (int, int, error) {
+func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error) {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.With(zap.String("sub-component", "character"))
+
 	var (
 		count      int
 		errorCount int
 		err        error
 		character  auth.Character
-		logger     = aep.logger.With(zap.String("sub-component", "character"))
 	)
 
-	ctx, cancel := context.WithCancel(aep.ctx)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := aep.dependencies.DB.Select("id", "name", "corporation_id", "token").
-		From("characters").
-		QueryContext(ctx)
+	query := aep.dependencies.DB.Select("id", "name", "corporation_id", "token").
+		From("characters")
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		return -1, -1, fmt.Errorf("error getting character list from the db: %w", err)
 	}
 
 	defer func() {
 		if err = rows.Close(); err != nil {
-			logger.Error("error closing role", zap.Error(err))
+			sp.Error("error closing role", zap.Error(err))
 		}
 	}()
 
@@ -45,9 +53,9 @@ func (aep *authEsiPoller) updateCharacters() (int, int, error) {
 			return -1, -1, fmt.Errorf("error scanning character values: %w", err)
 		}
 
-		err := aep.updateCharacter(character)
+		err := aep.updateCharacter(ctx, character)
 		if err != nil {
-			logger.Error("error updating character", zap.Error(err),
+			sp.Error("error updating character", zap.Error(err),
 				zap.Int32("id", character.ID), zap.String("name", character.Name))
 			errorCount += 1
 			continue
@@ -59,12 +67,15 @@ func (aep *authEsiPoller) updateCharacters() (int, int, error) {
 	return count, errorCount, nil
 }
 
-func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
-	logger := aep.logger.With(zap.String("sub-component", "character"))
+func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Character) error {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
 
-	response, _, err := aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(aep.ctx, character.ID, nil)
+	sp.With(zap.String("sub-component", "character"))
+
+	response, _, err := aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(ctx, character.ID, nil)
 	if err != nil {
-		logger.Info("Character not found", zap.Int32("id", character.ID), zap.String("name", character.Name))
+		sp.Info("Character not found", zap.Int32("id", character.ID), zap.String("name", character.Name))
 
 		return err
 	}
@@ -74,12 +85,12 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 	}
 
 	if character.CorporationID != response.CorporationId {
-		logger.Info("Updating character's corp",
+		sp.Info("Updating character's corp",
 			zap.String("character", character.Name), zap.Int32("corporation", response.CorporationId))
 
 		// Check if corporation exists, if not, add it.
 		corporation := auth.Corporation{ID: response.CorporationId}
-		err = aep.updateCorporation(corporation)
+		err = aep.updateCorporation(ctx, corporation)
 		if err != nil {
 			return fmt.Errorf("error updating corporation `%s`: %s", corporation.Name, err)
 		}
@@ -89,18 +100,21 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 			oldCorp       string
 			oldAllianceID int
 		)
-		err = aep.dependencies.DB.Select("ticker", "alliance_id").
+		query := aep.dependencies.DB.Select("ticker", "alliance_id").
 			From("corporations").
-			Where(sq.Eq{"id": character.CorporationID}).
-			Scan(&oldCorp, &oldAllianceID)
+			Where(sq.Eq{"id": character.CorporationID})
+
+		common.LogSQL(sp, query)
+
+		err = query.Scan(&oldCorp, &oldAllianceID)
 		if err != nil {
-			logger.Error("error getting old corp info", zap.Error(err),
+			sp.Error("error getting old corp info", zap.Error(err),
 				zap.String("character", character.Name),
 				zap.Int32("corporation", character.CorporationID))
 			return err
 		}
 
-		err = aep.upsertCharacter(character.ID, response.CorporationId, response.Name, character.Token)
+		err = aep.upsertCharacter(ctx, character.ID, response.CorporationId, response.Name, character.Token)
 		if err != nil {
 			return fmt.Errorf("error upserting character `%d` with corp '%d': %s", character.ID, response.CorporationId, err)
 		}
@@ -110,12 +124,15 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 			newCorp       string
 			newAllianceID int
 		)
-		err = aep.dependencies.DB.Select("ticker", "alliance_id").
+		query = aep.dependencies.DB.Select("ticker", "alliance_id").
 			From("corporations").
-			Where(sq.Eq{"id": response.CorporationId}).
-			Scan(&newCorp, &newAllianceID)
+			Where(sq.Eq{"id": response.CorporationId})
+
+		common.LogSQL(sp, query)
+
+		err = query.Scan(&newCorp, &newAllianceID)
 		if err != nil {
-			logger.Error("error getting new corp info", zap.Error(err),
+			sp.Error("error getting new corp info", zap.Error(err),
 				zap.String("character", character.Name),
 				zap.Int32("corporation", character.CorporationID))
 			return err
@@ -123,12 +140,15 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 
 		// We need the discord user ID
 		var discordID string
-		err = aep.dependencies.DB.Select("chat_id").
+		query = aep.dependencies.DB.Select("chat_id").
 			From("user_character_map").
-			Where(sq.Eq{"character_id": character.ID}).
-			Scan(&discordID)
+			Where(sq.Eq{"character_id": character.ID})
+
+		common.LogSQL(sp, query)
+
+		err = query.Scan(&discordID)
 		if err != nil {
-			logger.Error("error getting discord info", zap.Error(err),
+			sp.Error("error getting discord info", zap.Error(err),
 				zap.String("character", character.Name),
 				zap.Int32("corporation", character.CorporationID))
 			return err
@@ -136,50 +156,59 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 
 		// I don't like this here because if it fails it will never get cleaned up
 		// Change the filter they are in, requires discord ID
-		logger.Debug("removing user from corp", zap.String("user", discordID), zap.String("corp", oldCorp))
-		filters.RemoveMember(discordID, oldCorp, aep.dependencies)
-		logger.Debug("adding user to corp", zap.String("user", discordID), zap.String("corp", newCorp))
-		filters.AddMember(discordID, newCorp, aep.dependencies)
+		sp.Debug("removing user from corp", zap.String("user", discordID), zap.String("corp", oldCorp))
+		filters.RemoveMember(ctx, discordID, oldCorp, aep.dependencies)
+		sp.Debug("adding user to corp", zap.String("user", discordID), zap.String("corp", newCorp))
+		filters.AddMember(ctx, discordID, newCorp, aep.dependencies)
 
 		if newAllianceID != oldAllianceID {
 			// new corp is in a different alliance, gotta switch those.
 
 			var oldAlliance, newAlliance string
-			err = aep.dependencies.DB.Select("ticker").
+			query = aep.dependencies.DB.Select("ticker").
 				From("alliances").
-				Where(sq.Eq{"id": oldAllianceID}).
-				Scan(&oldAlliance)
+				Where(sq.Eq{"id": oldAllianceID})
+
+			common.LogSQL(sp, query)
+
+			err = query.Scan(&oldAlliance)
 			if err != nil {
-				logger.Error("error getting old alliance ticker", zap.Error(err),
+				sp.Error("error getting old alliance ticker", zap.Error(err),
 					zap.Int("allianceID", oldAllianceID))
 				return err
 			}
 
-			err = aep.dependencies.DB.Select("ticker").
+			query = aep.dependencies.DB.Select("ticker").
 				From("alliances").
-				Where(sq.Eq{"id": newAllianceID}).
-				Scan(&newAlliance)
+				Where(sq.Eq{"id": newAllianceID})
+
+			common.LogSQL(sp, query)
+
+			err = query.Scan(&newAlliance)
 			if err != nil {
-				logger.Error("error getting new alliance ticker", zap.Error(err),
+				sp.Error("error getting new alliance ticker", zap.Error(err),
 					zap.Int("allianceID", newAllianceID))
 				return err
 			}
 
-			logger.Debug("removing user from alliance", zap.String("user", discordID), zap.String("alliance", oldAlliance))
-			filters.RemoveMember(discordID, oldAlliance, aep.dependencies)
-			logger.Debug("adding user to alliance", zap.String("user", discordID), zap.String("alliance", newAlliance))
-			filters.AddMember(discordID, newAlliance, aep.dependencies)
+			sp.Debug("removing user from alliance", zap.String("user", discordID), zap.String("alliance", oldAlliance))
+			filters.RemoveMember(ctx, discordID, oldAlliance, aep.dependencies)
+			sp.Debug("adding user to alliance", zap.String("user", discordID), zap.String("alliance", newAlliance))
+			filters.AddMember(ctx, discordID, newAlliance, aep.dependencies)
 		}
 	}
 
 	// We need the chatID of the user, so let's get that.
 	var chatID int
-	err = aep.dependencies.DB.Select("chat_id").
+	query := aep.dependencies.DB.Select("chat_id").
 		From("user_character_map").
-		Where(sq.Eq{"character_id": character.ID}).
-		Scan(&chatID)
+		Where(sq.Eq{"character_id": character.ID})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&chatID)
 	if err != nil {
-		logger.Error("error getting chat_id for character", zap.Error(err), zap.Int32("id", character.ID))
+		sp.Error("error getting chat_id for character", zap.Error(err), zap.Int32("id", character.ID))
 		return err
 	}
 
@@ -187,14 +216,14 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 
 	member, err := aep.dependencies.Session.GuildMember(aep.dependencies.GuildID, strChatID)
 	if err != nil {
-		logger.Error("error getting guild member", zap.Error(err), zap.Int("id", chatID))
+		sp.Error("error getting guild member", zap.Error(err), zap.Int("id", chatID))
 		return err
 	}
 
 	dRoles := sets.NewStringSet()
 	dRoles.FromSlice(member.Roles)
 
-	roles, err := common.GetMembership(strChatID, aep.dependencies)
+	roles, err := common.GetMembership(ctx, strChatID, aep.dependencies)
 	if err != nil {
 		return err
 	}
@@ -203,47 +232,57 @@ func (aep *authEsiPoller) updateCharacter(character auth.Character) error {
 	removeRoles := dRoles.Difference(roles)
 
 	for _, r := range addRoles.ToSlice() {
-		filters.QueueUpdate(payloads.Add, strChatID, r, aep.dependencies)
+		filters.QueueUpdate(ctx, payloads.Add, strChatID, r, aep.dependencies)
 	}
 
 	for _, r := range removeRoles.ToSlice() {
-		filters.QueueUpdate(payloads.Delete, strChatID, r, aep.dependencies)
+		filters.QueueUpdate(ctx, payloads.Delete, strChatID, r, aep.dependencies)
 	}
 
 	return nil
 }
 
-func (aep *authEsiPoller) upsertCharacter(characterID, corporationID int32, name, token string) error {
+func (aep *authEsiPoller) upsertCharacter(ctx context.Context, characterID, corporationID int32, name, token string) error {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.With(zap.String("sub-component", "character"))
+
 	var (
-		rows   *sql.Rows
-		err    error
-		logger = aep.logger.With(zap.String("sub-component", "character"))
+		rows *sql.Rows
+		err  error
 	)
 
-	ctx, cancel := context.WithCancel(aep.ctx)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	if token != "" {
-		logger.Debug("Updating character", zap.Int32("id", characterID), zap.String("name", name),
+		sp.Debug("Updating character", zap.Int32("id", characterID), zap.String("name", name),
 			zap.String("token", token), zap.Int32("corporation", corporationID))
-		rows, err = aep.dependencies.DB.Insert("characters").
+		insert := aep.dependencies.DB.Insert("characters").
 			Columns("id", "name", "token", "corporation_id").
 			Values(characterID, name, token, corporationID).
-			Suffix("ON CONFLICT (id) DO UPDATE SET name=?, token=?, corporation_id=?", name, token, corporationID).
-			QueryContext(ctx)
+			Suffix("ON CONFLICT (id) DO UPDATE SET name=?, token=?, corporation_id=?", name, token, corporationID)
+
+		common.LogSQL(sp, insert)
+
+		rows, err = insert.QueryContext(ctx)
 		if err != nil {
-			logger.Error("Error inserting character", zap.Error(err),
+			sp.Error("Error inserting character", zap.Error(err),
 				zap.Int32("id", characterID), zap.String("name", name),
 				zap.String("token", token), zap.Int32("corporation", corporationID))
 		}
 	} else {
-		rows, err = aep.dependencies.DB.Insert("characters").
+		insert := aep.dependencies.DB.Insert("characters").
 			Columns("id", "name", "corporation_id").
 			Values(characterID, name, corporationID).
-			Suffix("ON CONFLICT (id) DO UPDATE SET name=?, corporation_id=?", name, corporationID).
-			QueryContext(ctx)
+			Suffix("ON CONFLICT (id) DO UPDATE SET name=?, corporation_id=?", name, corporationID)
+
+		common.LogSQL(sp, insert)
+
+		rows, err = insert.QueryContext(ctx)
 		if err != nil {
-			logger.Error("Error inserting character", zap.Error(err),
+			sp.Error("Error inserting character", zap.Error(err),
 				zap.Int32("id", characterID), zap.String("name", name),
 				zap.String("token", token), zap.Int32("corporation", corporationID))
 		}
@@ -255,7 +294,7 @@ func (aep *authEsiPoller) upsertCharacter(characterID, corporationID int32, name
 		}
 
 		if err = rows.Close(); err != nil {
-			logger.Error("error closing row", zap.Error(err))
+			sp.Error("error closing row", zap.Error(err))
 		}
 	}()
 

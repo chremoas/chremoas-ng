@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
+	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
@@ -34,10 +35,13 @@ const (
 
 var roleType = map[bool]string{Role: "role", Sig: "sig"}
 
-func List(sig, all bool, deps common.Dependencies) []*discordgo.MessageSend {
+func List(ctx context.Context, sig, all bool, deps common.Dependencies) []*discordgo.MessageSend {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var roleList = make(map[string]string)
 
-	roles, err := GetRoles(sig, nil, deps)
+	roles, err := GetRoles(ctx, sig, nil, deps)
 	if err != nil {
 		return nil
 		// return common.SendFatal(err.Error())
@@ -78,7 +82,7 @@ func List(sig, all bool, deps common.Dependencies) []*discordgo.MessageSend {
 					firstChunk = false
 				}
 				embed.SetDescription(buffer.String())
-				deps.Logger.Debug("debug", zap.String("sig buffer", buffer.String()))
+				sp.Debug("debug", zap.String("sig buffer", buffer.String()))
 				messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 				buffer.Reset()
 				charCount = len(k) + len(roleList[k]) + 2
@@ -97,7 +101,7 @@ func List(sig, all bool, deps common.Dependencies) []*discordgo.MessageSend {
 				}
 				embed.SetDescription(buffer.String())
 				messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
-				deps.Logger.Debug("debug", zap.String("role buffer", buffer.String()))
+				sp.Debug("debug", zap.String("role buffer", buffer.String()))
 				buffer.Reset()
 				charCount = len(k) + 1
 				buffer.WriteString(fmt.Sprintf("%s\n", k))
@@ -108,7 +112,7 @@ func List(sig, all bool, deps common.Dependencies) []*discordgo.MessageSend {
 		}
 	}
 
-	deps.Logger.Debug("debug", zap.String("leftover buffer", buffer.String()))
+	sp.Debug("debug", zap.String("leftover buffer", buffer.String()))
 	embed := common.NewEmbed()
 	if firstChunk {
 		embed.SetTitle(clientType[sig] + "s")
@@ -154,15 +158,18 @@ func Types() []*discordgo.MessageSend {
 }
 
 // ListMembers lists all userIDs that match all the filters for a role.
-func ListMembers(sig bool, name string, deps common.Dependencies) []*discordgo.MessageSend {
+func ListMembers(ctx context.Context, sig bool, name string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var (
 		buffer   bytes.Buffer
 		messages []*discordgo.MessageSend
 	)
 
-	deps.Logger.Debug("Listing members", zap.Bool("sig", sig), zap.String("name", name))
+	sp.Debug("Listing members", zap.Bool("sig", sig), zap.String("name", name))
 
-	members, err := GetRoleMembers(sig, name, deps)
+	members, err := GetRoleMembers(ctx, sig, name, deps)
 	if err != nil {
 		return common.SendError(fmt.Sprintf("error getting member list: %s", err))
 	}
@@ -181,13 +188,16 @@ func ListMembers(sig bool, name string, deps common.Dependencies) []*discordgo.M
 	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 }
 
-func ListUserRoles(sig bool, userID string, deps common.Dependencies) []*discordgo.MessageSend {
+func ListUserRoles(ctx context.Context, sig bool, userID string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var (
 		buffer   bytes.Buffer
 		messages []*discordgo.MessageSend
 	)
 
-	roles, err := common.GetUserRoles(sig, userID, deps)
+	roles, err := common.GetUserRoles(ctx, sig, userID, deps)
 	if err != nil {
 		return common.SendError(fmt.Sprintf("error getting user roles: %s", err))
 	}
@@ -207,7 +217,10 @@ func ListUserRoles(sig bool, userID string, deps common.Dependencies) []*discord
 	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 }
 
-func Info(sig bool, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
+func Info(ctx context.Context, sig bool, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var (
 		buffer   bytes.Buffer
 		messages []*discordgo.MessageSend
@@ -217,7 +230,7 @@ func Info(sig bool, ticker string, deps common.Dependencies) []*discordgo.Messag
 	//	return common.SendError("User doesn't have permission to this command")
 	// }
 
-	roles, err := GetRoles(sig, &ticker, deps)
+	roles, err := GetRoles(ctx, sig, &ticker, deps)
 	if err != nil {
 		return common.SendFatal(err.Error())
 	}
@@ -246,18 +259,24 @@ func Info(sig bool, ticker string, deps common.Dependencies) []*discordgo.Messag
 	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 }
 
-func AuthedAdd(sig, joinable bool, ticker, name, chatType, author string, deps common.Dependencies) []*discordgo.MessageSend {
-	if !perms.CanPerform(author, adminType[sig], deps) {
+func AuthedAdd(ctx context.Context, sig, joinable bool, ticker, name, chatType, author string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	if !perms.CanPerform(ctx, author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	return Add(sig, joinable, ticker, name, chatType, deps)
+	return Add(ctx, sig, joinable, ticker, name, chatType, deps)
 }
 
-func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependencies) []*discordgo.MessageSend {
+func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var roleID int
 
-	ctx, cancel := context.WithCancel(deps.Context)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Type, Name and ShortName are required so let's check for those
@@ -277,18 +296,21 @@ func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependen
 		return common.SendError(fmt.Sprintf("`%s` isn't a valid Role Type", chatType))
 	}
 
-	err := deps.DB.Insert("roles").
+	insert := deps.DB.Insert("roles").
 		Columns("sig", "joinable", "name", "role_nick", "chat_type", "sync").
 		// a sig is sync-ed by default, so we overload the sig bool because it does the right thing here.
 		Values(sig, joinable, name, ticker, chatType, sig).
-		Suffix("RETURNING \"id\"").
-		Scan(&roleID)
+		Suffix("RETURNING \"id\"")
+
+	common.LogSQL(sp, insert)
+
+	err := insert.Scan(&roleID)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
 			return common.SendError(fmt.Sprintf("%s `%s` (%s) already exists", roleType[sig], name, ticker))
 		}
-		deps.Logger.Error("error adding role", zap.Error(err), zap.Bool("sig", sig),
+		sp.Error("error adding role", zap.Error(err), zap.Bool("sig", sig),
 			zap.String("name", name), zap.String("ticker", ticker))
 		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
 	}
@@ -305,29 +327,33 @@ func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependen
 
 	// We now need to create the default filter for this role
 	filterResponse, filterID := filters.Add(
+		ctx,
 		ticker,
 		fmt.Sprintf("Auto-created filter for %s %s", roleType[sig], ticker),
 		deps,
 	)
 
 	// Associate new filter with new role
-	rows, err := deps.DB.Insert("role_filters").
+	insert = deps.DB.Insert("role_filters").
 		Columns("role", "filter").
-		Values(roleID, filterID).
-		QueryContext(ctx)
+		Values(roleID, filterID)
+
+	common.LogSQL(sp, insert)
+
+	rows, err := insert.QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error("erro radding role_filter", zap.Error(err), zap.Bool("sig", sig),
+		sp.Error("erro radding role_filter", zap.Error(err), zap.Bool("sig", sig),
 			zap.Int("role", roleID), zap.Int("filter", filterID))
 		return common.SendFatal(fmt.Sprintf("error adding role_filter for %s: %s", roleType[sig], err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Error("error closing database", zap.Error(err))
+			sp.Error("error closing database", zap.Error(err))
 		}
 	}()
 
-	err = queueUpdate(role, payloads.Upsert, deps)
+	err = queueUpdate(ctx, role, payloads.Upsert, deps)
 	if err != nil {
 		return common.SendFatal(fmt.Sprintf("error adding role for %s: %s", roleType[sig], err))
 	}
@@ -342,51 +368,60 @@ func Add(sig, joinable bool, ticker, name, chatType string, deps common.Dependen
 	return messages
 }
 
-func AuthedDestroy(sig bool, ticker, author string, deps common.Dependencies) []*discordgo.MessageSend {
-	if !perms.CanPerform(author, adminType[sig], deps) {
+func AuthedDestroy(ctx context.Context, sig bool, ticker, author string, deps common.Dependencies) []*discordgo.MessageSend {
+	if !perms.CanPerform(ctx, author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	return Destroy(sig, ticker, deps)
+	return Destroy(ctx, sig, ticker, deps)
 }
 
-func Destroy(sig bool, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
+func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var chatID, roleID int
 
-	ctx, cancel := context.WithCancel(deps.Context)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	if len(ticker) == 0 {
 		return common.SendError("short name is required")
 	}
 
-	err := deps.DB.Select("chat_id").
+	query := deps.DB.Select("chat_id").
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
-		Where(sq.Eq{"sig": sig}).
-		Scan(&chatID)
+		Where(sq.Eq{"sig": sig})
+
+	common.LogSQL(sp, query)
+
+	err := query.Scan(&chatID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
 		}
-		deps.Logger.Error("error deleting role", zap.Error(err), zap.Bool("sig", sig),
+		sp.Error("error deleting role", zap.Error(err), zap.Bool("sig", sig),
 			zap.String("ticker", ticker))
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
 
-	rows, err := deps.DB.Delete("roles").
+	delQuery := deps.DB.Delete("roles").
 		Where(sq.Eq{"role_nick": ticker}).
-		Where(sq.Eq{"sig": sig}).
-		QueryContext(ctx)
+		Where(sq.Eq{"sig": sig})
+
+	common.LogSQL(sp, delQuery)
+
+	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error("error deleting role", zap.Error(err), zap.Bool("sig", sig),
+		sp.Error("error deleting role", zap.Error(err), zap.Bool("sig", sig),
 			zap.String("ticker", ticker))
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Error("error closing database", zap.Error(err))
+			sp.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -394,45 +429,51 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) []*discordgo.Mes
 		err = rows.Scan(&roleID)
 		if err != nil {
 			newErr := fmt.Errorf("error scanning role id: %s", err)
-			deps.Logger.Error("error scanning role id", zap.Error(err))
+			sp.Error("error scanning role id", zap.Error(err))
 			return common.SendFatal(newErr.Error())
 		}
 	}
 
 	// We now need to create the default filter for this role
-	filterResponse, filterID := filters.Delete(ticker, deps)
+	filterResponse, filterID := filters.Delete(ctx, ticker, deps)
 
-	rows, err = deps.DB.Delete("filter_membership").
-		Where(sq.Eq{"filter": filterID}).
-		QueryContext(ctx)
+	delQuery = deps.DB.Delete("filter_membership").
+		Where(sq.Eq{"filter": filterID})
+
+	common.LogSQL(sp, delQuery)
+
+	rows, err = delQuery.QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error("error deleting filter_membership", zap.Error(err), zap.Bool("sig", sig),
+		sp.Error("error deleting filter_membership", zap.Error(err), zap.Bool("sig", sig),
 			zap.Int("filter", filterID))
 		return common.SendFatal(fmt.Sprintf("error deleting filter_memberships for %s: %s", roleType[sig], err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Error("error closing database", zap.Error(err))
+			sp.Error("error closing database", zap.Error(err))
 		}
 	}()
 
-	rows, err = deps.DB.Delete("role_filters").
-		Where(sq.Eq{"role": roleID}).
-		QueryContext(ctx)
+	delQuery = deps.DB.Delete("role_filters").
+		Where(sq.Eq{"role": roleID})
+
+	common.LogSQL(sp, delQuery)
+
+	rows, err = delQuery.QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error("error deleting role_filters", zap.Error(err), zap.Bool("sig", sig),
+		sp.Error("error deleting role_filters", zap.Error(err), zap.Bool("sig", sig),
 			zap.Int("role", roleID))
 		return common.SendFatal(fmt.Sprintf("error deleting role_filters %s: %s", roleType[sig], err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Error("error closing database", zap.Error(err))
+			sp.Error("error closing database", zap.Error(err))
 		}
 	}()
 
-	err = queueUpdate(payloads.Role{ID: fmt.Sprintf("%d", chatID)}, payloads.Delete, deps)
+	err = queueUpdate(ctx, payloads.Role{ID: fmt.Sprintf("%d", chatID)}, payloads.Delete, deps)
 	if err != nil {
 		return common.SendFatal(fmt.Sprintf("error deleting role for %s: %s", roleType[sig], err))
 	}
@@ -447,8 +488,11 @@ func Destroy(sig bool, ticker string, deps common.Dependencies) []*discordgo.Mes
 	return messages
 }
 
-func AuthedUpdate(sig bool, ticker, key, value, author string, deps common.Dependencies) []*discordgo.MessageSend {
-	if !perms.CanPerform(author, adminType[sig], deps) {
+func AuthedUpdate(ctx context.Context, sig bool, ticker, key, value, author string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	if !perms.CanPerform(ctx, author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
@@ -459,16 +503,19 @@ func AuthedUpdate(sig bool, ticker, key, value, author string, deps common.Depen
 	values := map[string]string{
 		key: value,
 	}
-	return Update(sig, ticker, values, deps)
+	return Update(ctx, sig, ticker, values, deps)
 }
 
-func Update(sig bool, ticker string, values map[string]string, deps common.Dependencies) []*discordgo.MessageSend {
+func Update(ctx context.Context, sig bool, ticker string, values map[string]string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var (
 		name string
 		sync bool
 	)
 
-	ctx, cancel := context.WithCancel(deps.Context)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// ShortName, Key and Value are required so let's check for those
@@ -480,11 +527,14 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 		return common.SendError("values is required")
 	}
 
-	err := deps.DB.Select("name", "sync").
+	query := deps.DB.Select("name", "sync").
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
-		Where(sq.Eq{"sig": sig}).
-		Scan(&name, &sync)
+		Where(sq.Eq{"sig": sig})
+
+	common.LogSQL(sp, query)
+
+	err := query.Scan(&name, &sync)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
@@ -513,27 +563,29 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 		updateSQL = updateSQL.Set(key, v)
 	}
 
+	common.LogSQL(sp, updateSQL)
+
 	_, err = updateSQL.Where(sq.Eq{"name": name}).
 		Where(sq.Eq{"sig": sig}).
 		QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error("error adding role", zap.Error(err), zap.Bool("sig", sig),
+		sp.Error("error adding role", zap.Error(err), zap.Bool("sig", sig),
 			zap.String("name", name))
 		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
 	}
 
-	role, err := GetChremoasRole(sig, ticker, deps)
+	role, err := GetChremoasRole(ctx, sig, ticker, deps)
 	if err != nil {
-		deps.Logger.Error("error fetching role", zap.Error(err), zap.Bool("sig", sig),
+		sp.Error("error fetching role", zap.Error(err), zap.Bool("sig", sig),
 			zap.String("ticker", ticker))
 		return common.SendFatal(fmt.Sprintf("error fetching %s from db: %s", roleType[sig], err))
 	}
 
-	dRole, err := GetDiscordRole(role.Name, deps)
+	dRole, err := GetDiscordRole(ctx, role.Name, deps)
 	if err != nil {
 		// TODO: Figure out if there are errors we should really fail on
 		// return common.SendFatal(fmt.Sprintf("error fetching roles from discord: %s", err))
-		err = queueUpdate(role, payloads.Upsert, deps)
+		err = queueUpdate(ctx, role, payloads.Upsert, deps)
 		if err != nil {
 			return common.SendFatal(fmt.Sprintf("error updating role for %s: %s", roleType[sig], err))
 		}
@@ -543,18 +595,21 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 
 	if role.ID != dRole.ID {
 		// The role was probably created/recreated manually.
-		rows, err := deps.DB.Update("roles").
+		update := deps.DB.Update("roles").
 			Set("ID", dRole.ID).
-			Where(sq.Eq{"name": role.Name}).
-			QueryContext(ctx)
+			Where(sq.Eq{"name": role.Name})
+
+		common.LogSQL(sp, update)
+
+		rows, err := query.QueryContext(ctx)
 		if err != nil {
-			deps.Logger.Error("error updating role's ID", zap.Error(err),
+			sp.Error("error updating role's ID", zap.Error(err),
 				zap.String("name", role.Name), zap.String("id", dRole.ID))
 		}
 		defer func() {
 			err := rows.Close()
 			if err != nil {
-				deps.Logger.Error("error closing database", zap.Error(err))
+				sp.Error("error closing database", zap.Error(err))
 			}
 		}()
 	}
@@ -567,9 +622,9 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 		role.Hoist != dRole.Hoist ||
 		role.Color != dRole.Color ||
 		role.Permissions != dRole.Permissions {
-		deps.Logger.Info("Roles differ", zap.String("name", name))
+		sp.Info("Roles differ", zap.String("name", name))
 
-		err = queueUpdate(role, payloads.Upsert, deps)
+		err = queueUpdate(ctx, role, payloads.Upsert, deps)
 		if err != nil {
 			return common.SendFatal(fmt.Sprintf("error updating role for %s: %s", roleType[sig], err))
 		}
@@ -578,26 +633,32 @@ func Update(sig bool, ticker string, values map[string]string, deps common.Depen
 	return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], ticker))
 }
 
-func GetChremoasRole(sig bool, ticker string, deps common.Dependencies) (payloads.Role, error) {
+func GetChremoasRole(ctx context.Context, sig bool, ticker string, deps common.Dependencies) (payloads.Role, error) {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var (
 		role payloads.Role
 		err  error
 	)
 
-	err = deps.DB.Select("chat_id", "name", "managed", "mentionable", "hoist", "color", "position", "permissions").
+	query := deps.DB.Select("chat_id", "name", "managed", "mentionable", "hoist", "color", "position", "permissions").
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
-		Where(sq.Eq{"sig": sig}).
-		Scan(
-			&role.ID,
-			&role.Name,
-			&role.Managed,
-			&role.Mentionable,
-			&role.Hoist,
-			&role.Color,
-			&role.Position,
-			&role.Permissions,
-		)
+		Where(sq.Eq{"sig": sig})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(
+		&role.ID,
+		&role.Name,
+		&role.Managed,
+		&role.Mentionable,
+		&role.Hoist,
+		&role.Color,
+		&role.Position,
+		&role.Permissions,
+	)
 	if err != nil {
 		return payloads.Role{}, fmt.Errorf("error fetching %s from db: %s", roleType[sig], err)
 	}
@@ -605,7 +666,10 @@ func GetChremoasRole(sig bool, ticker string, deps common.Dependencies) (payload
 	return role, nil
 }
 
-func GetDiscordRole(name string, deps common.Dependencies) (*discordgo.Role, error) {
+func GetDiscordRole(ctx context.Context, name string, deps common.Dependencies) (*discordgo.Role, error) {
+	_, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	roles, err := deps.Session.GuildRoles(deps.GuildID)
 	if err != nil {
 		return nil, err
@@ -621,7 +685,10 @@ func GetDiscordRole(name string, deps common.Dependencies) (*discordgo.Role, err
 	return nil, fmt.Errorf("no such role: %s", name)
 }
 
-func ListFilters(sig bool, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
+func ListFilters(ctx context.Context, sig bool, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var (
 		buffer   bytes.Buffer
 		filter   string
@@ -629,25 +696,28 @@ func ListFilters(sig bool, ticker string, deps common.Dependencies) []*discordgo
 		messages []*discordgo.MessageSend
 	)
 
-	ctx, cancel := context.WithCancel(deps.Context)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := deps.DB.Select("filters.name").
+	query := deps.DB.Select("filters.name").
 		From("filters").
 		Join("role_filters ON role_filters.filter = filters.id").
 		Join("roles ON roles.id = role_filters.role").
 		Where(sq.Eq{"roles.role_nick": ticker}).
-		Where(sq.Eq{"roles.sig": sig}).
-		QueryContext(ctx)
+		Where(sq.Eq{"roles.sig": sig})
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error("error fetching filters", zap.Error(err),
+		sp.Error("error fetching filters", zap.Error(err),
 			zap.String("ticker", ticker), zap.Bool("sig", sig))
 		return common.SendFatal(fmt.Sprintf("error fetching filters: %s", err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Error("error closing database", zap.Error(err))
+			sp.Error("error closing database", zap.Error(err))
 		}
 	}()
 
@@ -657,7 +727,7 @@ func ListFilters(sig bool, ticker string, deps common.Dependencies) []*discordgo
 		}
 		err = rows.Scan(&filter)
 		if err != nil {
-			deps.Logger.Error("error scanning filters", zap.Error(err))
+			sp.Error("error scanning filters", zap.Error(err))
 			return common.SendFatal(fmt.Sprintf("error scanning row filters: %s", err))
 		}
 
@@ -674,126 +744,153 @@ func ListFilters(sig bool, ticker string, deps common.Dependencies) []*discordgo
 	}
 }
 
-func AuthedAddFilter(sig bool, filter, ticker, author string, deps common.Dependencies) []*discordgo.MessageSend {
-	if !perms.CanPerform(author, adminType[sig], deps) {
+func AuthedAddFilter(ctx context.Context, sig bool, filter, ticker, author string, deps common.Dependencies) []*discordgo.MessageSend {
+	if !perms.CanPerform(ctx, author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	return AddFilter(sig, filter, ticker, deps)
+	return AddFilter(ctx, sig, filter, ticker, deps)
 }
 
-func AddFilter(sig bool, filter, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
+func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var (
 		err      error
 		filterID int
 		roleID   int
 	)
 
-	ctx, cancel := context.WithCancel(deps.Context)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	err = deps.DB.Select("id").
+	query := deps.DB.Select("id").
 		From("filters").
-		Where(sq.Eq{"name": filter}).
-		Scan(&filterID)
+		Where(sq.Eq{"name": filter})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&filterID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
 		}
-		deps.Logger.Error("error fetching filter id", zap.Error(err), zap.String("filter", filter))
+		sp.Error("error fetching filter id", zap.Error(err), zap.String("filter", filter))
 		return common.SendFatal(fmt.Sprintf("error fetching filter id: %s", err))
 	}
 
-	err = deps.DB.Select("id").
+	query = deps.DB.Select("id").
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
-		Where(sq.Eq{"sig": sig}).
-		Scan(&roleID)
+		Where(sq.Eq{"sig": sig})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&roleID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
 		}
-		deps.Logger.Error("error fetching role", zap.Error(err), zap.Bool("sig", sig),
+		sp.Error("error fetching role", zap.Error(err), zap.Bool("sig", sig),
 			zap.String("ticker", ticker))
 		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
 	}
 
-	rows, err := deps.DB.Insert("role_filters").
+	insert := deps.DB.Insert("role_filters").
 		Columns("role", "filter").
-		Values(roleID, filterID).
-		QueryContext(ctx)
+		Values(roleID, filterID)
+
+	common.LogSQL(sp, insert)
+
+	rows, err := insert.QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error("error inserting role_filter", zap.Error(err),
+		sp.Error("error inserting role_filter", zap.Error(err),
 			zap.Int("role", roleID), zap.Int("filter", filterID))
 		return common.SendFatal(fmt.Sprintf("error inserting role_filter: %s", err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Error("error closing database", zap.Error(err))
+			sp.Error("error closing database", zap.Error(err))
 		}
 	}()
 
 	return common.SendSuccess(fmt.Sprintf("Added filter %s to role %s", filter, ticker))
 }
 
-func AuthedRemoveFilter(sig bool, filter, ticker, author string, deps common.Dependencies) []*discordgo.MessageSend {
-	if !perms.CanPerform(author, adminType[sig], deps) {
+func AuthedRemoveFilter(ctx context.Context, sig bool, filter, ticker, author string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	if !perms.CanPerform(ctx, author, adminType[sig], deps) {
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	return RemoveFilter(sig, filter, ticker, deps)
+	return RemoveFilter(ctx, sig, filter, ticker, deps)
 }
 
-func RemoveFilter(sig bool, filter, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
+func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
 	var (
 		err      error
 		filterID int
 		roleID   int
 	)
 
-	ctx, cancel := context.WithCancel(deps.Context)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	err = deps.DB.Select("id").
+	query := deps.DB.Select("id").
 		From("filters").
-		Where(sq.Eq{"name": filter}).
-		Scan(&filterID)
+		Where(sq.Eq{"name": filter})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&filterID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
 		}
-		deps.Logger.Error("error fetching filter", zap.Error(err), zap.String("filter", filter))
+		sp.Error("error fetching filter", zap.Error(err), zap.String("filter", filter))
 		return common.SendFatal(fmt.Sprintf("error fetching filter id: %s", err))
 	}
 
-	err = deps.DB.Select("id").
+	query = deps.DB.Select("id").
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
-		Where(sq.Eq{"sig": sig}).
-		Scan(&roleID)
+		Where(sq.Eq{"sig": sig})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&roleID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
 		}
-		deps.Logger.Error("error fetching role", zap.Error(err), zap.Bool("sig", sig),
+		sp.Error("error fetching role", zap.Error(err), zap.Bool("sig", sig),
 			zap.String("ticker", ticker))
 		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
 	}
 
-	rows, err := deps.DB.Delete("role_filters").
+	delQuery := deps.DB.Delete("role_filters").
 		Where(sq.Eq{"role": roleID}).
-		Where(sq.Eq{"filter": filterID}).
-		QueryContext(ctx)
+		Where(sq.Eq{"filter": filterID})
+
+	common.LogSQL(sp, delQuery)
+
+	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {
-		deps.Logger.Error("error deleting role_filter", zap.Error(err),
+		sp.Error("error deleting role_filter", zap.Error(err),
 			zap.Int("role", roleID), zap.Int("filter", filterID))
 		return common.SendFatal(fmt.Sprintf("error deleting role_filter: %s", err))
 	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			deps.Logger.Error("error closing database", zap.Error(err))
+			sp.Error("error closing database", zap.Error(err))
 		}
 	}()
 
