@@ -8,6 +8,7 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/auth"
+	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
 	"github.com/chremoas/chremoas-ng/internal/roles"
 	"go.uber.org/zap"
@@ -21,10 +22,13 @@ func (aep *authEsiPoller) addCorpMembers(ctx context.Context, corpTicker string,
 
 	var allianceTicker string
 
-	err := aep.dependencies.DB.Select("ticker").
+	query := aep.dependencies.DB.Select("ticker").
 		From("alliances").
-		Where(sq.Eq{"id": allianceID}).
-		Scan(&allianceTicker)
+		Where(sq.Eq{"id": allianceID})
+
+	common.LogSQL(sp, query)
+
+	err := query.Scan(&allianceTicker)
 	if err != nil {
 		sp.Error("error getting alliance ticker", zap.Error(err), zap.Int32("id", allianceID))
 		return
@@ -50,10 +54,13 @@ func (aep *authEsiPoller) removeCorpMembers(ctx context.Context, corpTicker stri
 
 	var allianceTicker string
 
-	err := aep.dependencies.DB.Select("ticker").
+	query := aep.dependencies.DB.Select("ticker").
 		From("alliances").
-		Where(sq.Eq{"id": allianceID}).
-		Scan(&allianceTicker)
+		Where(sq.Eq{"id": allianceID})
+
+	common.LogSQL(sp, query)
+
+	err := query.Scan(&allianceTicker)
 	if err != nil {
 		sp.Error("error getting alliance ticker", zap.Error(err), zap.Int32("id", allianceID))
 		return
@@ -87,9 +94,12 @@ func (aep *authEsiPoller) updateCorporations(ctx context.Context) (int, int, err
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := aep.dependencies.DB.Select("id", "name", "ticker", "alliance_id").
-		From("corporations").
-		QueryContext(ctx)
+	query := aep.dependencies.DB.Select("id", "name", "ticker", "alliance_id").
+		From("corporations")
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		return -1, -1, fmt.Errorf("error getting corporation list from db: %w", err)
 	}
@@ -147,10 +157,13 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation aut
 			zap.String("corporation", response.Name), zap.Int32("alliance", response.AllianceId))
 
 		alliance := auth.Alliance{ID: response.AllianceId}
-		err := aep.dependencies.DB.Select("name", "ticker").
+		query := aep.dependencies.DB.Select("name", "ticker").
 			From("alliances").
-			Where(sq.Eq{"id": response.AllianceId}).
-			Scan(&alliance.Name, &alliance.Ticker)
+			Where(sq.Eq{"id": response.AllianceId})
+
+		common.LogSQL(sp, query)
+
+		err := query.Scan(&alliance.Name, &alliance.Ticker)
 		if err != nil {
 			sp.Error("Error fetching alliance", zap.Error(err), zap.Int32("alliance", response.AllianceId))
 		}
@@ -187,11 +200,14 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation aut
 	}
 
 	var count int
-	err = aep.dependencies.DB.Select("count(id)").
+	query := aep.dependencies.DB.Select("count(id)").
 		From("roles").
 		Where(sq.Eq{"role_nick": response.Ticker}).
-		Where(sq.Eq{"sig": roles.Role}).
-		Scan(&count)
+		Where(sq.Eq{"sig": roles.Role})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&count)
 	if err != nil {
 		sp.Error("error getting count of corporations by name", zap.Error(err),
 			zap.String("role_nick", response.Ticker))
@@ -240,11 +256,14 @@ func (aep *authEsiPoller) upsertCorporation(ctx context.Context, corporationID, 
 		zap.String("ticker", ticker),
 	)
 
-	rows, err := aep.dependencies.DB.Insert("corporations").
+	insert := aep.dependencies.DB.Insert("corporations").
 		Columns("id", "name", "ticker", "alliance_id").
 		Values(corporationID, name, ticker, allianceNullableID).
-		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?, alliance_id=?", name, ticker, allianceNullableID).
-		QueryContext(ctx)
+		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?, alliance_id=?", name, ticker, allianceNullableID)
+
+	common.LogSQL(sp, insert)
+
+	rows, err := insert.QueryContext(ctx)
 	if err != nil {
 		sp.Error("Error upserting corporation %d alliance: %v: %s", zap.Error(err),
 			zap.Int32("corporation", corporationID), zap.Any("alliance", allianceNullableID))

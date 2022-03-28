@@ -39,10 +39,13 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 			zap.String("name", request.Alliance.Name),
 			zap.String("ticker", request.Alliance.Ticker),
 		)
-		err = deps.DB.Select("COUNT(*)").
+		query := deps.DB.Select("COUNT(*)").
 			From("alliances").
-			Where(sq.Eq{"id": request.Alliance.ID}).
-			Scan(&count)
+			Where(sq.Eq{"id": request.Alliance.ID})
+
+		common.LogSQL(sp, query)
+
+		err = query.Scan(&count)
 		if err != nil {
 			sp.Error("error getting alliance count", zap.Error(err))
 			return nil, err
@@ -54,10 +57,13 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 				zap.String("name", request.Alliance.Name),
 				zap.String("ticker", request.Alliance.Ticker),
 			)
-			_, err = deps.DB.Insert("alliances").
+			insert := deps.DB.Insert("alliances").
 				Columns("id", "name", "ticker").
-				Values(request.Alliance.ID, request.Alliance.Name, request.Alliance.Ticker).
-				QueryContext(ctx)
+				Values(request.Alliance.ID, request.Alliance.Name, request.Alliance.Ticker)
+
+			common.LogSQL(sp, insert)
+
+			_, err = insert.QueryContext(ctx)
 			if err != nil {
 				sp.Error("error inserting into alliances table", zap.Error(err))
 				return nil, err
@@ -78,10 +84,13 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 	// ===========================================================================================
 	// Get Corporation
 
-	err = deps.DB.Select("COUNT(*)").
+	query := deps.DB.Select("COUNT(*)").
 		From("corporations").
-		Where(sq.Eq{"id": request.Corporation.ID}).
-		Scan(&count)
+		Where(sq.Eq{"id": request.Corporation.ID})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&count)
 	if err != nil {
 		sp.Error("error getting corporation count", zap.Error(err))
 		return nil, err
@@ -94,15 +103,21 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 			zap.String("ticker", request.Corporation.Ticker),
 		)
 		if request.Alliance == nil {
-			_, err = deps.DB.Insert("corporations").
+			insert := deps.DB.Insert("corporations").
 				Columns("id", "name", "ticker").
-				Values(request.Corporation.ID, request.Corporation.Name, request.Corporation.Ticker).
-				QueryContext(ctx)
+				Values(request.Corporation.ID, request.Corporation.Name, request.Corporation.Ticker)
+
+			common.LogSQL(sp, insert)
+
+			_, err = insert.QueryContext(ctx)
 		} else {
-			_, err = deps.DB.Insert("corporations").
+			insert := deps.DB.Insert("corporations").
 				Columns("id", "name", "ticker", "alliance_id").
-				Values(request.Corporation.ID, request.Corporation.Name, request.Corporation.Ticker, request.Alliance.ID).
-				QueryContext(ctx)
+				Values(request.Corporation.ID, request.Corporation.Name, request.Corporation.Ticker, request.Alliance.ID)
+
+			common.LogSQL(sp, insert)
+
+			_, err = insert.QueryContext(ctx)
 		}
 		if err != nil {
 			sp.Error("error inserting corporation", zap.Error(err))
@@ -123,10 +138,13 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 	// ===========================================================================================
 	// Get character
 
-	err = deps.DB.Select("count(*)").
+	query = deps.DB.Select("count(*)").
 		From("characters").
-		Where(sq.Eq{"id": request.Character.ID}).
-		Scan(&count)
+		Where(sq.Eq{"id": request.Character.ID})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&count)
 	if err != nil {
 		sp.Error("error getting character count", zap.Error(err))
 		return nil, err
@@ -138,10 +156,13 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 			zap.Int32("corporation id", request.Character.CorporationID),
 			zap.String("name", request.Character.Name),
 		)
-		_, err = deps.DB.Insert("characters").
+		insert := deps.DB.Insert("characters").
 			Columns("id", "name", "token", "corporation_id").
-			Values(request.Character.ID, request.Character.Name, request.Token, request.Corporation.ID).
-			QueryContext(ctx)
+			Values(request.Character.ID, request.Character.Name, request.Token, request.Corporation.ID)
+
+		common.LogSQL(sp, insert)
+
+		_, err = insert.QueryContext(ctx)
 		if err != nil {
 			sp.Error("error inserting character", zap.Error(err))
 			return nil, err
@@ -153,10 +174,13 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 	rand.Read(b) // TODO: Fix this?
 	authCode := hex.EncodeToString(b)
 
-	_, err = deps.DB.Insert("authentication_codes").
+	insert := deps.DB.Insert("authentication_codes").
 		Columns("character_id", "code").
-		Values(request.Character.ID, authCode).
-		QueryContext(ctx)
+		Values(request.Character.ID, authCode)
+
+	common.LogSQL(sp, insert)
+
+	_, err = insert.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error inserting authentication code", zap.Error(err))
 		return nil, err
@@ -183,10 +207,13 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	err = deps.DB.Select("character_id", "used").
+	query := deps.DB.Select("character_id", "used").
 		From("authentication_codes").
-		Where(sq.Eq{"code": authCode}).
-		Scan(&characterID, &used)
+		Where(sq.Eq{"code": authCode})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&characterID, &used)
 	if err != nil {
 		// if err.(*pq.Error).Code == "23505" {
 		// 	return common.SendError(fmt.Sprintf("%s `%s` (%s) already exists", roleType[sig], name, ticker))
@@ -201,26 +228,35 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 		return common.SendError(fmt.Sprintf("Auth code already used: %s", authCode))
 	}
 
-	err = deps.DB.Select("name", "corporation_id").
+	query = deps.DB.Select("name", "corporation_id").
 		From("characters").
-		Where(sq.Eq{"id": characterID}).
-		Scan(&name, &corporationID)
+		Where(sq.Eq{"id": characterID})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&name, &corporationID)
 	if err != nil {
 		sp.Error("error getting character name", zap.Error(err), zap.Int("character id", characterID))
 		return common.SendError(fmt.Sprintf("Error getting character's name and corporation: %d", characterID))
 	}
 
-	_, err = deps.DB.Update("authentication_codes").
-		Set("used", true).
-		QueryContext(ctx)
+	update := deps.DB.Update("authentication_codes").
+		Set("used", true)
+
+	common.LogSQL(sp, update)
+
+	_, err = update.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error updating authentication code", zap.Error(err))
 		return common.SendError("Error updating auth code used")
 	}
 
-	_, err = deps.DB.Insert("user_character_map").
-		Values(sender, characterID).
-		QueryContext(ctx)
+	insert := deps.DB.Insert("user_character_map").
+		Values(sender, characterID)
+
+	common.LogSQL(sp, insert)
+
+	_, err = insert.QueryContext(ctx)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code != "23505" {
@@ -230,10 +266,13 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 	}
 
 	// get corp ticker
-	err = deps.DB.Select("ticker", "alliance_id").
+	query = deps.DB.Select("ticker", "alliance_id").
 		From("corporations").
-		Where(sq.Eq{"id": corporationID}).
-		Scan(&corpTicker, &allianceID)
+		Where(sq.Eq{"id": corporationID})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&corpTicker, &allianceID)
 	if err != nil {
 		sp.Error("error getting ticker and alliance id",
 			zap.Error(err), zap.Int("corporation ID", corporationID))
@@ -244,10 +283,13 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 
 	if allianceID.Valid {
 		// get alliance ticker if there is an alliance
-		err = deps.DB.Select("ticker").
+		query = deps.DB.Select("ticker").
 			From("alliances").
-			Where(sq.Eq{"id": allianceID}).
-			Scan(&allianceTicker)
+			Where(sq.Eq{"id": allianceID})
+
+		common.LogSQL(sp, query)
+
+		err = query.Scan(&allianceTicker)
 		if err != nil {
 			sp.Error("error getting alliance ticker",
 				zap.Error(err), zap.Int64("alliance ID", allianceID.Int64))

@@ -31,9 +31,12 @@ func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSen
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := deps.DB.Select("name", "description").
-		From("filters").
-		QueryContext(ctx)
+	query := deps.DB.Select("name", "description").
+		From("filters")
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error getting filter", zap.Error(err))
 		return common.SendFatal(err.Error())
@@ -86,11 +89,14 @@ func Add(ctx context.Context, name, description string, deps common.Dependencies
 	defer sp.Close()
 
 	var id int
-	err := deps.DB.Insert("filters").
+	insert := deps.DB.Insert("filters").
 		Columns("name", "description").
 		Values(name, description).
-		Suffix("RETURNING \"id\"").
-		Scan(&id)
+		Suffix("RETURNING \"id\"")
+
+	common.LogSQL(sp, insert)
+
+	err := insert.Scan(&id)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -124,10 +130,13 @@ func Delete(ctx context.Context, name string, deps common.Dependencies) ([]*disc
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := deps.DB.Delete("filters").
+	query := deps.DB.Delete("filters").
 		Where(sq.Eq{"name": name}).
-		Suffix("RETURNING \"id\"").
-		QueryContext(ctx)
+		Suffix("RETURNING \"id\"")
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error deleting filter: %s", err)
 		sp.Error("error deleting filter", zap.Error(err))
@@ -165,11 +174,14 @@ func ListMembers(ctx context.Context, name string, deps common.Dependencies) []*
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := deps.DB.Select("user_id").
+	query := deps.DB.Select("user_id").
 		From("filters").
 		Join("filter_membership ON filters.id = filter_membership.filter").
-		Where(sq.Eq{"filters.name": name}).
-		QueryContext(ctx)
+		Where(sq.Eq{"filters.name": name})
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error getting filter membership list: %s", err)
 		sp.Error("error getting filter membership list", zap.Error(err))
@@ -239,10 +251,13 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 		return common.SendFatal(err.Error())
 	}
 
-	err = deps.DB.Select("id").
+	query := deps.DB.Select("id").
 		From("filters").
-		Where(sq.Eq{"name": filter}).
-		Scan(&filterID)
+		Where(sq.Eq{"name": filter})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&filterID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
@@ -254,10 +269,13 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 
 	sp.Info("Got member info", zap.String("userID", userID), zap.Int("filterID", filterID))
 
-	rows, err := deps.DB.Insert("filter_membership").
+	insert := deps.DB.Insert("filter_membership").
 		Columns("filter", "user_id").
-		Values(filterID, userID).
-		QueryContext(ctx)
+		Values(filterID, userID)
+
+	common.LogSQL(sp, insert)
+
+	rows, err := insert.QueryContext(ctx)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -328,21 +346,27 @@ func RemoveMember(ctx context.Context, userID, filter string, deps common.Depend
 		userID = common.ExtractUserId(userID)
 	}
 
-	err = deps.DB.Select("id").
+	query := deps.DB.Select("id").
 		From("filters").
-		Where(sq.Eq{"name": filter}).
-		Scan(&filterID)
+		Where(sq.Eq{"name": filter})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&filterID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning filterID: %s", err)
 		sp.Error("error scanning filterID", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 
-	rows, err := deps.DB.Delete("filter_membership").
+	delQuery := deps.DB.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID}).
 		Where(sq.Eq{"user_id": userID}).
-		Suffix("RETURNING \"id\"").
-		QueryContext(ctx)
+		Suffix("RETURNING \"id\"")
+
+	common.LogSQL(sp, delQuery)
+
+	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error deleting filter: %s", err)
 		sp.Error("error deleting filter", zap.Error(err))

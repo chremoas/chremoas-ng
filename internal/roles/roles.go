@@ -296,12 +296,15 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 		return common.SendError(fmt.Sprintf("`%s` isn't a valid Role Type", chatType))
 	}
 
-	err := deps.DB.Insert("roles").
+	insert := deps.DB.Insert("roles").
 		Columns("sig", "joinable", "name", "role_nick", "chat_type", "sync").
 		// a sig is sync-ed by default, so we overload the sig bool because it does the right thing here.
 		Values(sig, joinable, name, ticker, chatType, sig).
-		Suffix("RETURNING \"id\"").
-		Scan(&roleID)
+		Suffix("RETURNING \"id\"")
+
+	common.LogSQL(sp, insert)
+
+	err := insert.Scan(&roleID)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -331,10 +334,13 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 	)
 
 	// Associate new filter with new role
-	rows, err := deps.DB.Insert("role_filters").
+	insert = deps.DB.Insert("role_filters").
 		Columns("role", "filter").
-		Values(roleID, filterID).
-		QueryContext(ctx)
+		Values(roleID, filterID)
+
+	common.LogSQL(sp, insert)
+
+	rows, err := insert.QueryContext(ctx)
 	if err != nil {
 		sp.Error("erro radding role_filter", zap.Error(err), zap.Bool("sig", sig),
 			zap.Int("role", roleID), zap.Int("filter", filterID))
@@ -383,11 +389,14 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 		return common.SendError("short name is required")
 	}
 
-	err := deps.DB.Select("chat_id").
+	query := deps.DB.Select("chat_id").
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
-		Where(sq.Eq{"sig": sig}).
-		Scan(&chatID)
+		Where(sq.Eq{"sig": sig})
+
+	common.LogSQL(sp, query)
+
+	err := query.Scan(&chatID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
@@ -397,10 +406,13 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
 
-	rows, err := deps.DB.Delete("roles").
+	delQuery := deps.DB.Delete("roles").
 		Where(sq.Eq{"role_nick": ticker}).
-		Where(sq.Eq{"sig": sig}).
-		QueryContext(ctx)
+		Where(sq.Eq{"sig": sig})
+
+	common.LogSQL(sp, delQuery)
+
+	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error deleting role", zap.Error(err), zap.Bool("sig", sig),
 			zap.String("ticker", ticker))
@@ -425,9 +437,12 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 	// We now need to create the default filter for this role
 	filterResponse, filterID := filters.Delete(ctx, ticker, deps)
 
-	rows, err = deps.DB.Delete("filter_membership").
-		Where(sq.Eq{"filter": filterID}).
-		QueryContext(ctx)
+	delQuery = deps.DB.Delete("filter_membership").
+		Where(sq.Eq{"filter": filterID})
+
+	common.LogSQL(sp, delQuery)
+
+	rows, err = delQuery.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error deleting filter_membership", zap.Error(err), zap.Bool("sig", sig),
 			zap.Int("filter", filterID))
@@ -440,9 +455,12 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 		}
 	}()
 
-	rows, err = deps.DB.Delete("role_filters").
-		Where(sq.Eq{"role": roleID}).
-		QueryContext(ctx)
+	delQuery = deps.DB.Delete("role_filters").
+		Where(sq.Eq{"role": roleID})
+
+	common.LogSQL(sp, delQuery)
+
+	rows, err = delQuery.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error deleting role_filters", zap.Error(err), zap.Bool("sig", sig),
 			zap.Int("role", roleID))
@@ -509,11 +527,14 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 		return common.SendError("values is required")
 	}
 
-	err := deps.DB.Select("name", "sync").
+	query := deps.DB.Select("name", "sync").
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
-		Where(sq.Eq{"sig": sig}).
-		Scan(&name, &sync)
+		Where(sq.Eq{"sig": sig})
+
+	common.LogSQL(sp, query)
+
+	err := query.Scan(&name, &sync)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
@@ -541,6 +562,8 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 
 		updateSQL = updateSQL.Set(key, v)
 	}
+
+	common.LogSQL(sp, updateSQL)
 
 	_, err = updateSQL.Where(sq.Eq{"name": name}).
 		Where(sq.Eq{"sig": sig}).
@@ -572,10 +595,13 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 
 	if role.ID != dRole.ID {
 		// The role was probably created/recreated manually.
-		rows, err := deps.DB.Update("roles").
+		update := deps.DB.Update("roles").
 			Set("ID", dRole.ID).
-			Where(sq.Eq{"name": role.Name}).
-			QueryContext(ctx)
+			Where(sq.Eq{"name": role.Name})
+
+		common.LogSQL(sp, update)
+
+		rows, err := query.QueryContext(ctx)
 		if err != nil {
 			sp.Error("error updating role's ID", zap.Error(err),
 				zap.String("name", role.Name), zap.String("id", dRole.ID))
@@ -616,20 +642,23 @@ func GetChremoasRole(ctx context.Context, sig bool, ticker string, deps common.D
 		err  error
 	)
 
-	err = deps.DB.Select("chat_id", "name", "managed", "mentionable", "hoist", "color", "position", "permissions").
+	query := deps.DB.Select("chat_id", "name", "managed", "mentionable", "hoist", "color", "position", "permissions").
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
-		Where(sq.Eq{"sig": sig}).
-		Scan(
-			&role.ID,
-			&role.Name,
-			&role.Managed,
-			&role.Mentionable,
-			&role.Hoist,
-			&role.Color,
-			&role.Position,
-			&role.Permissions,
-		)
+		Where(sq.Eq{"sig": sig})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(
+		&role.ID,
+		&role.Name,
+		&role.Managed,
+		&role.Mentionable,
+		&role.Hoist,
+		&role.Color,
+		&role.Position,
+		&role.Permissions,
+	)
 	if err != nil {
 		return payloads.Role{}, fmt.Errorf("error fetching %s from db: %s", roleType[sig], err)
 	}
@@ -670,13 +699,16 @@ func ListFilters(ctx context.Context, sig bool, ticker string, deps common.Depen
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := deps.DB.Select("filters.name").
+	query := deps.DB.Select("filters.name").
 		From("filters").
 		Join("role_filters ON role_filters.filter = filters.id").
 		Join("roles ON roles.id = role_filters.role").
 		Where(sq.Eq{"roles.role_nick": ticker}).
-		Where(sq.Eq{"roles.sig": sig}).
-		QueryContext(ctx)
+		Where(sq.Eq{"roles.sig": sig})
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error fetching filters", zap.Error(err),
 			zap.String("ticker", ticker), zap.Bool("sig", sig))
@@ -733,10 +765,13 @@ func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	err = deps.DB.Select("id").
+	query := deps.DB.Select("id").
 		From("filters").
-		Where(sq.Eq{"name": filter}).
-		Scan(&filterID)
+		Where(sq.Eq{"name": filter})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&filterID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
@@ -745,11 +780,14 @@ func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common
 		return common.SendFatal(fmt.Sprintf("error fetching filter id: %s", err))
 	}
 
-	err = deps.DB.Select("id").
+	query = deps.DB.Select("id").
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
-		Where(sq.Eq{"sig": sig}).
-		Scan(&roleID)
+		Where(sq.Eq{"sig": sig})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&roleID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
@@ -759,10 +797,13 @@ func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common
 		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
 	}
 
-	rows, err := deps.DB.Insert("role_filters").
+	insert := deps.DB.Insert("role_filters").
 		Columns("role", "filter").
-		Values(roleID, filterID).
-		QueryContext(ctx)
+		Values(roleID, filterID)
+
+	common.LogSQL(sp, insert)
+
+	rows, err := insert.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error inserting role_filter", zap.Error(err),
 			zap.Int("role", roleID), zap.Int("filter", filterID))
@@ -802,10 +843,13 @@ func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps com
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	err = deps.DB.Select("id").
+	query := deps.DB.Select("id").
 		From("filters").
-		Where(sq.Eq{"name": filter}).
-		Scan(&filterID)
+		Where(sq.Eq{"name": filter})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&filterID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
@@ -814,11 +858,14 @@ func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps com
 		return common.SendFatal(fmt.Sprintf("error fetching filter id: %s", err))
 	}
 
-	err = deps.DB.Select("id").
+	query = deps.DB.Select("id").
 		From("roles").
 		Where(sq.Eq{"role_nick": ticker}).
-		Where(sq.Eq{"sig": sig}).
-		Scan(&roleID)
+		Where(sq.Eq{"sig": sig})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&roleID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
@@ -828,10 +875,13 @@ func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps com
 		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
 	}
 
-	rows, err := deps.DB.Delete("role_filters").
+	delQuery := deps.DB.Delete("role_filters").
 		Where(sq.Eq{"role": roleID}).
-		Where(sq.Eq{"filter": filterID}).
-		QueryContext(ctx)
+		Where(sq.Eq{"filter": filterID})
+
+	common.LogSQL(sp, delQuery)
+
+	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error deleting role_filter", zap.Error(err),
 			zap.Int("role", roleID), zap.Int("filter", filterID))

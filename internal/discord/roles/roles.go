@@ -122,10 +122,13 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 		r.dependencies.Session.Unlock()
 	}()
 
-	err = r.dependencies.DB.Select("sync").
+	query := r.dependencies.DB.Select("sync").
 		From("roles").
-		Where(sq.Eq{"name": role.Role.Name}).
-		Scan(&sync)
+		Where(sq.Eq{"name": role.Role.Name})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&sync)
 	if err != nil {
 		sp.Error("Error getting role sync status",
 			zap.Error(err), zap.String("role", role.Role.Name))
@@ -163,10 +166,13 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 			zap.String("role id", newRole.ID),
 			zap.String("role", role.Role.Name))
 
-		_, err = r.dependencies.DB.Update("roles").
+		update := r.dependencies.DB.Update("roles").
 			Set("chat_id", newRole.ID).
-			Where(sq.Eq{"name": role.Role.Name}).
-			QueryContext(ctx)
+			Where(sq.Eq{"name": role.Role.Name})
+
+		common.LogSQL(sp, update)
+
+		_, err = update.QueryContext(ctx)
 		if err != nil {
 			sp.Error("Error updating role id in db",
 				zap.Error(err), zap.String("role", role.Role.Name))

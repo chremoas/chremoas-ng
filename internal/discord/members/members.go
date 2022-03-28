@@ -107,10 +107,13 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 			switch body.Action {
 			case payloads.Add, payloads.Upsert:
 				var sync bool
-				err = m.dependencies.DB.Select("sync").
+				query := m.dependencies.DB.Select("sync").
 					From("roles").
-					Where(sq.Eq{"chat_id": body.RoleID}).
-					Scan(&sync)
+					Where(sq.Eq{"chat_id": body.RoleID})
+
+				common.LogSQL(sp, query)
+
+				err = query.Scan(&sync)
 				if err != nil {
 					sp.Error("Error getting role sync status",
 						zap.Error(err), zap.String("role", body.RoleID))

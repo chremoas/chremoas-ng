@@ -28,9 +28,12 @@ func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSen
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := deps.DB.Select("name", "description").
-		From("permissions").
-		QueryContext(ctx)
+	query := deps.DB.Select("name", "description").
+		From("permissions")
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error getting permissions", zap.Error(err))
 		return common.SendFatal(err.Error())
@@ -80,10 +83,13 @@ func Add(ctx context.Context, name, description, author string, deps common.Depe
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	rows, err := deps.DB.Insert("permissions").
+	insert := deps.DB.Insert("permissions").
 		Columns("name", "description").
-		Values(name, description).
-		QueryContext(ctx)
+		Values(name, description)
+
+	common.LogSQL(sp, insert)
+
+	rows, err := insert.QueryContext(ctx)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -118,9 +124,12 @@ func Delete(ctx context.Context, name, author string, deps common.Dependencies) 
 		return common.SendError("User doesn't have permission to this command")
 	}
 
-	rows, err := deps.DB.Delete("permissions").
-		Where(sq.Eq{"name": name}).
-		QueryContext(ctx)
+	query := deps.DB.Delete("permissions").
+		Where(sq.Eq{"name": name})
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error deleting permission: %s", err)
 		sp.Error("error deleting permissions", zap.Error(err))
@@ -149,11 +158,14 @@ func ListMembers(ctx context.Context, name string, deps common.Dependencies) []*
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := deps.DB.Select("user_id").
+	query := deps.DB.Select("user_id").
 		From("permission_membership").
 		Join("permissions ON permission_membership.permission = permissions.id").
-		Where(sq.Eq{"permissions.name": name}).
-		QueryContext(ctx)
+		Where(sq.Eq{"permissions.name": name})
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error getting permission membership list: %s", err)
 		sp.Error("error getting permissions membership list", zap.Error(err))
@@ -211,20 +223,26 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 
 	userID := common.ExtractUserId(user)
 
-	err := deps.DB.Select("id").
+	query := deps.DB.Select("id").
 		From("permissions").
-		Where(sq.Eq{"name": permission}).
-		Scan(&permissionID)
+		Where(sq.Eq{"name": permission})
+
+	common.LogSQL(sp, query)
+
+	err := query.Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permissionID: %s", err)
 		sp.Error("error scanning permissionID", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 
-	rows, err := deps.DB.Insert("permission_membership").
+	insert := deps.DB.Insert("permission_membership").
 		Columns("permission", "user_id").
-		Values(permissionID, userID).
-		QueryContext(ctx)
+		Values(permissionID, userID)
+
+	common.LogSQL(sp, insert)
+
+	rows, err := insert.QueryContext(ctx)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -267,20 +285,26 @@ func RemoveMember(ctx context.Context, user, permission, author string, deps com
 
 	userID := common.ExtractUserId(user)
 
-	err := deps.DB.Select("id").
+	query := deps.DB.Select("id").
 		From("permissions").
-		Where(sq.Eq{"name": permission}).
-		Scan(&permissionID)
+		Where(sq.Eq{"name": permission})
+
+	common.LogSQL(sp, query)
+
+	err := query.Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permisionID: %s", err)
 		sp.Error("error scanning permissionID", zap.Error(err))
 		return common.SendFatal(newErr.Error())
 	}
 
-	rows, err := deps.DB.Delete("permission_membership").
+	delQuery := deps.DB.Delete("permission_membership").
 		Where(sq.Eq{"permission": permissionID}).
-		Where(sq.Eq{"user_id": userID}).
-		QueryContext(ctx)
+		Where(sq.Eq{"user_id": userID})
+
+	common.LogSQL(sp, delQuery)
+
+	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error deleting permission: %s", err)
 		sp.Error("error deleting permission", zap.Error(err))
@@ -315,11 +339,14 @@ func UserPerms(ctx context.Context, user string, deps common.Dependencies) []*di
 
 	userID := common.ExtractUserId(user)
 
-	rows, err := deps.DB.Select("name").
+	query := deps.DB.Select("name").
 		From("permissions").
 		Join("permission_membership ON permission_membership.permission = permissions.id").
-		Where(sq.Eq{"permission_membership.user_id": userID}).
-		QueryContext(ctx)
+		Where(sq.Eq{"permission_membership.user_id": userID})
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		newErr := fmt.Errorf("error getting user perms: %s", err)
 		sp.Error("error getting user perms", zap.Error(err))
@@ -362,19 +389,25 @@ func CanPerform(ctx context.Context, authorID, permission string, deps common.De
 		return true
 	}
 
-	err := deps.DB.Select("id").
+	query := deps.DB.Select("id").
 		From("permissions").
-		Where(sq.Eq{"name": permission}).
-		Scan(&permissionID)
+		Where(sq.Eq{"name": permission})
+
+	common.LogSQL(sp, query)
+
+	err := query.Scan(&permissionID)
 	if err != nil {
 		sp.Error("error scanning permissionID", zap.Error(err))
 		return false
 	}
-	err = deps.DB.Select("COUNT(*)").
+	query = deps.DB.Select("COUNT(*)").
 		From("permission_membership").
 		Where(sq.Eq{"user_id": authorID}).
-		Where(sq.Eq{"permission": permissionID}).
-		Scan(&count)
+		Where(sq.Eq{"permission": permissionID})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&count)
 	if err != nil {
 		sp.Error("error scanning permission count", zap.Error(err))
 		return false

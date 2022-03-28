@@ -7,6 +7,7 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/auth"
+	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/roles"
 	"go.uber.org/zap"
 )
@@ -27,9 +28,12 @@ func (aep *authEsiPoller) updateAlliances(ctx context.Context) (int, int, error)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := aep.dependencies.DB.Select("id", "name", "ticker").
-		From("alliances").
-		QueryContext(ctx)
+	query := aep.dependencies.DB.Select("id", "name", "ticker").
+		From("alliances")
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		return -1, -1, fmt.Errorf("error getting alliance list from db: %w", err)
 	}
@@ -93,11 +97,14 @@ func (aep *authEsiPoller) updateAlliance(ctx context.Context, alliance auth.Alli
 	}
 
 	var count int
-	err = aep.dependencies.DB.Select("count(id)").
+	query := aep.dependencies.DB.Select("count(id)").
 		From("roles").
 		Where(sq.Eq{"role_nick": response.Ticker}).
-		Where(sq.Eq{"sig": roles.Role}).
-		Scan(&count)
+		Where(sq.Eq{"sig": roles.Role})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&count)
 	if err != nil {
 		sp.Error("error getting count of alliances by name", zap.Error(err),
 			zap.String("ticker", response.Ticker))
@@ -132,11 +139,14 @@ func (aep *authEsiPoller) upsertAlliance(ctx context.Context, allianceID int32, 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := aep.dependencies.DB.Insert("alliances").
+	insert := aep.dependencies.DB.Insert("alliances").
 		Columns("id", "name", "ticker").
 		Values(allianceID, name, ticker).
-		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?", name, ticker).
-		QueryContext(ctx)
+		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?", name, ticker)
+
+	common.LogSQL(sp, insert)
+
+	rows, err := insert.QueryContext(ctx)
 	if err != nil {
 		sp.Error("Error updating alliance", zap.Error(err), zap.Int32("id", allianceID))
 	}

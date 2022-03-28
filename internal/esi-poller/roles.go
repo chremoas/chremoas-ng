@@ -53,10 +53,13 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 		}
 	}
 
-	rows, err := aep.dependencies.DB.Select("chat_id", "name", "managed", "mentionable", "hoist", "color", "position", "permissions").
+	query := aep.dependencies.DB.Select("chat_id", "name", "managed", "mentionable", "hoist", "color", "position", "permissions").
 		From("roles").
-		Where(sq.Eq{"sync": "true"}).
-		QueryContext(ctx)
+		Where(sq.Eq{"sync": "true"})
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error selecting role", zap.Error(err))
 		return -1, -1, fmt.Errorf("error getting role list from db: %w", err)
@@ -89,10 +92,13 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 		if val, ok := discordRoles[role.Name]; ok {
 			if val.ID != role.ID {
 				sp.Info("Discord role ID doesn't match what we have", zap.String("discord id", val.ID), zap.String("chrmoas id", role.ID))
-				_, err = aep.dependencies.DB.Update("roles").
+				update := aep.dependencies.DB.Update("roles").
 					Set("chat_id", val.ID).
-					Where(sq.Eq{"name": role.Name}).
-					QueryContext(ctx)
+					Where(sq.Eq{"name": role.Name})
+
+				common.LogSQL(sp, update)
+
+				_, err = update.QueryContext(ctx)
 				if err != nil {
 					sp.Error("Error updating role id in db",
 						zap.Error(err), zap.String("role", role.Name))
@@ -186,10 +192,13 @@ func interDiff(ctx context.Context, chremoasMap, discordMap map[string]payloads.
 		if chremoasMap[r].ID != discordMap[r].ID {
 			// The role was probably recreated manually.
 			func() {
-				rows, err := deps.DB.Update("roles").
+				update := deps.DB.Update("roles").
 					Set("chat_id", discordMap[r].ID).
-					Where(sq.Eq{"name": r}).
-					QueryContext(ctx)
+					Where(sq.Eq{"name": r})
+
+				common.LogSQL(sp, update)
+
+				rows, err := update.QueryContext(ctx)
 				if err != nil {
 					sp.Error("error updating role's chat_id", zap.Error(err), zap.String("chat_id", discordMap[r].ID))
 				}

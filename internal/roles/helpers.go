@@ -12,19 +12,20 @@ import (
 	"go.uber.org/zap"
 )
 
-func getRoleID(name string, deps common.Dependencies) (int, error) {
-	var (
-		err error
-		id  int
-	)
-
-	err = deps.DB.Select("id").
-		From("roles").
-		Where(sq.Eq{"role_nick": name}).
-		Scan(&id)
-
-	return id, err
-}
+// I don't think this is actually used
+// func getRoleID(name string, deps common.Dependencies) (int, error) {
+// 	var (
+// 		err error
+// 		id  int
+// 	)
+//
+// 	err = deps.DB.Select("id").
+// 		From("roles").
+// 		Where(sq.Eq{"role_nick": name}).
+// 		Scan(&id)
+//
+// 	return id, err
+// }
 
 func validListItem(a string, list []string) bool {
 	for _, b := range list {
@@ -80,12 +81,15 @@ func GetRoleMembers(ctx context.Context, sig bool, name string, deps common.Depe
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := deps.DB.Select("role_filters.filter").
+	query := deps.DB.Select("role_filters.filter").
 		From("role_filters").
 		InnerJoin("roles ON role_filters.role = roles.id").
 		Where(sq.Eq{"sig": sig}).
-		Where(sq.Eq{"role_nick": name}).
-		QueryContext(ctx)
+		Where(sq.Eq{"role_nick": name})
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error getting role filters", zap.Error(err))
 		return nil, err
@@ -106,12 +110,15 @@ func GetRoleMembers(ctx context.Context, sig bool, name string, deps common.Depe
 		filterList = append(filterList, id)
 	}
 
-	rows, err = deps.DB.Select("user_id").
+	query = deps.DB.Select("user_id").
 		From("filter_membership").
 		Where(sq.Eq{"filter": filterList}).
 		GroupBy("user_id").
-		Having("count(*) = ?", len(filterList)).
-		QueryContext(ctx)
+		Having("count(*) = ?", len(filterList))
+
+	common.LogSQL(sp, query)
+
+	rows, err = query.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error getting filter memberhship", zap.Error(err))
 		return nil, err
@@ -156,6 +163,8 @@ func GetRoles(ctx context.Context, sig bool, shortName *string, deps common.Depe
 	if shortName != nil {
 		q = q.Where(sq.Eq{"role_nick": shortName})
 	}
+
+	common.LogSQL(sp, q)
 
 	rows, err := q.QueryContext(ctx)
 	if err != nil {

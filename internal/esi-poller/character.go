@@ -31,9 +31,12 @@ func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rows, err := aep.dependencies.DB.Select("id", "name", "corporation_id", "token").
-		From("characters").
-		QueryContext(ctx)
+	query := aep.dependencies.DB.Select("id", "name", "corporation_id", "token").
+		From("characters")
+
+	common.LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		return -1, -1, fmt.Errorf("error getting character list from the db: %w", err)
 	}
@@ -97,10 +100,13 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 			oldCorp       string
 			oldAllianceID int
 		)
-		err = aep.dependencies.DB.Select("ticker", "alliance_id").
+		query := aep.dependencies.DB.Select("ticker", "alliance_id").
 			From("corporations").
-			Where(sq.Eq{"id": character.CorporationID}).
-			Scan(&oldCorp, &oldAllianceID)
+			Where(sq.Eq{"id": character.CorporationID})
+
+		common.LogSQL(sp, query)
+
+		err = query.Scan(&oldCorp, &oldAllianceID)
 		if err != nil {
 			sp.Error("error getting old corp info", zap.Error(err),
 				zap.String("character", character.Name),
@@ -118,10 +124,13 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 			newCorp       string
 			newAllianceID int
 		)
-		err = aep.dependencies.DB.Select("ticker", "alliance_id").
+		query = aep.dependencies.DB.Select("ticker", "alliance_id").
 			From("corporations").
-			Where(sq.Eq{"id": response.CorporationId}).
-			Scan(&newCorp, &newAllianceID)
+			Where(sq.Eq{"id": response.CorporationId})
+
+		common.LogSQL(sp, query)
+
+		err = query.Scan(&newCorp, &newAllianceID)
 		if err != nil {
 			sp.Error("error getting new corp info", zap.Error(err),
 				zap.String("character", character.Name),
@@ -131,10 +140,13 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 
 		// We need the discord user ID
 		var discordID string
-		err = aep.dependencies.DB.Select("chat_id").
+		query = aep.dependencies.DB.Select("chat_id").
 			From("user_character_map").
-			Where(sq.Eq{"character_id": character.ID}).
-			Scan(&discordID)
+			Where(sq.Eq{"character_id": character.ID})
+
+		common.LogSQL(sp, query)
+
+		err = query.Scan(&discordID)
 		if err != nil {
 			sp.Error("error getting discord info", zap.Error(err),
 				zap.String("character", character.Name),
@@ -153,20 +165,26 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 			// new corp is in a different alliance, gotta switch those.
 
 			var oldAlliance, newAlliance string
-			err = aep.dependencies.DB.Select("ticker").
+			query = aep.dependencies.DB.Select("ticker").
 				From("alliances").
-				Where(sq.Eq{"id": oldAllianceID}).
-				Scan(&oldAlliance)
+				Where(sq.Eq{"id": oldAllianceID})
+
+			common.LogSQL(sp, query)
+
+			err = query.Scan(&oldAlliance)
 			if err != nil {
 				sp.Error("error getting old alliance ticker", zap.Error(err),
 					zap.Int("allianceID", oldAllianceID))
 				return err
 			}
 
-			err = aep.dependencies.DB.Select("ticker").
+			query = aep.dependencies.DB.Select("ticker").
 				From("alliances").
-				Where(sq.Eq{"id": newAllianceID}).
-				Scan(&newAlliance)
+				Where(sq.Eq{"id": newAllianceID})
+
+			common.LogSQL(sp, query)
+
+			err = query.Scan(&newAlliance)
 			if err != nil {
 				sp.Error("error getting new alliance ticker", zap.Error(err),
 					zap.Int("allianceID", newAllianceID))
@@ -182,10 +200,13 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 
 	// We need the chatID of the user, so let's get that.
 	var chatID int
-	err = aep.dependencies.DB.Select("chat_id").
+	query := aep.dependencies.DB.Select("chat_id").
 		From("user_character_map").
-		Where(sq.Eq{"character_id": character.ID}).
-		Scan(&chatID)
+		Where(sq.Eq{"character_id": character.ID})
+
+	common.LogSQL(sp, query)
+
+	err = query.Scan(&chatID)
 	if err != nil {
 		sp.Error("error getting chat_id for character", zap.Error(err), zap.Int32("id", character.ID))
 		return err
@@ -238,22 +259,28 @@ func (aep *authEsiPoller) upsertCharacter(ctx context.Context, characterID, corp
 	if token != "" {
 		sp.Debug("Updating character", zap.Int32("id", characterID), zap.String("name", name),
 			zap.String("token", token), zap.Int32("corporation", corporationID))
-		rows, err = aep.dependencies.DB.Insert("characters").
+		insert := aep.dependencies.DB.Insert("characters").
 			Columns("id", "name", "token", "corporation_id").
 			Values(characterID, name, token, corporationID).
-			Suffix("ON CONFLICT (id) DO UPDATE SET name=?, token=?, corporation_id=?", name, token, corporationID).
-			QueryContext(ctx)
+			Suffix("ON CONFLICT (id) DO UPDATE SET name=?, token=?, corporation_id=?", name, token, corporationID)
+
+		common.LogSQL(sp, insert)
+
+		rows, err = insert.QueryContext(ctx)
 		if err != nil {
 			sp.Error("Error inserting character", zap.Error(err),
 				zap.Int32("id", characterID), zap.String("name", name),
 				zap.String("token", token), zap.Int32("corporation", corporationID))
 		}
 	} else {
-		rows, err = aep.dependencies.DB.Insert("characters").
+		insert := aep.dependencies.DB.Insert("characters").
 			Columns("id", "name", "corporation_id").
 			Values(characterID, name, corporationID).
-			Suffix("ON CONFLICT (id) DO UPDATE SET name=?, corporation_id=?", name, corporationID).
-			QueryContext(ctx)
+			Suffix("ON CONFLICT (id) DO UPDATE SET name=?, corporation_id=?", name, corporationID)
+
+		common.LogSQL(sp, insert)
+
+		rows, err = insert.QueryContext(ctx)
 		if err != nil {
 			sp.Error("Error inserting character", zap.Error(err),
 				zap.Int32("id", characterID), zap.String("name", name),

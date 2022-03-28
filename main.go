@@ -59,6 +59,7 @@ func main() {
 	// Get the config file name if we're not using consul
 
 	flag.String("configFile", "chremoas.yaml", "configuration file name")
+	flag.String("loglevel", "INFO", "Log Level")
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 	err = viper.BindPFlags(pflag.CommandLine)

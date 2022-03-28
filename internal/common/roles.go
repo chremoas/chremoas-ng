@@ -35,10 +35,13 @@ func GetUserRoles(ctx context.Context, sig bool, userID string, deps Dependencie
 		userID = ExtractUserId(userID)
 	}
 
-	rows, err := deps.DB.Select("role_nick", "name", "chat_id").
+	query := deps.DB.Select("role_nick", "name", "chat_id").
 		From("").
-		Suffix("getMemberRoles(?, ?)", userID, strconv.FormatBool(sig)).
-		QueryContext(ctx)
+		Suffix("getMemberRoles(?, ?)", userID, strconv.FormatBool(sig))
+
+	LogSQL(sp, query)
+
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error getting role membership", zap.Error(err), zap.String("user id", userID))
 		return nil, fmt.Errorf("error getting user %ss (%s): %s", roleType[sig], userID, err)
