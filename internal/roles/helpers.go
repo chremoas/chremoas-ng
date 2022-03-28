@@ -41,9 +41,10 @@ func queueUpdate(ctx context.Context, role payloads.Role, action payloads.Action
 	defer sp.Close()
 
 	payload := payloads.RolePayload{
-		Action:  action,
-		GuildID: deps.GuildID,
-		Role:    role,
+		Action:        action,
+		GuildID:       deps.GuildID,
+		Role:          role,
+		CorrelationID: sp.GetCorrelationID(),
 	}
 
 	b, err := json.Marshal(payload)

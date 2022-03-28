@@ -38,7 +38,7 @@ github.com/astaxie/beego/utils
 # github.com/bhechinger/go-sets v0.0.4
 ## explicit
 github.com/bhechinger/go-sets
-# github.com/bhechinger/spiffylogger v0.1.6
+# github.com/bhechinger/spiffylogger v0.1.9
 ## explicit
 github.com/bhechinger/spiffylogger
 # github.com/bketelsen/crypt v0.0.3-0.20200106085610-5cbc8cc4026c

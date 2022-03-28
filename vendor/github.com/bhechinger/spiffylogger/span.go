@@ -41,21 +41,37 @@ func OpenSpan(ctx context.Context) (context.Context, *Span) {
 			caller = n[len(n)-1] // get just the filename + function for our span's name
 		}
 	}
-	return openNamedSpan(ctx, caller, 1)
+	return openNamedSpan(ctx, caller, 1, "")
+}
+
+// OpenCorrelatedSpan configures and returns a span from a context but uses a provided Correlation ID
+// instead of generating one.
+func OpenCorrelatedSpan(ctx context.Context, correlationID string) (context.Context, *Span) {
+	caller := "unknown"
+	pc, _, _, ok := runtime.Caller(1)
+	if ok {
+		d := runtime.FuncForPC(pc)
+		if d != nil {
+			n := strings.Split(d.Name(), "/")
+			caller = n[len(n)-1] // get just the filename + function for our span's name
+		}
+	}
+	return openNamedSpan(ctx, caller, 1, correlationID)
 }
 
 // OpenCustomSpan configures and returns a Span from a context, creating a child span if one exists in the current context
 // "custom" only if we want a custom name for this span
 func OpenCustomSpan(ctx context.Context, name string) (context.Context, *Span) {
-	return openNamedSpan(ctx, name, 1)
+	return openNamedSpan(ctx, name, 1, "")
 }
 
 // openNamedSpan contains the common code for OpenSpan and OpenCustomSpan
 // with the appropriate log depth of 3
-func openNamedSpan(ctx context.Context, name string, depth int) (context.Context, *Span) {
+func openNamedSpan(ctx context.Context, name string, depth int, correlationID string) (context.Context, *Span) {
 	depth++
 	var newSpan *Span
-	if s, ok := spanFromContext(ctx); ok {
+	s, ok := spanFromContext(ctx)
+	if ok && correlationID == "" {
 		newSpan = openChildSpan(s, name, depth)
 	} else {
 		l, ok := loggerFromContext(ctx)
@@ -63,11 +79,12 @@ func openNamedSpan(ctx context.Context, name string, depth int) (context.Context
 			// if we don't get a logger, make sure we're at least logging to stderr
 			l = NewLogger(zapcore.InfoLevel)
 		}
-		newSpan = openNewSpan(name, l, depth)
+		newSpan = openNewSpan(name, l, depth, correlationID)
 		if !ok {
 			newSpan.printToLog(zapcore.InfoLevel, "failed to find logger in context; defaulting to stderr logger", depth)
 		}
 	}
+
 	return CtxWithSpan(ctx, newSpan), newSpan
 }
 
@@ -101,14 +118,20 @@ func CtxWithSpan(ctx context.Context, s *Span) context.Context {
 }
 
 // openNew returns a brand new span with a new CID
-func openNewSpan(name string, l *zap.Logger, depth int) *Span {
+func openNewSpan(name string, l *zap.Logger, depth int, correlationID string) *Span {
 	depth++
 	s := &Span{
 		name:   name,
 		start:  time.Now(),
 		logger: l,
 	}
-	s.cID = s.newID(depth)
+
+	if correlationID == "" {
+		s.cID = s.newID(depth)
+	} else {
+		s.cID = correlationID
+	}
+
 	s.sID = s.newID(depth)
 	s.printToLog(zapcore.DebugLevel, "span opened", 1)
 	return s
@@ -122,6 +145,11 @@ func (s *Span) newID(depth int) string {
 		return "ERRID"
 	}
 	return id.String()
+}
+
+// GetCorrelationID ...
+func (s Span) GetCorrelationID() string {
+	return s.cID
 }
 
 // Close .

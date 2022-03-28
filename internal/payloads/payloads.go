@@ -9,16 +9,18 @@ const (
 )
 
 type RolePayload struct {
-	Action  Action `json:"action,omitempty"`
-	GuildID string `json:"guildId"`
-	Role    Role   `json:"role,omitempty"`
+	Action        Action `json:"action,omitempty"`
+	GuildID       string `json:"guildId"`
+	Role          Role   `json:"role,omitempty"`
+	CorrelationID string `json:"correlation_id"`
 }
 
 type MemberPayload struct {
-	Action   Action `json:"action"`
-	GuildID  string `json:"guildId"`
-	MemberID string `json:"memberId"`
-	RoleID   string `json:"roleId"`
+	Action        Action `json:"action"`
+	GuildID       string `json:"guildId"`
+	MemberID      string `json:"memberId"`
+	RoleID        string `json:"roleId"`
+	CorrelationID string `json:"correlation_id"`
 }
 
 // Filter is the filter data structure

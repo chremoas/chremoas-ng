@@ -37,66 +37,73 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 	defer sp.Info("Completed roles message handling")
 
 	for d := range deliveries {
-		if len(d.Body) == 0 {
-			sp.Error("Message has zero length body", zap.Any("delivery", d))
+		func() {
+			if len(d.Body) == 0 {
+				sp.Error("Message has zero length body", zap.Any("delivery", d))
 
-			err := d.Reject(false)
+				err := d.Reject(false)
+				if err != nil {
+					sp.Error("Error ACKing message", zap.Error(err))
+				}
+
+				return
+			}
+
+			var body payloads.RolePayload
+			err := json.Unmarshal(d.Body, &body)
+			if err != nil {
+				sp.Error("error unmarshalling payload", zap.Error(err))
+
+				err = d.Reject(false)
+				if err != nil {
+					sp.Error("Error ACKing message", zap.Error(err))
+				}
+
+				return
+			}
+
+			ctx, sp := sl.OpenCorrelatedSpan(ctx, body.CorrelationID)
+			defer sp.Close()
+
+			if common.IgnoreRole(body.Role.Name) {
+				sp.Info("Ignoring request for role", zap.String("role", body.Role.Name))
+
+				err = d.Reject(false)
+				if err != nil {
+					sp.Error("Error ACKing message", zap.Error(err))
+				}
+
+				return
+			}
+
+			sp.Debug("Handling message", zap.Any("payload", body))
+
+			switch body.Action {
+			case payloads.Upsert:
+				err = r.upsert(ctx, body)
+			case payloads.Delete:
+				err = r.delete(ctx, body)
+			default:
+				sp.Error("Unknown action", zap.Any("action", body.Action))
+			}
+
+			if err != nil {
+				// we want to retry the message
+				err = d.Reject(true)
+				if err != nil {
+					sp.Error("Error NACKing message", zap.Error(err))
+				}
+
+				return
+			}
+
+			err = d.Ack(false)
 			if err != nil {
 				sp.Error("Error ACKing message", zap.Error(err))
 			}
 
-			continue
-		}
-
-		var body payloads.RolePayload
-		err := json.Unmarshal(d.Body, &body)
-		if err != nil {
-			sp.Error("error unmarshalling payload", zap.Error(err))
-
-			err = d.Reject(false)
-			if err != nil {
-				sp.Error("Error ACKing message", zap.Error(err))
-			}
-
-			continue
-		}
-
-		if common.IgnoreRole(body.Role.Name) {
-			sp.Info("Ignoring request for role", zap.String("role", body.Role.Name))
-
-			err = d.Reject(false)
-			if err != nil {
-				sp.Error("Error ACKing message", zap.Error(err))
-			}
-
-			continue
-		}
-
-		sp.Debug("Handling message", zap.Any("payload", body))
-
-		switch body.Action {
-		case payloads.Upsert:
-			err = r.upsert(ctx, body)
-		case payloads.Delete:
-			err = r.delete(ctx, body)
-		default:
-			sp.Error("Unknown action", zap.Any("action", body.Action))
-		}
-
-		if err != nil {
-			// we want to retry the message
-			err = d.Reject(true)
-			if err != nil {
-				sp.Error("Error NACKing message", zap.Error(err))
-			}
-
-			continue
-		}
-
-		err = d.Ack(false)
-		if err != nil {
-			sp.Error("Error ACKing message", zap.Error(err))
-		}
+			return
+		}()
 	}
 
 	sp.Info("roles/HandleMessage: deliveries channel closed")
