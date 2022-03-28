@@ -70,8 +70,8 @@ func (aep *authEsiPoller) updateAlliances(ctx context.Context) (int, int, error)
 	return count, errorCount, nil
 }
 
-func (aep *authEsiPoller) updateAlliance(ctx context.Context, alliance auth.Alliance) error {
-	ctx, sp := sl.OpenSpan(ctx)
+func (aep *authEsiPoller) updateAlliance(_ context.Context, alliance auth.Alliance) error {
+	ctx, sp := sl.OpenSpan(context.Background())
 	defer sp.Close()
 
 	sp.With(zap.String("sub-component", "alliance"))
