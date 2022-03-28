@@ -284,6 +284,7 @@ func (aep authEsiPoller) queueUpdate(ctx context.Context, role payloads.Role, ac
 		zap.String("name", role.Name),
 		zap.String("id", role.ID),
 		zap.Int64("chat_id", role.ChatID),
+		zap.Any("payload", payload),
 	)
 	err = aep.dependencies.RolesProducer.Publish(ctx, b)
 	if err != nil {

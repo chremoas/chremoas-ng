@@ -56,6 +56,7 @@ func queueUpdate(ctx context.Context, role payloads.Role, action payloads.Action
 		zap.String("name", role.Name),
 		zap.String("id", role.ID),
 		zap.Int64("chat_id", role.ChatID),
+		zap.Any("payload", payload),
 	)
 	err = deps.RolesProducer.Publish(ctx, b)
 	if err != nil {
