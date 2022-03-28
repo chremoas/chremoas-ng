@@ -34,7 +34,12 @@ func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSen
 	query := deps.DB.Select("name", "description").
 		From("filters")
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
@@ -94,9 +99,14 @@ func Add(ctx context.Context, name, description string, deps common.Dependencies
 		Values(name, description).
 		Suffix("RETURNING \"id\"")
 
-	common.LogSQL(sp, insert)
+	sqlStr, args, err := insert.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
-	err := insert.Scan(&id)
+	err = insert.Scan(&id)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -134,7 +144,12 @@ func Delete(ctx context.Context, name string, deps common.Dependencies) ([]*disc
 		Where(sq.Eq{"name": name}).
 		Suffix("RETURNING \"id\"")
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
@@ -179,7 +194,12 @@ func ListMembers(ctx context.Context, name string, deps common.Dependencies) []*
 		Join("filter_membership ON filters.id = filter_membership.filter").
 		Where(sq.Eq{"filters.name": name})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
@@ -255,7 +275,12 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 		From("filters").
 		Where(sq.Eq{"name": filter})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&filterID)
 	if err != nil {
@@ -273,7 +298,12 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 		Columns("filter", "user_id").
 		Values(filterID, userID)
 
-	common.LogSQL(sp, insert)
+	sqlStr, args, err = insert.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := insert.QueryContext(ctx)
 	if err != nil {
@@ -350,7 +380,12 @@ func RemoveMember(ctx context.Context, userID, filter string, deps common.Depend
 		From("filters").
 		Where(sq.Eq{"name": filter})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&filterID)
 	if err != nil {
@@ -364,7 +399,12 @@ func RemoveMember(ctx context.Context, userID, filter string, deps common.Depend
 		Where(sq.Eq{"user_id": userID}).
 		Suffix("RETURNING \"id\"")
 
-	common.LogSQL(sp, delQuery)
+	sqlStr, args, err = delQuery.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {

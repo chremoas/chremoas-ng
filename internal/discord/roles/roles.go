@@ -126,7 +126,12 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 		From("roles").
 		Where(sq.Eq{"name": role.Role.Name})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&sync)
 	if err != nil {
@@ -170,7 +175,12 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 			Set("chat_id", newRole.ID).
 			Where(sq.Eq{"name": role.Role.Name})
 
-		common.LogSQL(sp, update)
+		sqlStr, args, err = update.ToSql()
+		if err != nil {
+			sp.Error("error getting sql", zap.Error(err))
+		} else {
+			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		}
 
 		_, err = update.QueryContext(ctx)
 		if err != nil {

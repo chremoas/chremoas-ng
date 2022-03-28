@@ -34,7 +34,12 @@ func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error
 	query := aep.dependencies.DB.Select("id", "name", "corporation_id", "token").
 		From("characters")
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
@@ -104,7 +109,12 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 			From("corporations").
 			Where(sq.Eq{"id": character.CorporationID})
 
-		common.LogSQL(sp, query)
+		sqlStr, args, err := query.ToSql()
+		if err != nil {
+			sp.Error("error getting sql", zap.Error(err))
+		} else {
+			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		}
 
 		err = query.Scan(&oldCorp, &oldAllianceID)
 		if err != nil {
@@ -128,7 +138,12 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 			From("corporations").
 			Where(sq.Eq{"id": response.CorporationId})
 
-		common.LogSQL(sp, query)
+		sqlStr, args, err = query.ToSql()
+		if err != nil {
+			sp.Error("error getting sql", zap.Error(err))
+		} else {
+			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		}
 
 		err = query.Scan(&newCorp, &newAllianceID)
 		if err != nil {
@@ -144,7 +159,12 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 			From("user_character_map").
 			Where(sq.Eq{"character_id": character.ID})
 
-		common.LogSQL(sp, query)
+		sqlStr, args, err = query.ToSql()
+		if err != nil {
+			sp.Error("error getting sql", zap.Error(err))
+		} else {
+			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		}
 
 		err = query.Scan(&discordID)
 		if err != nil {
@@ -169,7 +189,12 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 				From("alliances").
 				Where(sq.Eq{"id": oldAllianceID})
 
-			common.LogSQL(sp, query)
+			sqlStr, args, err = query.ToSql()
+			if err != nil {
+				sp.Error("error getting sql", zap.Error(err))
+			} else {
+				sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+			}
 
 			err = query.Scan(&oldAlliance)
 			if err != nil {
@@ -182,7 +207,12 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 				From("alliances").
 				Where(sq.Eq{"id": newAllianceID})
 
-			common.LogSQL(sp, query)
+			sqlStr, args, err = query.ToSql()
+			if err != nil {
+				sp.Error("error getting sql", zap.Error(err))
+			} else {
+				sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+			}
 
 			err = query.Scan(&newAlliance)
 			if err != nil {
@@ -204,7 +234,12 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 		From("user_character_map").
 		Where(sq.Eq{"character_id": character.ID})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&chatID)
 	if err != nil {
@@ -264,7 +299,12 @@ func (aep *authEsiPoller) upsertCharacter(ctx context.Context, characterID, corp
 			Values(characterID, name, token, corporationID).
 			Suffix("ON CONFLICT (id) DO UPDATE SET name=?, token=?, corporation_id=?", name, token, corporationID)
 
-		common.LogSQL(sp, insert)
+		sqlStr, args, err := insert.ToSql()
+		if err != nil {
+			sp.Error("error getting sql", zap.Error(err))
+		} else {
+			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		}
 
 		rows, err = insert.QueryContext(ctx)
 		if err != nil {
@@ -278,7 +318,12 @@ func (aep *authEsiPoller) upsertCharacter(ctx context.Context, characterID, corp
 			Values(characterID, name, corporationID).
 			Suffix("ON CONFLICT (id) DO UPDATE SET name=?, corporation_id=?", name, corporationID)
 
-		common.LogSQL(sp, insert)
+		sqlStr, args, err := insert.ToSql()
+		if err != nil {
+			sp.Error("error getting sql", zap.Error(err))
+		} else {
+			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		}
 
 		rows, err = insert.QueryContext(ctx)
 		if err != nil {

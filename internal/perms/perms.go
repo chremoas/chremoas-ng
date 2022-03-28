@@ -31,7 +31,12 @@ func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSen
 	query := deps.DB.Select("name", "description").
 		From("permissions")
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
@@ -87,7 +92,12 @@ func Add(ctx context.Context, name, description, author string, deps common.Depe
 		Columns("name", "description").
 		Values(name, description)
 
-	common.LogSQL(sp, insert)
+	sqlStr, args, err := insert.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := insert.QueryContext(ctx)
 	if err != nil {
@@ -127,7 +137,12 @@ func Delete(ctx context.Context, name, author string, deps common.Dependencies) 
 	query := deps.DB.Delete("permissions").
 		Where(sq.Eq{"name": name})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
@@ -163,7 +178,12 @@ func ListMembers(ctx context.Context, name string, deps common.Dependencies) []*
 		Join("permissions ON permission_membership.permission = permissions.id").
 		Where(sq.Eq{"permissions.name": name})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
@@ -227,9 +247,14 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 		From("permissions").
 		Where(sq.Eq{"name": permission})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
-	err := query.Scan(&permissionID)
+	err = query.Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permissionID: %s", err)
 		sp.Error("error scanning permissionID", zap.Error(err))
@@ -240,7 +265,12 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 		Columns("permission", "user_id").
 		Values(permissionID, userID)
 
-	common.LogSQL(sp, insert)
+	sqlStr, args, err = insert.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := insert.QueryContext(ctx)
 	if err != nil {
@@ -289,9 +319,14 @@ func RemoveMember(ctx context.Context, user, permission, author string, deps com
 		From("permissions").
 		Where(sq.Eq{"name": permission})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
-	err := query.Scan(&permissionID)
+	err = query.Scan(&permissionID)
 	if err != nil {
 		newErr := fmt.Errorf("error scanning permisionID: %s", err)
 		sp.Error("error scanning permissionID", zap.Error(err))
@@ -302,7 +337,12 @@ func RemoveMember(ctx context.Context, user, permission, author string, deps com
 		Where(sq.Eq{"permission": permissionID}).
 		Where(sq.Eq{"user_id": userID})
 
-	common.LogSQL(sp, delQuery)
+	sqlStr, args, err = delQuery.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {
@@ -344,7 +384,12 @@ func UserPerms(ctx context.Context, user string, deps common.Dependencies) []*di
 		Join("permission_membership ON permission_membership.permission = permissions.id").
 		Where(sq.Eq{"permission_membership.user_id": userID})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
@@ -393,9 +438,14 @@ func CanPerform(ctx context.Context, authorID, permission string, deps common.De
 		From("permissions").
 		Where(sq.Eq{"name": permission})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
-	err := query.Scan(&permissionID)
+	err = query.Scan(&permissionID)
 	if err != nil {
 		sp.Error("error scanning permissionID", zap.Error(err))
 		return false
@@ -405,7 +455,12 @@ func CanPerform(ctx context.Context, authorID, permission string, deps common.De
 		Where(sq.Eq{"user_id": authorID}).
 		Where(sq.Eq{"permission": permissionID})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err = query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&count)
 	if err != nil {

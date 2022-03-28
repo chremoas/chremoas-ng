@@ -111,7 +111,12 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 					From("roles").
 					Where(sq.Eq{"chat_id": body.RoleID})
 
-				common.LogSQL(sp, query)
+				sqlStr, args, err := query.ToSql()
+				if err != nil {
+					sp.Error("error getting sql", zap.Error(err))
+				} else {
+					sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+				}
 
 				err = query.Scan(&sync)
 				if err != nil {

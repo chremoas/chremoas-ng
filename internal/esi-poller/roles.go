@@ -57,7 +57,12 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 		From("roles").
 		Where(sq.Eq{"sync": "true"})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
@@ -96,7 +101,12 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 					Set("chat_id", val.ID).
 					Where(sq.Eq{"name": role.Name})
 
-				common.LogSQL(sp, update)
+				sqlStr, args, err = update.ToSql()
+				if err != nil {
+					sp.Error("error getting sql", zap.Error(err))
+				} else {
+					sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+				}
 
 				_, err = update.QueryContext(ctx)
 				if err != nil {
@@ -196,7 +206,12 @@ func interDiff(ctx context.Context, chremoasMap, discordMap map[string]payloads.
 					Set("chat_id", discordMap[r].ID).
 					Where(sq.Eq{"name": r})
 
-				common.LogSQL(sp, update)
+				sqlStr, args, err := update.ToSql()
+				if err != nil {
+					sp.Error("error getting sql", zap.Error(err))
+				} else {
+					sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+				}
 
 				rows, err := update.QueryContext(ctx)
 				if err != nil {

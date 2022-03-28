@@ -87,7 +87,12 @@ func GetRoleMembers(ctx context.Context, sig bool, name string, deps common.Depe
 		Where(sq.Eq{"sig": sig}).
 		Where(sq.Eq{"role_nick": name})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
@@ -116,7 +121,12 @@ func GetRoleMembers(ctx context.Context, sig bool, name string, deps common.Depe
 		GroupBy("user_id").
 		Having("count(*) = ?", len(filterList))
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err = query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err = query.QueryContext(ctx)
 	if err != nil {
@@ -164,7 +174,12 @@ func GetRoles(ctx context.Context, sig bool, shortName *string, deps common.Depe
 		q = q.Where(sq.Eq{"role_nick": shortName})
 	}
 
-	common.LogSQL(sp, q)
+	sqlStr, args, err := q.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := q.QueryContext(ctx)
 	if err != nil {

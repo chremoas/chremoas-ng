@@ -39,7 +39,12 @@ func GetUserRoles(ctx context.Context, sig bool, userID string, deps Dependencie
 		From("").
 		Suffix("getMemberRoles(?, ?)", userID, strconv.FormatBool(sig))
 
-	LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {

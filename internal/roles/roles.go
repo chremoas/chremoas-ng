@@ -302,9 +302,14 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 		Values(sig, joinable, name, ticker, chatType, sig).
 		Suffix("RETURNING \"id\"")
 
-	common.LogSQL(sp, insert)
+	sqlStr, args, err := insert.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
-	err := insert.Scan(&roleID)
+	err = insert.Scan(&roleID)
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
@@ -338,7 +343,12 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 		Columns("role", "filter").
 		Values(roleID, filterID)
 
-	common.LogSQL(sp, insert)
+	sqlStr, args, err = insert.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := insert.QueryContext(ctx)
 	if err != nil {
@@ -394,9 +404,14 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
-	err := query.Scan(&chatID)
+	err = query.Scan(&chatID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
@@ -410,7 +425,12 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig})
 
-	common.LogSQL(sp, delQuery)
+	sqlStr, args, err = delQuery.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {
@@ -440,7 +460,12 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 	delQuery = deps.DB.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID})
 
-	common.LogSQL(sp, delQuery)
+	sqlStr, args, err = delQuery.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err = delQuery.QueryContext(ctx)
 	if err != nil {
@@ -458,7 +483,12 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 	delQuery = deps.DB.Delete("role_filters").
 		Where(sq.Eq{"role": roleID})
 
-	common.LogSQL(sp, delQuery)
+	sqlStr, args, err = delQuery.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err = delQuery.QueryContext(ctx)
 	if err != nil {
@@ -532,9 +562,14 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
-	err := query.Scan(&name, &sync)
+	err = query.Scan(&name, &sync)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
@@ -563,7 +598,12 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 		updateSQL = updateSQL.Set(key, v)
 	}
 
-	common.LogSQL(sp, updateSQL)
+	sqlStr, args, err = updateSQL.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	_, err = updateSQL.Where(sq.Eq{"name": name}).
 		Where(sq.Eq{"sig": sig}).
@@ -599,7 +639,12 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 			Set("ID", dRole.ID).
 			Where(sq.Eq{"name": role.Name})
 
-		common.LogSQL(sp, update)
+		sqlStr, args, err = update.ToSql()
+		if err != nil {
+			sp.Error("error getting sql", zap.Error(err))
+		} else {
+			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		}
 
 		rows, err := query.QueryContext(ctx)
 		if err != nil {
@@ -647,7 +692,12 @@ func GetChremoasRole(ctx context.Context, sig bool, ticker string, deps common.D
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(
 		&role.ID,
@@ -706,7 +756,12 @@ func ListFilters(ctx context.Context, sig bool, ticker string, deps common.Depen
 		Where(sq.Eq{"roles.role_nick": ticker}).
 		Where(sq.Eq{"roles.sig": sig})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
@@ -769,7 +824,12 @@ func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common
 		From("filters").
 		Where(sq.Eq{"name": filter})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&filterID)
 	if err != nil {
@@ -785,7 +845,12 @@ func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err = query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&roleID)
 	if err != nil {
@@ -801,7 +866,12 @@ func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common
 		Columns("role", "filter").
 		Values(roleID, filterID)
 
-	common.LogSQL(sp, insert)
+	sqlStr, args, err = insert.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := insert.QueryContext(ctx)
 	if err != nil {
@@ -847,7 +917,12 @@ func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps com
 		From("filters").
 		Where(sq.Eq{"name": filter})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&filterID)
 	if err != nil {
@@ -863,7 +938,12 @@ func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps com
 		Where(sq.Eq{"role_nick": ticker}).
 		Where(sq.Eq{"sig": sig})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err = query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&roleID)
 	if err != nil {
@@ -879,7 +959,12 @@ func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps com
 		Where(sq.Eq{"role": roleID}).
 		Where(sq.Eq{"filter": filterID})
 
-	common.LogSQL(sp, delQuery)
+	sqlStr, args, err = delQuery.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {

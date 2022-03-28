@@ -43,7 +43,12 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 			From("alliances").
 			Where(sq.Eq{"id": request.Alliance.ID})
 
-		common.LogSQL(sp, query)
+		sqlStr, args, err := query.ToSql()
+		if err != nil {
+			sp.Error("error getting sql", zap.Error(err))
+		} else {
+			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		}
 
 		err = query.Scan(&count)
 		if err != nil {
@@ -61,7 +66,12 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 				Columns("id", "name", "ticker").
 				Values(request.Alliance.ID, request.Alliance.Name, request.Alliance.Ticker)
 
-			common.LogSQL(sp, insert)
+			sqlStr, args, err = insert.ToSql()
+			if err != nil {
+				sp.Error("error getting sql", zap.Error(err))
+			} else {
+				sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+			}
 
 			_, err = insert.QueryContext(ctx)
 			if err != nil {
@@ -88,7 +98,12 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 		From("corporations").
 		Where(sq.Eq{"id": request.Corporation.ID})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&count)
 	if err != nil {
@@ -107,7 +122,12 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 				Columns("id", "name", "ticker").
 				Values(request.Corporation.ID, request.Corporation.Name, request.Corporation.Ticker)
 
-			common.LogSQL(sp, insert)
+			sqlStr, args, err = insert.ToSql()
+			if err != nil {
+				sp.Error("error getting sql", zap.Error(err))
+			} else {
+				sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+			}
 
 			_, err = insert.QueryContext(ctx)
 		} else {
@@ -115,7 +135,12 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 				Columns("id", "name", "ticker", "alliance_id").
 				Values(request.Corporation.ID, request.Corporation.Name, request.Corporation.Ticker, request.Alliance.ID)
 
-			common.LogSQL(sp, insert)
+			sqlStr, args, err = insert.ToSql()
+			if err != nil {
+				sp.Error("error getting sql", zap.Error(err))
+			} else {
+				sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+			}
 
 			_, err = insert.QueryContext(ctx)
 		}
@@ -142,7 +167,12 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 		From("characters").
 		Where(sq.Eq{"id": request.Character.ID})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err = query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&count)
 	if err != nil {
@@ -160,7 +190,12 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 			Columns("id", "name", "token", "corporation_id").
 			Values(request.Character.ID, request.Character.Name, request.Token, request.Corporation.ID)
 
-		common.LogSQL(sp, insert)
+		sqlStr, args, err = insert.ToSql()
+		if err != nil {
+			sp.Error("error getting sql", zap.Error(err))
+		} else {
+			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		}
 
 		_, err = insert.QueryContext(ctx)
 		if err != nil {
@@ -178,7 +213,12 @@ func Create(ctx context.Context, request *CreateRequest, deps common.Dependencie
 		Columns("character_id", "code").
 		Values(request.Character.ID, authCode)
 
-	common.LogSQL(sp, insert)
+	sqlStr, args, err = insert.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	_, err = insert.QueryContext(ctx)
 	if err != nil {
@@ -211,7 +251,12 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 		From("authentication_codes").
 		Where(sq.Eq{"code": authCode})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&characterID, &used)
 	if err != nil {
@@ -232,7 +277,12 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 		From("characters").
 		Where(sq.Eq{"id": characterID})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err = query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&name, &corporationID)
 	if err != nil {
@@ -243,7 +293,12 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 	update := deps.DB.Update("authentication_codes").
 		Set("used", true)
 
-	common.LogSQL(sp, update)
+	sqlStr, args, err = update.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	_, err = update.QueryContext(ctx)
 	if err != nil {
@@ -254,7 +309,12 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 	insert := deps.DB.Insert("user_character_map").
 		Values(sender, characterID)
 
-	common.LogSQL(sp, insert)
+	sqlStr, args, err = insert.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	_, err = insert.QueryContext(ctx)
 	if err != nil {
@@ -270,7 +330,12 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 		From("corporations").
 		Where(sq.Eq{"id": corporationID})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err = query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&corpTicker, &allianceID)
 	if err != nil {
@@ -287,7 +352,12 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 			From("alliances").
 			Where(sq.Eq{"id": allianceID})
 
-		common.LogSQL(sp, query)
+		sqlStr, args, err = query.ToSql()
+		if err != nil {
+			sp.Error("error getting sql", zap.Error(err))
+		} else {
+			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		}
 
 		err = query.Scan(&allianceTicker)
 		if err != nil {

@@ -7,7 +7,6 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/auth"
-	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/roles"
 	"go.uber.org/zap"
 )
@@ -31,7 +30,12 @@ func (aep *authEsiPoller) updateAlliances(ctx context.Context) (int, int, error)
 	query := aep.dependencies.DB.Select("id", "name", "ticker").
 		From("alliances")
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
@@ -102,7 +106,12 @@ func (aep *authEsiPoller) updateAlliance(ctx context.Context, alliance auth.Alli
 		Where(sq.Eq{"role_nick": response.Ticker}).
 		Where(sq.Eq{"sig": roles.Role})
 
-	common.LogSQL(sp, query)
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	err = query.Scan(&count)
 	if err != nil {
@@ -144,7 +153,12 @@ func (aep *authEsiPoller) upsertAlliance(ctx context.Context, allianceID int32, 
 		Values(allianceID, name, ticker).
 		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?", name, ticker)
 
-	common.LogSQL(sp, insert)
+	sqlStr, args, err := insert.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+	} else {
+		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+	}
 
 	rows, err := insert.QueryContext(ctx)
 	if err != nil {
