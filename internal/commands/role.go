@@ -30,13 +30,13 @@ const (
 
 // Role will be called (due to AddHandler above) every time a new
 // message is created on any channel that the autenticated bot has access to.
-func (c Command) Role(s *discordgo.Session, m *discordgo.Message, ctx *mux.Context) {
-	spCtx, sp := sl.OpenSpan(c.ctx)
+func (c Command) Role(s *discordgo.Session, m *discordgo.Message, _ *mux.Context) {
+	ctx, sp := sl.OpenCorrelatedSpan(c.ctx, sl.NewID())
 	defer sp.Close()
 
 	sp.With(zap.String("command", "role"))
 
-	for _, message := range c.doRole(spCtx, m) {
+	for _, message := range c.doRole(ctx, m) {
 		_, err := s.ChannelMessageSendComplex(m.ChannelID, message)
 
 		if err != nil {
