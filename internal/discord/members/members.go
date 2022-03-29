@@ -25,7 +25,7 @@ func New(ctx context.Context, deps common.Dependencies) *Member {
 }
 
 func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
-	_, sp := sl.OpenSpan(m.ctx)
+	ctx, sp := sl.OpenSpan(m.ctx)
 	defer sp.Close()
 
 	sp.With(zap.String("queue", "members"))
@@ -62,6 +62,9 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 
 				return
 			}
+
+			_, sp = sl.OpenCorrelatedSpan(ctx, body.CorrelationID)
+			defer sp.Close()
 
 			sp.Debug("Handling message", zap.Any("payload", body))
 

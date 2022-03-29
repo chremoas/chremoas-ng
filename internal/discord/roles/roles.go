@@ -65,6 +65,8 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 			ctx, sp := sl.OpenCorrelatedSpan(ctx, body.CorrelationID)
 			defer sp.Close()
 
+			sp.Debug("Handling message", zap.Any("payload", body))
+
 			if common.IgnoreRole(body.Role.Name) {
 				sp.Info("Ignoring request for role", zap.String("role", body.Role.Name))
 
