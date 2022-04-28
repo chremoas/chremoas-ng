@@ -44,7 +44,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 
 				err = d.Reject(false)
 				if err != nil {
-					sp.Error("Error ACKing message", zap.Error(err))
+					sp.Error("Error rejecting message", zap.Error(err))
 				}
 
 				return
@@ -57,7 +57,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 
 				err = d.Reject(false)
 				if err != nil {
-					sp.Error("Error ACKing message", zap.Error(err))
+					sp.Error("Error rejecting message", zap.Error(err))
 				}
 
 				return
@@ -66,7 +66,9 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 			_, sp = sl.OpenCorrelatedSpan(ctx, body.CorrelationID)
 			defer sp.Close()
 
-			sp.Debug("Handling message", zap.Any("payload", body))
+			sp.With(zap.Any("payload", body))
+
+			sp.Debug("Handling message")
 
 			m.dependencies.Session.Lock()
 			defer func() {
@@ -76,7 +78,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 			if body.RoleID == "0" {
 				err = d.Reject(false)
 				if err != nil {
-					sp.Error("Error NACKing invalid (RoleID==0) Role Add message: %s", zap.Error(err))
+					sp.Error("Error rejecting invalid (RoleID==0) Role Add message: %s", zap.Error(err))
 				}
 
 				return
@@ -97,11 +99,12 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				}
 			}
 
+			sp.With(zap.String("role_name", roleName))
+
 			if common.IgnoreRole(roleName) {
 				err = d.Reject(false)
 				if err != nil {
-					sp.Error("Error NACKing invalid (ignored role) Role Add message",
-						zap.Error(err), zap.String("role", roleName))
+					sp.Error("Error rejecting invalid (ignored role) Role Add message", zap.Error(err))
 				}
 
 				return
@@ -117,22 +120,27 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				sqlStr, args, err := query.ToSql()
 				if err != nil {
 					sp.Error("error getting sql", zap.Error(err))
+					return
 				} else {
 					sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 				}
 
 				err = query.Scan(&sync)
 				if err != nil {
-					sp.Error("Error getting role sync status",
-						zap.Error(err), zap.String("role", body.RoleID))
+					sp.Error(
+						"Error getting role sync status",
+						zap.Error(err),
+						zap.String("role", body.RoleID),
+					)
 					return
 				}
+
+				sp.With(zap.Bool("sync", sync))
 
 				if !sync {
 					err = d.Reject(false)
 					if err != nil {
-						sp.Error("Error NACKing role not set to sync",
-							zap.Error(err), zap.String("role", body.RoleID))
+						sp.Error("Error rejecting role not set to sync", zap.Error(err))
 					}
 
 					return
@@ -140,14 +148,11 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 
 				err = m.dependencies.Session.GuildMemberRoleAdd(body.GuildID, body.MemberID, body.RoleID)
 				if err != nil {
-					sp.Error("Error adding role to user",
-						zap.String("role", body.RoleID),
-						zap.String("member id", body.MemberID),
-						zap.Error(err))
+					sp.Error("Error adding role to user", zap.Error(err))
 
 					err = d.Reject(true)
 					if err != nil {
-						sp.Error("Error NACKing Role Add message: %s", zap.Error(err))
+						sp.Error("Error rejecting Role Add message: %s", zap.Error(err))
 					}
 
 					return
@@ -156,21 +161,18 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 			case payloads.Delete:
 				err = m.dependencies.Session.GuildMemberRoleRemove(body.GuildID, body.MemberID, body.RoleID)
 				if err != nil {
-					sp.Error("Error removing role from user",
-						zap.String("role", body.RoleID),
-						zap.String("member id", body.MemberID),
-						zap.Error(err))
+					sp.Error("Error removing role from user", zap.Error(err))
 
 					err = d.Reject(true)
 					if err != nil {
-						sp.Error("Error NACKing Role Remove message", zap.Error(err))
+						sp.Error("Error rejecting Role Remove message", zap.Error(err))
 					}
 
 					return
 				}
 
 			default:
-				sp.Error("Unknown action", zap.Any("action", body.Action))
+				sp.Error("Unknown action")
 			}
 
 			err = d.Ack(false)

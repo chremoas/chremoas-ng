@@ -22,6 +22,11 @@ func GetUserRoles(ctx context.Context, sig bool, userID string, deps Dependencie
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("user_id", userID),
+	)
+
 	var roles []payloads.Role
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -30,6 +35,7 @@ func GetUserRoles(ctx context.Context, sig bool, userID string, deps Dependencie
 	_, err := strconv.Atoi(userID)
 	if err != nil {
 		if !IsDiscordUser(userID) {
+			sp.Warn("second argument must be a discord user")
 			return nil, fmt.Errorf("second argument must be a discord user")
 		}
 		userID = ExtractUserId(userID)
@@ -42,13 +48,14 @@ func GetUserRoles(ctx context.Context, sig bool, userID string, deps Dependencie
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return nil, err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
-		sp.Error("error getting role membership", zap.Error(err), zap.String("user id", userID))
+		sp.Error("error getting role membership", zap.Error(err))
 		return nil, fmt.Errorf("error getting user %ss (%s): %s", roleType[sig], userID, err)
 	}
 
@@ -67,9 +74,8 @@ func GetUserRoles(ctx context.Context, sig bool, userID string, deps Dependencie
 			&role.ChatID,
 		)
 		if err != nil {
-			newErr := fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
-			sp.Error("error scanning row", zap.Error(newErr))
-			return nil, newErr
+			sp.Error("error scanning row", zap.Error(err))
+			return nil, fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
 		}
 
 		roles = append(roles, role)
@@ -82,13 +88,17 @@ func GetMembership(ctx context.Context, userID string, deps Dependencies) (*sets
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(zap.String("user_id", userID))
+
 	sigs, err := GetUserRoles(ctx, Sig, userID, deps)
 	if err != nil {
+		sp.Error("Error getting user roles", zap.Error(err))
 		return nil, err
 	}
 
 	roles, err := GetUserRoles(ctx, Role, userID, deps)
 	if err != nil {
+		sp.Error("Error getting user roles", zap.Error(err))
 		return nil, err
 	}
 

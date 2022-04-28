@@ -85,7 +85,7 @@ func main() {
 
 	sp.Info("Starting up", zap.String("loglevel", zl.CapitalString()))
 
-	_, err = config.New(ctx, viper.GetString("configFile"))
+	err = config.New(ctx, viper.GetString("configFile"))
 	if err != nil {
 		sp.Error("Error loading config", zap.Error(err))
 		return

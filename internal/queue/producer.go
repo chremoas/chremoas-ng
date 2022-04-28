@@ -2,7 +2,6 @@ package queue
 
 import (
 	"context"
-	"fmt"
 
 	sl "github.com/bhechinger/spiffylogger"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -20,6 +19,13 @@ func NewPublisher(ctx context.Context, amqpURI, exchange, exchangeType, routingK
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("amqp_uri", sanitizeURI(amqpURI)),
+		zap.String("exchange", exchange),
+		zap.String("exchange_type", exchangeType),
+		zap.String("routing_key", routingKey),
+	)
+
 	var err error
 
 	p := &Producer{
@@ -29,20 +35,21 @@ func NewPublisher(ctx context.Context, amqpURI, exchange, exchangeType, routingK
 		routingKey: routingKey,
 	}
 
-	sp.Info("dialing queue", zap.String("queue URI", sanitizeURI(amqpURI)))
+	sp.Info("dialing queue")
 	p.conn, err = amqp.Dial(amqpURI)
 	if err != nil {
-		return nil, fmt.Errorf("Dial: %s", err)
+		sp.Error("error dialing queue", zap.Error(err))
+		return nil, err
 	}
 
 	sp.Info("got Connection, getting Channel")
 	p.channel, err = p.conn.Channel()
 	if err != nil {
-		return nil, fmt.Errorf("Channel: %s", err)
+		sp.Error("error getting channel", zap.Error(err))
+		return nil, err
 	}
 
-	sp.Info("got Channel, declaring Exchange",
-		zap.String("exchange type", exchangeType), zap.String("exchange", exchange))
+	sp.Info("got Channel, declaring Exchange")
 	if err := p.channel.ExchangeDeclare(
 		p.exchange,   // name
 		exchangeType, // type
@@ -52,7 +59,8 @@ func NewPublisher(ctx context.Context, amqpURI, exchange, exchangeType, routingK
 		false,        // noWait
 		nil,          // arguments
 	); err != nil {
-		return nil, fmt.Errorf("Exchange Declare: %s", err)
+		sp.Error("error declaring exchange", zap.Error(err))
+		return nil, err
 	}
 
 	sp.Info("declared Exchange")
@@ -63,6 +71,12 @@ func NewPublisher(ctx context.Context, amqpURI, exchange, exchangeType, routingK
 func (p Producer) Publish(ctx context.Context, body []byte) error {
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(
+		zap.ByteString("payload", body),
+		zap.String("exchange", p.exchange),
+		zap.String("routing_key", p.routingKey),
+	)
 
 	var err error
 
@@ -81,8 +95,8 @@ func (p Producer) Publish(ctx context.Context, body []byte) error {
 			// a bunch of application/implementation-specific fields
 		},
 	); err != nil {
-		sp.Error("exchange publish", zap.Error(err))
-		return fmt.Errorf("exchange publish: %w", err)
+		sp.Error("error publishing", zap.Error(err))
+		return err
 	}
 
 	return nil

@@ -13,13 +13,14 @@ import (
 	_ "github.com/spf13/viper/remote"
 )
 
-func New(ctx context.Context, filename string) (*Configuration, error) {
+func New(ctx context.Context, filename string) error {
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(zap.String("filename", filename))
+
 	var fileRead, remoteRead bool
 	var fileReadErr, remoteReadErr error
-	var c Configuration
 
 	configNameSpace := os.Getenv("CONFIG_NAMESPACE")
 	if configNameSpace == "" {
@@ -31,6 +32,8 @@ func New(ctx context.Context, filename string) (*Configuration, error) {
 		configType = "yaml"
 	}
 
+	sp.With(zap.String("config_type", configType))
+
 	viper.SetConfigFile(filename)
 
 	if fileReadErr = viper.ReadInConfig(); fileReadErr == nil {
@@ -40,41 +43,35 @@ func New(ctx context.Context, filename string) (*Configuration, error) {
 
 	if err := viper.BindEnv("CONSUL"); err == nil {
 		consul := viper.Get("consul")
+		sp.With(zap.Any("consul", consul))
 
 		if consul != nil {
 			// TODO: This is very rigid. Let's find a better way.
 			configPath := fmt.Sprintf("/%s/config", configNameSpace)
-			sp.Info("Using config",
-				zap.String("configType", configType),
-				zap.String("configPath", configPath),
-				zap.Any("consul", consul),
-			)
+			sp.With(zap.String("config_path", configPath))
+			sp.Info("Using config")
 			err := viper.AddRemoteProvider("consul", consul.(string), configPath)
-			if err == nil {
+			if err != nil {
+				sp.Info(err.Error())
+			} else {
 				viper.SetConfigType(configType) // because there is no file extension in a stream of bytes, supported extensions are "json", "toml", "yaml", "yml", "properties", "props", "prop"
 
 				if remoteReadErr = viper.ReadRemoteConfig(); remoteReadErr == nil {
 					sp.Info("Successfully read remote config")
 					remoteRead = true
 				}
-			} else {
-				sp.Info(err.Error())
 			}
 		}
 	}
 
 	if !fileRead && !remoteRead {
-		return nil, fmt.Errorf("unable to read config:\n\tfile=%v\n\tremote=%v", fileReadErr, remoteReadErr)
+		sp.Error(
+			"unable to read config",
+			zap.NamedError("file_read_error", fileReadErr),
+			zap.NamedError("remote_read_error", remoteReadErr),
+		)
+		return fmt.Errorf("unable to read config:\n\tfile=%v\n\tremote=%v", fileReadErr, remoteReadErr)
 	}
 
-	if err := viper.Unmarshal(&c); err != nil {
-		return nil, fmt.Errorf("unable to decode into struct, %v", err)
-	}
-
-	// Let's set a default namespace because a lot of people don't care what it actually is
-	if c.Namespace == "" {
-		c.Namespace = "default.unset"
-	}
-
-	return &c, nil
+	return nil
 }

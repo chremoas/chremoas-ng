@@ -6,7 +6,6 @@ import (
 	"embed"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -109,9 +108,11 @@ func (web Web) readiness(w http.ResponseWriter, _ *http.Request) {
 	}{
 		Status: "OK",
 	}
+
 	err := json.NewEncoder(w).Encode(status)
 	if err != nil {
 		sp.Error("Error encoding status", zap.Error(err))
+		http.Error(w, "Error encoding status", http.StatusInternalServerError)
 	}
 }
 
@@ -122,6 +123,7 @@ func (web Web) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	err := web.templates.ExecuteTemplate(w, "index.html", nil)
 	if err != nil {
 		sp.Error("Error executing index", zap.Error(err))
+		http.Error(w, "Error executing index", http.StatusInternalServerError)
 	}
 }
 
@@ -140,6 +142,8 @@ func (web Web) handleEveLogin(w http.ResponseWriter, r *http.Request) {
 	_, err := rand.Read(b)
 	if err != nil {
 		sp.Error("Error generating random string", zap.Error(err))
+		http.Error(w, "Error generating random string", http.StatusInternalServerError)
+		return
 	}
 	state := base64.URLEncoding.EncodeToString(b)
 
@@ -147,6 +151,8 @@ func (web Web) handleEveLogin(w http.ResponseWriter, r *http.Request) {
 	err = sess.Set("state", state)
 	if err != nil {
 		sp.Error("Error setting state", zap.Error(err))
+		http.Error(w, "Error setting state", http.StatusInternalServerError)
+		return
 	}
 
 	// Build the authorize URL
@@ -163,7 +169,7 @@ func (web Web) handleEveCallback(w http.ResponseWriter, r *http.Request) {
 
 	sess, _ := globalSessions.SessionStart(w, r)
 	if sess == nil {
-		fmt.Print("No session, redirecting to /\n")
+		sp.Info("No session, redirecting to /")
 		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 		return
 	}
@@ -171,7 +177,8 @@ func (web Web) handleEveCallback(w http.ResponseWriter, r *http.Request) {
 	internalAuthCode, err := web.doAuth(w, r, sess)
 	if err != nil {
 		// TODO: Make another template for errors specifically for this endpoint
-		fmt.Printf("Received an error from doAuth: (%s)\n", err)
+		sp.Error("received an error from doAuth", zap.Error(err))
+		http.Error(w, "Unknown auth error", http.StatusInternalServerError)
 		return
 	}
 
@@ -185,6 +192,7 @@ func (web Web) handleEveCallback(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		sp.Error("Error executing auth template", zap.Error(err))
+		http.Error(w, "Error executing auth template", http.StatusInternalServerError)
 	}
 }
 
@@ -204,16 +212,16 @@ func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store
 	// Good blog post about it's usefulness, I feel educated:
 	// http://www.twobotechnologies.com/blog/2014/02/importance-of-state-in-oauth2.html
 	if state != stateValidate {
-		fmt.Printf("Invalid oauth state, expected '%s', got '%s'\n", stateValidate, state)
+		sp.Error("Invalid oauth state", zap.Any("expected_state", stateValidate), zap.String("actual_state", state))
 		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
-		return nil, errors.New(fmt.Sprintf("Invalid oauth state, expected '%s', got '%s'\n", stateValidate, state))
+		return nil, fmt.Errorf("invalid oauth state")
 	}
 
 	token, err := ssoauth.TokenExchange(code)
 	if err != nil {
-		fmt.Printf("Code exchange failed with '%s'\n", err)
+		sp.Error("Code exchange failed", zap.Error(err))
 		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
-		return nil, errors.New(fmt.Sprintf("Code exchange failed with '%s'\n", err))
+		return nil, err
 	}
 
 	tokenSource := ssoauth.TokenSource(token)
@@ -225,24 +233,28 @@ func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store
 
 	verifyReponse, err := ssoauth.Verify(tokenSource)
 	if err != nil {
-		fmt.Printf("Had some kind of error getting the verify response '%s'\n", err)
+		sp.Error("Error getting verify response", zap.Error(err))
+		return nil, err
 	}
 
 	character, _, err := api.ESI.CharacterApi.GetCharactersCharacterId(r.Context(), int32(verifyReponse.CharacterID), nil)
 	if err != nil {
-		fmt.Printf("Had some kind of error getting the character '%s'\n", err)
+		sp.Error("error getting character", zap.Error(err))
+		return nil, err
 	}
 
 	corporation, _, err := api.ESI.CorporationApi.GetCorporationsCorporationId(r.Context(), character.CorporationId, nil)
 	if err != nil {
-		fmt.Printf("Had some kind of error getting the corporation '%s'\n", err)
+		sp.Error("error getting corporation", zap.Error(err))
+		return nil, err
 	}
 
 	var alliance esi.GetAlliancesAllianceIdOk
 	if corporation.AllianceId != 0 {
 		alliance, _, err = api.ESI.AllianceApi.GetAlliancesAllianceId(r.Context(), corporation.AllianceId, nil)
 		if err != nil {
-			fmt.Printf("Had some kind of error getting the alliance '%s'\n", err)
+			sp.Error("error getting alliance", zap.Error(err))
+			return nil, err
 		}
 	}
 
@@ -275,7 +287,8 @@ func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store
 	authCode, err := auth.Create(ctx, request, web.dependencies)
 
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Had an issue authing internally: (%s)", err))
+		sp.Error("Had an issue authing internally", zap.Error(err))
+		return nil, err
 	}
 
 	return authCode, nil

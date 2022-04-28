@@ -43,7 +43,7 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 
 				err := d.Reject(false)
 				if err != nil {
-					sp.Error("Error ACKing message", zap.Error(err))
+					sp.Error("Error rejecting message", zap.Error(err))
 				}
 
 				return
@@ -56,7 +56,7 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 
 				err = d.Reject(false)
 				if err != nil {
-					sp.Error("Error ACKing message", zap.Error(err))
+					sp.Error("Error rejecting message", zap.Error(err))
 				}
 
 				return
@@ -65,20 +65,21 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 			ctx, sp := sl.OpenCorrelatedSpan(ctx, body.CorrelationID)
 			defer sp.Close()
 
-			sp.Debug("Handling message", zap.Any("payload", body))
+			sp.With(zap.Any("payload", body))
+			sp.Debug("Handling message")
 
 			if common.IgnoreRole(body.Role.Name) {
-				sp.Info("Ignoring request for role", zap.String("role", body.Role.Name))
+				sp.Info("Ignoring request for role")
 
 				err = d.Reject(false)
 				if err != nil {
-					sp.Error("Error ACKing message", zap.Error(err))
+					sp.Error("Error rejecting message", zap.Error(err))
 				}
 
 				return
 			}
 
-			sp.Debug("Handling message", zap.Any("payload", body))
+			sp.Debug("Handling message")
 
 			switch body.Action {
 			case payloads.Upsert:
@@ -86,14 +87,14 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 			case payloads.Delete:
 				err = r.delete(ctx, body)
 			default:
-				sp.Error("Unknown action", zap.Any("action", body.Action))
+				sp.Error("Unknown action")
 			}
 
 			if err != nil {
 				// we want to retry the message
 				err = d.Reject(true)
 				if err != nil {
-					sp.Error("Error NACKing message", zap.Error(err))
+					sp.Error("Error rejecting message", zap.Error(err))
 				}
 
 				return
@@ -117,10 +118,14 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(zap.Any("role", role))
+
 	sp.With(zap.String("queue", "role"))
 
-	var err error
-	var sync bool
+	var (
+		err  error
+		sync bool
+	)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -138,16 +143,18 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	err = query.Scan(&sync)
 	if err != nil {
-		sp.Error("Error getting role sync status",
-			zap.Error(err), zap.String("role", role.Role.Name))
+		sp.Error("Error getting role sync status", zap.Error(err))
 		return err
 	}
+
+	sp.With(zap.Bool("sync", sync))
 
 	// If this role isn't set to sync, ignore it.
 	if !sync {
@@ -158,15 +165,11 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 	if r.exists(ctx, role.Role.Name, role.GuildID) {
 		// Update an existing role
 		if role.GuildID == "" || role.Role.ID == "" || role.Role.Name == "" {
-			sp.Error("role.update() missing data",
-				zap.String("guild id", role.GuildID),
-				zap.String("role id", role.Role.ID),
-				zap.String("role", role.Role.Name))
+			sp.Error("role.update() missing data")
 			return nil
 		}
 
-		sp.Info("Updated role",
-			zap.String("name", role.Role.Name), zap.String("id", role.Role.ID))
+		sp.Info("Updated role")
 	} else {
 		// Create a new role
 		newRole, err := r.dependencies.Session.GuildRoleCreate(role.GuildID)
@@ -175,10 +178,9 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 			return err
 		}
 
-		sp.Info("Create role",
-			zap.String("guild id", role.GuildID),
-			zap.String("role id", newRole.ID),
-			zap.String("role", role.Role.Name))
+		sp.With(zap.Any("new_role", newRole))
+
+		sp.Info("Create role")
 
 		update := r.dependencies.DB.Update("roles").
 			Set("chat_id", newRole.ID).
@@ -187,14 +189,14 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 		sqlStr, args, err = update.ToSql()
 		if err != nil {
 			sp.Error("error getting sql", zap.Error(err))
+			return err
 		} else {
 			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 		}
 
 		_, err = update.QueryContext(ctx)
 		if err != nil {
-			sp.Error("Error updating role id in db",
-				zap.Error(err), zap.String("role", role.Role.Name))
+			sp.Error("Error updating role id in db", zap.Error(err))
 			return err
 		}
 
@@ -204,14 +206,11 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 	_, err = r.dependencies.Session.GuildRoleEdit(role.GuildID, role.Role.ID, role.Role.Name, role.Role.Color, role.Role.Hoist,
 		role.Role.Permissions, role.Role.Mentionable)
 	if err != nil {
-		sp.Error("Error editing role",
-			zap.String("name", role.Role.Name),
-			zap.String("id", role.Role.ID),
-			zap.Error(err))
+		sp.Error("Error editing role", zap.Error(err))
 		return err
 	}
 
-	sp.Info("Upserted role to discord", zap.String("name", role.Role.Name))
+	sp.Info("Upserted role to discord")
 
 	return nil
 }
@@ -221,7 +220,10 @@ func (r Role) delete(ctx context.Context, role payloads.RolePayload) error {
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
-	sp.With(zap.String("queue", "role"))
+	sp.With(
+		zap.String("queue", "role"),
+		zap.Any("role", role),
+	)
 
 	// Only one thing should write to discord at a time
 	r.dependencies.Session.Lock()
@@ -235,14 +237,11 @@ func (r Role) delete(ctx context.Context, role payloads.RolePayload) error {
 			sp.Warn("Role doesn't exist in discord", zap.String("role", role.Role.ID))
 			return nil
 		}
-		sp.Error("Error deleting role",
-			zap.String("name", role.Role.Name),
-			zap.String("id", role.Role.ID),
-			zap.Error(err))
+		sp.Error("Error deleting role", zap.Error(err))
 		return err
 	}
 
-	sp.Info("Deleted role from discord", zap.String("role", role.Role.Name))
+	sp.Info("Deleted role from discord")
 
 	return nil
 }
@@ -252,7 +251,11 @@ func (r Role) exists(ctx context.Context, name, guildID string) bool {
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
-	sp.With(zap.String("queue", "role"))
+	sp.With(
+		zap.String("queue", "role"),
+		zap.String("name", name),
+		zap.String("guildID", guildID),
+	)
 
 	roles, err := r.dependencies.Session.GuildRoles(guildID)
 	if err != nil {

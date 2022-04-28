@@ -23,6 +23,15 @@ func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("ampq_uri", sanitizeURI(amqpURI)),
+		zap.String("exchange", exchange),
+		zap.String("exchange_type", exchangeType),
+		zap.String("queue_name", queueName),
+		zap.String("routing_key", key),
+		zap.String("ctag", ctag),
+	)
+
 	c := &Consumer{
 		conn:    nil,
 		channel: nil,
@@ -33,10 +42,11 @@ func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName
 
 	var err error
 
-	sp.Info("dialing queue", zap.String("queue URI", sanitizeURI(amqpURI)))
+	sp.Info("dialing queue")
 	c.conn, err = amqp.Dial(amqpURI)
 	if err != nil {
-		return nil, fmt.Errorf("Dial: %s", err)
+		sp.Error("error dialing queue", zap.Error(err))
+		return nil, err
 	}
 
 	go func() {
@@ -46,10 +56,11 @@ func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName
 	sp.Info("got Connection, getting Channel")
 	c.channel, err = c.conn.Channel()
 	if err != nil {
-		return nil, fmt.Errorf("Channel: %s", err)
+		sp.Error("error getting channel", zap.Error(err))
+		return nil, err
 	}
 
-	sp.Info("got Channel, declaring Exchange", zap.String("exchange", exchange))
+	sp.Info("got Channel, declaring Exchange")
 	if err = c.channel.ExchangeDeclare(
 		exchange,     // name of the exchange
 		exchangeType, // type
@@ -59,10 +70,11 @@ func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName
 		false,        // noWait
 		nil,          // arguments
 	); err != nil {
-		return nil, fmt.Errorf("Exchange Declare: %s", err)
+		sp.Error("error declaring exchange", zap.Error(err))
+		return nil, err
 	}
 
-	sp.Info("declared Exchange, declaring Queue", zap.String("queue", queueName))
+	sp.Info("declared Exchange, declaring Queue")
 	queue, err := c.channel.QueueDeclare(
 		queueName, // name of the queue
 		true,      // durable
@@ -72,14 +84,14 @@ func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName
 		nil,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Queue Declare: %s", err)
+		sp.Error("error declaring queue", zap.Error(err))
+		return nil, err
 	}
 
 	sp.Info("declared Queue, binding to Exchange",
-		zap.String("name", queue.Name),
-		zap.Int("messages", queue.Messages),
-		zap.Int("consumers", queue.Consumers),
-		zap.String("exchange key", key),
+		zap.String("queue.name", queue.Name),
+		zap.Int("queue.messages", queue.Messages),
+		zap.Int("queue.consumers", queue.Consumers),
 	)
 
 	if err = c.channel.QueueBind(
@@ -89,10 +101,11 @@ func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName
 		false,      // noWait
 		nil,
 	); err != nil {
-		return nil, fmt.Errorf("Queue Bind: %s", err)
+		sp.Error("error binding queue", zap.Error(err))
+		return nil, err
 	}
 
-	sp.Info("Queue bound to Exchange, starting Consume", zap.String("consumer tag", c.tag))
+	sp.Info("Queue bound to Exchange, starting Consume")
 	deliveries, err := c.channel.Consume(
 		queue.Name, // name
 		c.tag,      // consumerTag,
@@ -103,7 +116,8 @@ func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName
 		nil,        // arguments
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Queue Consume: %s", err)
+		sp.Error("error starting consumer", zap.Error(err))
+		return nil, err
 	}
 
 	go c.handler(deliveries, c.done)
@@ -115,13 +129,19 @@ func (c *Consumer) Shutdown(ctx context.Context) error {
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("ctag", c.tag),
+	)
+
 	// will close() the deliveries channel
 	if err := c.channel.Cancel(c.tag, true); err != nil {
-		return fmt.Errorf("consumer cancel failed: %s", err)
+		sp.Error("error canceling consumer", zap.Error(err))
+		return err
 	}
 
 	if err := c.conn.Close(); err != nil {
-		return fmt.Errorf("AMQP connection close error: %s", err)
+		sp.Error("error closing connection", zap.Error(err))
+		return err
 	}
 
 	defer sp.Info("AMQP shutdown OK")
@@ -129,17 +149,3 @@ func (c *Consumer) Shutdown(ctx context.Context) error {
 	// wait for handle() to exit
 	return <-c.done
 }
-
-// func handle(deliveries <-chan amqp.Delivery, done chan error, logger *zap.SugaredLogger) {
-// 	for d := range deliveries {
-// 		logger.Infof(
-// 			"got %dB delivery: [%v] %q",
-// 			len(d.Body),
-// 			d.DeliveryTag,
-// 			d.Body,
-// 		)
-// 		d.Ack(false)
-// 	}
-// 	logger.Infof("handle: deliveries channel closed")
-// 	done <- nil
-// }

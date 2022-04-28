@@ -3,7 +3,6 @@ package esi_poller
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
@@ -33,7 +32,8 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 
 	roles, err := aep.dependencies.Session.GuildRoles(aep.dependencies.GuildID)
 	if err != nil {
-		return -1, -1, fmt.Errorf("error getting discord roles: %s", err)
+		sp.Error("error getting discord roles", zap.Error(err))
+		return -1, -1, err
 	}
 
 	for _, role := range roles {
@@ -60,6 +60,7 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return -1, -1, err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -67,7 +68,7 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error selecting role", zap.Error(err))
-		return -1, -1, fmt.Errorf("error getting role list from db: %w", err)
+		return -1, -1, err
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
@@ -93,10 +94,12 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 			continue
 		}
 
+		sp.With(zap.Any("role", role))
+
 		// Check if we need to update the role ID in the database
 		if val, ok := discordRoles[role.Name]; ok {
 			if val.ID != role.ID {
-				sp.Info("Discord role ID doesn't match what we have", zap.String("discord id", val.ID), zap.String("chrmoas id", role.ID))
+				sp.Info("Discord role ID doesn't match what we have", zap.String("discord_id", val.ID))
 				update := aep.dependencies.DB.Update("roles").
 					Set("chat_id", val.ID).
 					Where(sq.Eq{"name": role.Name})
@@ -104,14 +107,14 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 				sqlStr, args, err = update.ToSql()
 				if err != nil {
 					sp.Error("error getting sql", zap.Error(err))
+					continue
 				} else {
 					sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 				}
 
 				_, err = update.QueryContext(ctx)
 				if err != nil {
-					sp.Error("Error updating role id in db",
-						zap.Error(err), zap.String("role", role.Name))
+					sp.Error("Error updating role id in db", zap.Error(err))
 					continue
 				}
 
@@ -128,11 +131,10 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 	// Delete roles from discord that aren't in the bot
 	rolesToDelete := difference(discordRoles, chremoasRoles)
 	for _, role := range rolesToDelete {
-		err := aep.queueUpdate(ctx, role, payloads.Delete)
+		sp.With(zap.Any("role", role), zap.Any("action", payloads.Delete))
+		err = aep.queueUpdate(ctx, role, payloads.Delete)
 		if err != nil {
-			sp.Error("error updating role",
-				zap.Error(err), zap.String("action", "delete"),
-				zap.String("role", role.Name), zap.String("id", role.ID))
+			sp.Error("error updating role", zap.Error(err))
 			errorCount += 1
 			continue
 		}
@@ -143,11 +145,10 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 	// Add roles to discord that are in the bot
 	rolesToAdd := difference(chremoasRoles, discordRoles)
 	for _, role := range rolesToAdd {
-		err := aep.queueUpdate(ctx, role, payloads.Upsert)
+		sp.With(zap.Any("role", role), zap.Any("action", payloads.Upsert))
+		err = aep.queueUpdate(ctx, role, payloads.Upsert)
 		if err != nil {
-			sp.Error("error updating role",
-				zap.Error(err), zap.String("action", "add"),
-				zap.String("role", role.Name), zap.String("id", role.ID))
+			sp.Error("error updating role", zap.Error(err))
 			errorCount += 1
 			continue
 		}
@@ -157,11 +158,16 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 
 	rolesToUpdate := interDiff(ctx, chremoasRoles, discordRoles, aep.dependencies)
 	for _, role := range rolesToUpdate {
-		err := aep.queueUpdate(ctx, role, payloads.Upsert)
+		sp.With(zap.Any("role", role), zap.Any("action", payloads.Upsert))
+		err = aep.queueUpdate(ctx, role, payloads.Upsert)
 		if err != nil {
-			sp.Error("error updating role",
-				zap.Error(err), zap.String("action", "update"),
-				zap.String("role", role.Name), zap.String("id", role.ID))
+			sp.Error(
+				"error updating role",
+				zap.Error(err),
+				zap.String("action", "update"),
+				zap.String("role", role.Name),
+				zap.String("id", role.ID),
+			)
 			errorCount += 1
 			continue
 		}
@@ -209,6 +215,7 @@ func interDiff(ctx context.Context, chremoasMap, discordMap map[string]payloads.
 				sqlStr, args, err := update.ToSql()
 				if err != nil {
 					sp.Error("error getting sql", zap.Error(err))
+					return
 				} else {
 					sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 				}
@@ -216,6 +223,7 @@ func interDiff(ctx context.Context, chremoasMap, discordMap map[string]payloads.
 				rows, err := update.QueryContext(ctx)
 				if err != nil {
 					sp.Error("error updating role's chat_id", zap.Error(err), zap.String("chat_id", discordMap[r].ID))
+					return
 				}
 				defer func() {
 					err := rows.Close()
@@ -266,29 +274,29 @@ func (aep authEsiPoller) queueUpdate(ctx context.Context, role payloads.Role, ac
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
-	sp.With(zap.String("sub-component", "roles"))
-
 	payload := payloads.RolePayload{
 		Action:  action,
 		GuildID: aep.dependencies.GuildID,
 		Role:    role,
 	}
 
+	sp.With(
+		zap.String("sub-component", "roles"),
+		zap.Any("role", role),
+		zap.Any("action", action),
+		zap.Any("payload", payload),
+	)
+
 	b, err := json.Marshal(payload)
 	if err != nil {
-		sp.Error("error marshalling json for queue", zap.Error(err), zap.Any("payload", payload))
+		sp.Error("error marshalling json for queue", zap.Error(err))
 		return err
 	}
 
-	sp.Debug("Submitting role queue message",
-		zap.String("name", role.Name),
-		zap.String("id", role.ID),
-		zap.Int64("chat_id", role.ChatID),
-		zap.Any("payload", payload),
-	)
+	sp.Debug("Submitting role queue message")
 	err = aep.dependencies.RolesProducer.Publish(ctx, b)
 	if err != nil {
-		sp.Error("error publishing message", zap.Error(err), zap.String("role", role.Name))
+		sp.Error("error publishing message", zap.Error(err))
 		return err
 	}
 

@@ -39,12 +39,17 @@ func List(ctx context.Context, sig, all bool, deps common.Dependencies) []*disco
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.Bool("all", all),
+	)
+
 	var roleList = make(map[string]string)
 
 	roles, err := GetRoles(ctx, sig, nil, deps)
 	if err != nil {
-		return nil
-		// return common.SendFatal(err.Error())
+		sp.Error("error getting roles", zap.Error(err))
+		return common.SendFatal(err.Error())
 	}
 
 	for _, role := range roles {
@@ -55,8 +60,7 @@ func List(ctx context.Context, sig, all bool, deps common.Dependencies) []*disco
 	}
 
 	if len(roleList) == 0 {
-		return nil
-		// return common.SendError(fmt.Sprintf("No %ss\n", clientType[sig]))
+		return common.SendError(fmt.Sprintf("No %ss\n", clientType[sig]))
 	}
 
 	keys := make([]string, 0, len(roleList))
@@ -71,6 +75,7 @@ func List(ctx context.Context, sig, all bool, deps common.Dependencies) []*disco
 		buffer     bytes.Buffer
 		messages   []*discordgo.MessageSend
 	)
+
 	// This code is horrifically ugly and I absolutely hate it but it works so I'm leaving it be for now.
 	for _, k := range keys {
 		if sig {
@@ -162,19 +167,26 @@ func ListMembers(ctx context.Context, sig bool, name string, deps common.Depende
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("name", name),
+	)
+
 	var (
 		buffer   bytes.Buffer
 		messages []*discordgo.MessageSend
 	)
 
-	sp.Debug("Listing members", zap.Bool("sig", sig), zap.String("name", name))
+	sp.Debug("Listing members")
 
 	members, err := GetRoleMembers(ctx, sig, name, deps)
 	if err != nil {
+		sp.Error("error getting member list", zap.Error(err))
 		return common.SendError(fmt.Sprintf("error getting member list: %s", err))
 	}
 
 	if len(members) == 0 {
+		sp.Info("no members in role")
 		return common.SendError(fmt.Sprintf("No members in: %s", name))
 	}
 
@@ -192,6 +204,11 @@ func ListUserRoles(ctx context.Context, sig bool, userID string, deps common.Dep
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("user_id", userID),
+	)
+
 	var (
 		buffer   bytes.Buffer
 		messages []*discordgo.MessageSend
@@ -199,10 +216,12 @@ func ListUserRoles(ctx context.Context, sig bool, userID string, deps common.Dep
 
 	roles, err := common.GetUserRoles(ctx, sig, userID, deps)
 	if err != nil {
+		sp.Error("error getting user roles", zap.Error(err))
 		return common.SendError(fmt.Sprintf("error getting user roles: %s", err))
 	}
 
 	if len(roles) == 0 {
+		sp.Info("user has no roles")
 		return common.SendError(fmt.Sprintf("User has no %ss: <@%s>", roleType[sig], userID))
 	}
 
@@ -221,21 +240,24 @@ func Info(ctx context.Context, sig bool, ticker string, deps common.Dependencies
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("ticker", ticker),
+	)
+
 	var (
 		buffer   bytes.Buffer
 		messages []*discordgo.MessageSend
 	)
 
-	// if !canPerform {
-	//	return common.SendError("User doesn't have permission to this command")
-	// }
-
 	roles, err := GetRoles(ctx, sig, &ticker, deps)
 	if err != nil {
+		sp.Error("error getting roles", zap.Error(err))
 		return common.SendFatal(err.Error())
 	}
 
 	if len(roles) == 0 {
+		sp.Error("no such role")
 		return common.SendError(fmt.Sprintf("no such %s: %s", roleType[sig], ticker))
 	}
 
@@ -263,16 +285,35 @@ func AuthedAdd(ctx context.Context, sig, joinable bool, ticker, name, chatType, 
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.Bool("joinable", joinable),
+		zap.String("ticker", ticker),
+		zap.String("name", name),
+		zap.String("chat_type", chatType),
+		zap.String("author", author),
+	)
+
 	if !perms.CanPerform(ctx, author, adminType[sig], deps) {
+		sp.Warn("user doesn't have permission to this command")
 		return common.SendError("User doesn't have permission to this command")
 	}
 
+	sp.Debug("adding role")
 	return Add(ctx, sig, joinable, ticker, name, chatType, deps)
 }
 
 func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.Bool("joinable", joinable),
+		zap.String("ticker", ticker),
+		zap.String("name", name),
+		zap.String("chatType", chatType),
+	)
 
 	var roleID int
 
@@ -305,6 +346,7 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 	sqlStr, args, err := insert.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -313,12 +355,14 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 	if err != nil {
 		// I don't love this but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
+			sp.Info("role already exists")
 			return common.SendError(fmt.Sprintf("%s `%s` (%s) already exists", roleType[sig], name, ticker))
 		}
-		sp.Error("error adding role", zap.Error(err), zap.Bool("sig", sig),
-			zap.String("name", name), zap.String("ticker", ticker))
+		sp.Error("error adding role", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
 	}
+
+	sp.With(zap.Int("role_id", roleID))
 
 	role := payloads.Role{
 		Name:        name,
@@ -338,6 +382,8 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 		deps,
 	)
 
+	sp.With(zap.Int("filter_id", filterID))
+
 	// Associate new filter with new role
 	insert = deps.DB.Insert("role_filters").
 		Columns("role", "filter").
@@ -346,14 +392,14 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 	sqlStr, args, err = insert.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := insert.QueryContext(ctx)
 	if err != nil {
-		sp.Error("erro radding role_filter", zap.Error(err), zap.Bool("sig", sig),
-			zap.Int("role", roleID), zap.Int("filter", filterID))
+		sp.Error("error adding role_filter", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error adding role_filter for %s: %s", roleType[sig], err))
 	}
 	defer func() {
@@ -365,9 +411,11 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 
 	err = queueUpdate(ctx, role, payloads.Upsert, deps)
 	if err != nil {
+		sp.Error("error adding role", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error adding role for %s: %s", roleType[sig], err))
 	}
 
+	sp.Info("created role")
 	messages := common.SendSuccess(fmt.Sprintf("Created %s `%s`", roleType[sig], ticker))
 
 	embed := common.NewEmbed()
@@ -379,16 +427,32 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 }
 
 func AuthedDestroy(ctx context.Context, sig bool, ticker, author string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("ticker", ticker),
+		zap.String("author", author),
+	)
+
 	if !perms.CanPerform(ctx, author, adminType[sig], deps) {
+		sp.Warn("user doesn't have permission to this command")
 		return common.SendError("User doesn't have permission to this command")
 	}
 
+	sp.Debug("destroying role")
 	return Destroy(ctx, sig, ticker, deps)
 }
 
 func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("ticker", ticker),
+	)
 
 	var chatID, roleID int
 
@@ -407,6 +471,7 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -414,12 +479,14 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 	err = query.Scan(&chatID)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			sp.Error("no such role", zap.Error(err))
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
 		}
-		sp.Error("error deleting role", zap.Error(err), zap.Bool("sig", sig),
-			zap.String("ticker", ticker))
+		sp.Error("error deleting role", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
+
+	sp.With(zap.Int("chat_id", chatID))
 
 	delQuery := deps.DB.Delete("roles").
 		Where(sq.Eq{"role_nick": ticker}).
@@ -428,14 +495,14 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 	sqlStr, args, err = delQuery.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {
-		sp.Error("error deleting role", zap.Error(err), zap.Bool("sig", sig),
-			zap.String("ticker", ticker))
+		sp.Error("error deleting role", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error deleting %s: %s", roleType[sig], err))
 	}
 	defer func() {
@@ -448,14 +515,18 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 	for rows.Next() {
 		err = rows.Scan(&roleID)
 		if err != nil {
-			newErr := fmt.Errorf("error scanning role id: %s", err)
 			sp.Error("error scanning role id", zap.Error(err))
-			return common.SendFatal(newErr.Error())
+			return common.SendFatal(err.Error())
 		}
 	}
 
 	// We now need to create the default filter for this role
 	filterResponse, filterID := filters.Delete(ctx, ticker, deps)
+
+	sp.With(
+		zap.Int("role_id", roleID),
+		zap.Int("filter_id", filterID),
+	)
 
 	delQuery = deps.DB.Delete("filter_membership").
 		Where(sq.Eq{"filter": filterID})
@@ -463,14 +534,14 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 	sqlStr, args, err = delQuery.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err = delQuery.QueryContext(ctx)
 	if err != nil {
-		sp.Error("error deleting filter_membership", zap.Error(err), zap.Bool("sig", sig),
-			zap.Int("filter", filterID))
+		sp.Error("error deleting filter_membership", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error deleting filter_memberships for %s: %s", roleType[sig], err))
 	}
 	defer func() {
@@ -486,14 +557,14 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 	sqlStr, args, err = delQuery.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err = delQuery.QueryContext(ctx)
 	if err != nil {
-		sp.Error("error deleting role_filters", zap.Error(err), zap.Bool("sig", sig),
-			zap.Int("role", roleID))
+		sp.Error("error deleting role_filters", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error deleting role_filters %s: %s", roleType[sig], err))
 	}
 	defer func() {
@@ -505,9 +576,11 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 
 	err = queueUpdate(ctx, payloads.Role{ID: fmt.Sprintf("%d", chatID)}, payloads.Delete, deps)
 	if err != nil {
+		sp.Error("error deleting role", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error deleting role for %s: %s", roleType[sig], err))
 	}
 
+	sp.Info("deleted role")
 	messages := common.SendSuccess(fmt.Sprintf("Destroyed %s `%s`", roleType[sig], ticker))
 
 	embed := common.NewEmbed()
@@ -522,7 +595,16 @@ func AuthedUpdate(ctx context.Context, sig bool, ticker, key, value, author stri
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("ticker", ticker),
+		zap.String("key", key),
+		zap.String("value", value),
+		zap.String("author", author),
+	)
+
 	if !perms.CanPerform(ctx, author, adminType[sig], deps) {
+		sp.Warn("user doesn't have permission to this command")
 		return common.SendError("User doesn't have permission to this command")
 	}
 
@@ -533,12 +615,20 @@ func AuthedUpdate(ctx context.Context, sig bool, ticker, key, value, author stri
 	values := map[string]string{
 		key: value,
 	}
+
+	sp.Debug("updating role")
 	return Update(ctx, sig, ticker, values, deps)
 }
 
 func Update(ctx context.Context, sig bool, ticker string, values map[string]string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("ticker", ticker),
+		zap.Any("values", values),
+	)
 
 	var (
 		name string
@@ -565,6 +655,7 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -572,10 +663,14 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 	err = query.Scan(&name, &sync)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			sp.Error("no such role")
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
 		}
+		sp.Error("error scanning name and sync", zap.Error(err))
 		return common.SendFatal(err.Error())
 	}
+
+	sp.With(zap.Bool("sync", sync))
 
 	updateSQL := deps.DB.Update("roles")
 
@@ -591,8 +686,10 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 		if key == "sync" {
 			sync, err = strconv.ParseBool(v)
 			if err != nil {
+				sp.Warn("error updating sync", zap.Error(err))
 				return common.SendFatal(fmt.Sprintf("error updating sync for %s: %s", name, err))
 			}
+			sp.With(zap.Bool("sync", sync))
 		}
 
 		updateSQL = updateSQL.Set(key, v)
@@ -601,6 +698,7 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 	sqlStr, args, err = updateSQL.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -609,29 +707,34 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 		Where(sq.Eq{"sig": sig}).
 		QueryContext(ctx)
 	if err != nil {
-		sp.Error("error adding role", zap.Error(err), zap.Bool("sig", sig),
-			zap.String("name", name))
+		sp.Error("error adding role", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error adding %s: %s", roleType[sig], err))
 	}
 
 	role, err := GetChremoasRole(ctx, sig, ticker, deps)
 	if err != nil {
-		sp.Error("error fetching role", zap.Error(err), zap.Bool("sig", sig),
-			zap.String("ticker", ticker))
+		sp.Error("error fetching role", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error fetching %s from db: %s", roleType[sig], err))
 	}
 
+	sp.With(zap.Any("role", role))
+
 	dRole, err := GetDiscordRole(ctx, role.Name, deps)
 	if err != nil {
+		sp.Warn("error getting discord role", zap.Error(err))
 		// TODO: Figure out if there are errors we should really fail on
 		// return common.SendFatal(fmt.Sprintf("error fetching roles from discord: %s", err))
 		err = queueUpdate(ctx, role, payloads.Upsert, deps)
 		if err != nil {
+			sp.Error("error sending update", zap.Error(err))
 			return common.SendFatal(fmt.Sprintf("error updating role for %s: %s", roleType[sig], err))
 		}
 
+		sp.Info("updated role")
 		return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], ticker))
 	}
+
+	sp.With(zap.Any("discord_role", dRole))
 
 	if role.ID != dRole.ID {
 		// The role was probably created/recreated manually.
@@ -642,14 +745,14 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 		sqlStr, args, err = update.ToSql()
 		if err != nil {
 			sp.Error("error getting sql", zap.Error(err))
+			return common.SendFatal(err.Error())
 		} else {
 			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 		}
 
 		rows, err := query.QueryContext(ctx)
 		if err != nil {
-			sp.Error("error updating role's ID", zap.Error(err),
-				zap.String("name", role.Name), zap.String("id", dRole.ID))
+			sp.Error("error updating role's ID", zap.Error(err))
 		}
 		defer func() {
 			err := rows.Close()
@@ -660,6 +763,7 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 	}
 
 	if !sync {
+		sp.Info("updated role but didn't sync to discord")
 		return common.SendSuccess(fmt.Sprintf("Updated %s in db but not Discord (sync not set): %s", roleType[sig], ticker))
 	}
 
@@ -667,20 +771,27 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 		role.Hoist != dRole.Hoist ||
 		role.Color != dRole.Color ||
 		role.Permissions != dRole.Permissions {
-		sp.Info("Roles differ", zap.String("name", name))
+		sp.Info("Roles differ")
 
 		err = queueUpdate(ctx, role, payloads.Upsert, deps)
 		if err != nil {
+			sp.Error("error updating role", zap.Error(err))
 			return common.SendFatal(fmt.Sprintf("error updating role for %s: %s", roleType[sig], err))
 		}
 	}
 
+	sp.Info("updated role")
 	return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], ticker))
 }
 
 func GetChremoasRole(ctx context.Context, sig bool, ticker string, deps common.Dependencies) (payloads.Role, error) {
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("ticker", ticker),
+	)
 
 	var (
 		role payloads.Role
@@ -695,6 +806,7 @@ func GetChremoasRole(ctx context.Context, sig bool, ticker string, deps common.D
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return payloads.Role{}, err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -710,9 +822,13 @@ func GetChremoasRole(ctx context.Context, sig bool, ticker string, deps common.D
 		&role.Permissions,
 	)
 	if err != nil {
+		sp.Error("error fetching fole from db", zap.Error(err))
 		return payloads.Role{}, fmt.Errorf("error fetching %s from db: %s", roleType[sig], err)
 	}
 
+	sp.With(zap.Any("role", role))
+
+	sp.Info("Got role from db")
 	return role, nil
 }
 
@@ -720,24 +836,34 @@ func GetDiscordRole(ctx context.Context, name string, deps common.Dependencies) 
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(zap.String("name", name))
+
 	roles, err := deps.Session.GuildRoles(deps.GuildID)
 	if err != nil {
+		sp.Error("error getting roles from discord", zap.Error(err))
 		return nil, err
 	}
 
 	for _, r := range roles {
 		if r.Name == name {
 			// something is different, let's push changes to discord
+			sp.Info("found role", zap.String("discord_role", r.Name))
 			return r, nil
 		}
 	}
 
+	sp.Warn("no such role")
 	return nil, fmt.Errorf("no such role: %s", name)
 }
 
 func ListFilters(ctx context.Context, sig bool, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("ticker", ticker),
+	)
 
 	var (
 		buffer   bytes.Buffer
@@ -759,14 +885,14 @@ func ListFilters(ctx context.Context, sig bool, ticker string, deps common.Depen
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
-		sp.Error("error fetching filters", zap.Error(err),
-			zap.String("ticker", ticker), zap.Bool("sig", sig))
+		sp.Error("error fetching filters", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error fetching filters: %s", err))
 	}
 	defer func() {
@@ -795,21 +921,45 @@ func ListFilters(ctx context.Context, sig bool, ticker string, deps common.Depen
 		embed.SetDescription(buffer.String())
 		return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 	} else {
+		sp.Warn("no such role")
 		return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
 	}
 }
 
 func AuthedAddFilter(ctx context.Context, sig bool, filter, ticker, author string, deps common.Dependencies) []*discordgo.MessageSend {
+	ctx, sp := sl.OpenSpan(ctx)
+	defer sp.Close()
+
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("filter", filter),
+		zap.String("ticker", ticker),
+		zap.String("author", author),
+	)
+
 	if !perms.CanPerform(ctx, author, adminType[sig], deps) {
+		sp.Warn("user doesn't have permission to this command")
 		return common.SendError("User doesn't have permission to this command")
 	}
 
+	sp.Debug("adding filter")
 	return AddFilter(ctx, sig, filter, ticker, deps)
 }
 
 func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+	sp.With(
+		zap.String("filter", filter),
+		zap.String("ticker", ticker),
+		zap.String("role_type", roleType[sig]),
+	)
+
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("filter", filter),
+		zap.String("ticker", ticker),
+	)
 
 	var (
 		err      error
@@ -827,6 +977,7 @@ func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -834,11 +985,14 @@ func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common
 	err = query.Scan(&filterID)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			sp.Error("no such filter")
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
 		}
-		sp.Error("error fetching filter id", zap.Error(err), zap.String("filter", filter))
+		sp.Error("error fetching filter id", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error fetching filter id: %s", err))
 	}
+
+	sp.With(zap.Int("filter_id", filterID))
 
 	query = deps.DB.Select("id").
 		From("roles").
@@ -848,6 +1002,7 @@ func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common
 	sqlStr, args, err = query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -855,12 +1010,14 @@ func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common
 	err = query.Scan(&roleID)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			sp.Error("no such filter")
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
 		}
-		sp.Error("error fetching role", zap.Error(err), zap.Bool("sig", sig),
-			zap.String("ticker", ticker))
+		sp.Error("error fetching role", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
 	}
+
+	sp.With(zap.Int("role_id", roleID))
 
 	insert := deps.DB.Insert("role_filters").
 		Columns("role", "filter").
@@ -869,14 +1026,14 @@ func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common
 	sqlStr, args, err = insert.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := insert.QueryContext(ctx)
 	if err != nil {
-		sp.Error("error inserting role_filter", zap.Error(err),
-			zap.Int("role", roleID), zap.Int("filter", filterID))
+		sp.Error("error inserting role_filter", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error inserting role_filter: %s", err))
 	}
 	defer func() {
@@ -886,6 +1043,7 @@ func AddFilter(ctx context.Context, sig bool, filter, ticker string, deps common
 		}
 	}()
 
+	sp.Info("added filter")
 	return common.SendSuccess(fmt.Sprintf("Added filter %s to role %s", filter, ticker))
 }
 
@@ -893,16 +1051,31 @@ func AuthedRemoveFilter(ctx context.Context, sig bool, filter, ticker, author st
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("filter", filter),
+		zap.String("ticker", ticker),
+		zap.String("author", author),
+	)
+
 	if !perms.CanPerform(ctx, author, adminType[sig], deps) {
+		sp.Warn("user doesn't have permission to this command")
 		return common.SendError("User doesn't have permission to this command")
 	}
 
+	sp.Debug("removing filter")
 	return RemoveFilter(ctx, sig, filter, ticker, deps)
 }
 
 func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.String("filter", filter),
+		zap.String("ticker", ticker),
+	)
 
 	var (
 		err      error
@@ -920,6 +1093,7 @@ func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps com
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -927,11 +1101,14 @@ func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps com
 	err = query.Scan(&filterID)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			sp.Error("no such filter")
 			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
 		}
-		sp.Error("error fetching filter", zap.Error(err), zap.String("filter", filter))
+		sp.Error("error fetching filter", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error fetching filter id: %s", err))
 	}
+
+	sp.With(zap.Int("filter_id", filterID))
 
 	query = deps.DB.Select("id").
 		From("roles").
@@ -941,6 +1118,7 @@ func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps com
 	sqlStr, args, err = query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -948,12 +1126,14 @@ func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps com
 	err = query.Scan(&roleID)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			sp.Error("no such filter")
 			return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], filter))
 		}
-		sp.Error("error fetching role", zap.Error(err), zap.Bool("sig", sig),
-			zap.String("ticker", ticker))
+		sp.Error("error fetching filter", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error fetching %s id: %s", roleType[sig], err))
 	}
+
+	sp.With(zap.Int("role_id", roleID))
 
 	delQuery := deps.DB.Delete("role_filters").
 		Where(sq.Eq{"role": roleID}).
@@ -962,14 +1142,14 @@ func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps com
 	sqlStr, args, err = delQuery.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {
-		sp.Error("error deleting role_filter", zap.Error(err),
-			zap.Int("role", roleID), zap.Int("filter", filterID))
+		sp.Error("error deleting role_filter", zap.Error(err))
 		return common.SendFatal(fmt.Sprintf("error deleting role_filter: %s", err))
 	}
 	defer func() {
@@ -979,5 +1159,6 @@ func RemoveFilter(ctx context.Context, sig bool, filter, ticker string, deps com
 		}
 	}()
 
+	sp.Info("removed filter")
 	return common.SendSuccess(fmt.Sprintf("Removed filter %s from role %s", filter, ticker))
 }
