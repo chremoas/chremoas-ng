@@ -33,13 +33,15 @@ func (aep *authEsiPoller) updateAlliances(ctx context.Context) (int, int, error)
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return -1, -1, err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
-		return -1, -1, fmt.Errorf("error getting alliance list from db: %w", err)
+		sp.Error("error getting alliance list from db", zap.Error(err))
+		return -1, -1, err
 	}
 
 	defer func() {
@@ -56,10 +58,11 @@ func (aep *authEsiPoller) updateAlliances(ctx context.Context) (int, int, error)
 			continue
 		}
 
+		sp.With(zap.Any("alliance", alliance))
+
 		err = aep.updateAlliance(ctx, alliance)
 		if err != nil {
-			sp.Error("error updating alliance", zap.Error(err),
-				zap.String("name", alliance.Name), zap.Int32("id", alliance.ID))
+			sp.Error("error updating alliance", zap.Error(err))
 			errorCount += 1
 			continue
 		}
@@ -74,14 +77,17 @@ func (aep *authEsiPoller) updateAlliance(ctx context.Context, alliance auth.Alli
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 
+	sp.With(zap.Any("alliance", alliance))
+
 	sp.With(zap.String("sub-component", "alliance"))
 
 	response, _, err := aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(ctx, alliance.ID, nil)
 	if err != nil {
 		if aep.notFound(ctx, err) == nil {
-			sp.Info("Alliance not found", zap.Int32("id", alliance.ID))
+			sp.Info("Alliance not found")
 			roles.Destroy(ctx, roles.Role, response.Ticker, aep.dependencies)
 
+			sp.Error("alliance not found")
 			return fmt.Errorf("alliance not found: %d", alliance.ID)
 		}
 
@@ -89,13 +95,13 @@ func (aep *authEsiPoller) updateAlliance(ctx context.Context, alliance auth.Alli
 		return err
 	}
 
+	sp.With(zap.Any("response", response))
+
 	if alliance.Name != response.Name || alliance.Ticker != response.Ticker {
-		sp.Info("Updating alliance", zap.Int32("id", alliance.ID),
-			zap.String("name", response.Name), zap.String("ticker", response.Ticker))
+		sp.Info("Updating alliance")
 		err = aep.upsertAlliance(ctx, alliance.ID, response.Name, response.Ticker)
 		if err != nil {
-			sp.Error("Error upserting alliance", zap.Error(err), zap.Int32("id", alliance.ID),
-				zap.String("name", response.Name), zap.String("ticker", response.Ticker))
+			sp.Error("Error upserting alliance", zap.Error(err))
 			return err
 		}
 	}
@@ -109,24 +115,28 @@ func (aep *authEsiPoller) updateAlliance(ctx context.Context, alliance auth.Alli
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	err = query.Scan(&count)
 	if err != nil {
-		sp.Error("error getting count of alliances by name", zap.Error(err),
-			zap.String("ticker", response.Ticker))
+		sp.Error(
+			"error getting count of alliances by name",
+			zap.Error(err),
+			zap.String("ticker", response.Ticker),
+		)
 		return err
 	}
 
+	sp.With(zap.Int("count", count))
+
 	if count == 0 {
-		sp.Debug("Adding Alliance", zap.String("ticker", response.Ticker),
-			zap.String("name", response.Name))
+		sp.Debug("Adding Alliance")
 		roles.Add(ctx, roles.Role, false, response.Ticker, response.Name, "discord", aep.dependencies)
 	} else {
-		sp.Debug("Updating Alliance", zap.String("ticker", response.Ticker),
-			zap.String("name", response.Name))
+		sp.Debug("Updating Alliance")
 		values := map[string]string{
 			"role_nick": response.Ticker,
 			"name":      response.Name,
@@ -140,6 +150,12 @@ func (aep *authEsiPoller) updateAlliance(ctx context.Context, alliance auth.Alli
 func (aep *authEsiPoller) upsertAlliance(ctx context.Context, allianceID int32, name, ticker string) error {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(
+		zap.Int32("alliance_id", allianceID),
+		zap.String("name", name),
+		zap.String("ticker", ticker),
+	)
 
 	sp.With(zap.String("sub-component", "alliance"))
 
@@ -156,13 +172,15 @@ func (aep *authEsiPoller) upsertAlliance(ctx context.Context, allianceID int32, 
 	sqlStr, args, err := insert.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := insert.QueryContext(ctx)
 	if err != nil {
-		sp.Error("Error updating alliance", zap.Error(err), zap.Int32("id", allianceID))
+		sp.Error("Error updating alliance", zap.Error(err))
+		return err
 	}
 
 	defer func() {
@@ -175,5 +193,6 @@ func (aep *authEsiPoller) upsertAlliance(ctx context.Context, allianceID int32, 
 		}
 	}()
 
-	return err
+	sp.Info("Upserted alliance")
+	return nil
 }

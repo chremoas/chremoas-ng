@@ -14,6 +14,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const serverAdmins = "server_admins"
+
 func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
@@ -28,12 +30,12 @@ func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSen
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	query := deps.DB.Select("name", "description").
-		From("permissions")
+	query := deps.DB.Select("name", "description").From("permissions")
 
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -53,9 +55,8 @@ func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSen
 	for rows.Next() {
 		err = rows.Scan(&filter.Name, &filter.Description)
 		if err != nil {
-			newErr := fmt.Errorf("error scanning permissions row: %s", err)
 			sp.Error("error scanning permissions", zap.Error(err))
-			return common.SendFatal(newErr.Error())
+			return common.SendFatal(err.Error())
 		}
 
 		buffer.WriteString(fmt.Sprintf("%s: %s\n", filter.Name, filter.Description))
@@ -63,6 +64,7 @@ func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSen
 	}
 
 	if count == 0 {
+		sp.Error("no permissions")
 		return common.SendError("No permissions")
 	}
 
@@ -73,41 +75,51 @@ func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSen
 	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 }
 
-func Add(ctx context.Context, name, description, author string, deps common.Dependencies) []*discordgo.MessageSend {
+func Add(ctx context.Context, permission, description, author string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(
+		zap.String("required_permission", serverAdmins),
+		zap.String("permission", permission),
+		zap.String("description", description),
+		zap.String("author", author),
+	)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if name == "server_admins" {
-		return common.SendError("User doesn't have permission to this command")
+	if permission == serverAdmins {
+		sp.Warn("user doesn't have rights to this permission")
+		return common.SendError("User doesn't have rights to this permission")
 	}
 
-	if !CanPerform(ctx, author, "server_admins", deps) {
+	if !CanPerform(ctx, author, serverAdmins, deps) {
+		sp.Warn("user doesn't have permission to this command")
 		return common.SendError("User doesn't have permission to this command")
 	}
 
 	insert := deps.DB.Insert("permissions").
 		Columns("name", "description").
-		Values(name, description)
+		Values(permission, description)
 
 	sqlStr, args, err := insert.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := insert.QueryContext(ctx)
 	if err != nil {
-		// I don't love this but I can't find a better way right now
+		// I don't love this, but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
-			return common.SendError(fmt.Sprintf("permission `%s` already exists", name))
+			sp.Error("permission already exists")
+			return common.SendError(fmt.Sprintf("permission `%s` already exists", permission))
 		}
-		newErr := fmt.Errorf("error inserting permission: %s", err)
 		sp.Error("error inserting permissions", zap.Error(err))
-		return common.SendFatal(newErr.Error())
+		return common.SendFatal(err.Error())
 	}
 	defer func() {
 		err := rows.Close()
@@ -116,39 +128,48 @@ func Add(ctx context.Context, name, description, author string, deps common.Depe
 		}
 	}()
 
-	return common.SendSuccess(fmt.Sprintf("Created permission `%s`", name))
+	sp.Info("created permission")
+	return common.SendSuccess(fmt.Sprintf("Created permission `%s`", permission))
 }
 
-func Delete(ctx context.Context, name, author string, deps common.Dependencies) []*discordgo.MessageSend {
+func Delete(ctx context.Context, permission, author string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(
+		zap.String("required_permission", serverAdmins),
+		zap.String("permission", permission),
+		zap.String("author", author),
+	)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if name == "server_admins" {
-		return common.SendError("User doesn't have permission to this command")
+	if permission == serverAdmins {
+		sp.Warn("user doesn't have rights to this permission")
+		return common.SendError("User doesn't have rights to this permission")
 	}
 
-	if !CanPerform(ctx, author, "server_admins", deps) {
+	if !CanPerform(ctx, author, serverAdmins, deps) {
+		sp.Warn("user doesn't have permission to this command")
 		return common.SendError("User doesn't have permission to this command")
 	}
 
 	query := deps.DB.Delete("permissions").
-		Where(sq.Eq{"name": name})
+		Where(sq.Eq{"name": permission})
 
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
-		newErr := fmt.Errorf("error deleting permission: %s", err)
 		sp.Error("error deleting permissions", zap.Error(err))
-		return common.SendFatal(newErr.Error())
+		return common.SendFatal(err.Error())
 	}
 	defer func() {
 		err := rows.Close()
@@ -157,12 +178,15 @@ func Delete(ctx context.Context, name, author string, deps common.Dependencies) 
 		}
 	}()
 
-	return common.SendSuccess(fmt.Sprintf("Deleted permission `%s`", name))
+	sp.Info("deleted permission")
+	return common.SendSuccess(fmt.Sprintf("Deleted permission `%s`", permission))
 }
 
-func ListMembers(ctx context.Context, name string, deps common.Dependencies) []*discordgo.MessageSend {
+func ListMembers(ctx context.Context, permission string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(zap.String("permission", permission))
 
 	var (
 		count, userID int
@@ -176,20 +200,20 @@ func ListMembers(ctx context.Context, name string, deps common.Dependencies) []*
 	query := deps.DB.Select("user_id").
 		From("permission_membership").
 		Join("permissions ON permission_membership.permission = permissions.id").
-		Where(sq.Eq{"permissions.name": name})
+		Where(sq.Eq{"permissions.name": permission})
 
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
-		newErr := fmt.Errorf("error getting permission membership list: %s", err)
 		sp.Error("error getting permissions membership list", zap.Error(err))
-		return common.SendFatal(newErr.Error())
+		return common.SendFatal(err.Error())
 	}
 	defer func() {
 		err := rows.Close()
@@ -201,20 +225,20 @@ func ListMembers(ctx context.Context, name string, deps common.Dependencies) []*
 	for rows.Next() {
 		err = rows.Scan(&userID)
 		if err != nil {
-			newErr := fmt.Errorf("error scanning permission_membership userID: %s", err)
 			sp.Error("error scanning permission_membership userID", zap.Error(err))
-			return common.SendFatal(newErr.Error())
+			return common.SendFatal(err.Error())
 		}
 		buffer.WriteString(fmt.Sprintf("%s\n", common.GetUsername(userID, deps.Session)))
 		count += 1
 	}
 
 	if count == 0 {
-		return common.SendError(fmt.Sprintf("Permission has no members: %s", name))
+		sp.Warn("permission has no members")
+		return common.SendError(fmt.Sprintf("Permission has no members: %s", permission))
 	}
 
 	embed := common.NewEmbed()
-	embed.SetTitle(fmt.Sprintf("%s members", name))
+	embed.SetTitle(fmt.Sprintf("%s members", permission))
 	embed.SetDescription(buffer.String())
 
 	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
@@ -224,20 +248,30 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("required_permission", serverAdmins),
+		zap.String("permission", permission),
+		zap.String("user", user),
+		zap.String("author", author),
+	)
+
 	var permissionID int
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if permission == "server_admins" {
-		return common.SendError("User doesn't have permission to this command")
+	if permission == serverAdmins {
+		sp.Warn("user doesn't have rights to this permission")
+		return common.SendError("User doesn't have rights to this permission")
 	}
 
-	if !CanPerform(ctx, author, "server_admins", deps) {
+	if !CanPerform(ctx, author, serverAdmins, deps) {
+		sp.Warn("user doesn't have permission to this command")
 		return common.SendError("User doesn't have permission to this command")
 	}
 
 	if !common.IsDiscordUser(user) {
+		sp.Warn("second argument must be a discord user")
 		return common.SendError("second argument must be a discord user")
 	}
 
@@ -250,16 +284,18 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	err = query.Scan(&permissionID)
 	if err != nil {
-		newErr := fmt.Errorf("error scanning permissionID: %s", err)
 		sp.Error("error scanning permissionID", zap.Error(err))
-		return common.SendFatal(newErr.Error())
+		return common.SendFatal(err.Error())
 	}
+
+	sp.With(zap.Int("permission_id", permissionID))
 
 	insert := deps.DB.Insert("permission_membership").
 		Columns("permission", "user_id").
@@ -268,19 +304,20 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 	sqlStr, args, err = insert.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := insert.QueryContext(ctx)
 	if err != nil {
-		// I don't love this but I can't find a better way right now
+		// I don't love this, but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
+			sp.Error("user already a member of permission")
 			return common.SendError(fmt.Sprintf("<@%s> already a member of `%s`", userID, permission))
 		}
-		newErr := fmt.Errorf("error inserting permission: %s", err)
 		sp.Error("error inserting permission", zap.Error(err))
-		return common.SendFatal(newErr.Error())
+		return common.SendFatal(err.Error())
 	}
 	defer func() {
 		err := rows.Close()
@@ -289,6 +326,7 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 		}
 	}()
 
+	sp.Info("added user to permission")
 	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, permission))
 }
 
@@ -296,20 +334,30 @@ func RemoveMember(ctx context.Context, user, permission, author string, deps com
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("required_permission", serverAdmins),
+		zap.String("permission", permission),
+		zap.String("user", user),
+		zap.String("author", author),
+	)
+
 	var permissionID int
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if permission == "server_admins" {
-		return common.SendError("User doesn't have permission to this command")
+	if permission == serverAdmins {
+		sp.Warn("user doesn't have rights to this permission")
+		return common.SendError("User doesn't have rights to this permission")
 	}
 
-	if !CanPerform(ctx, author, "server_admins", deps) {
+	if !CanPerform(ctx, author, serverAdmins, deps) {
+		sp.Warn("user doesn't have permission to this command")
 		return common.SendError("User doesn't have permission to this command")
 	}
 
 	if !common.IsDiscordUser(user) {
+		sp.Warn("second argument must be a discord user")
 		return common.SendError("second argument must be a discord user")
 	}
 
@@ -322,16 +370,18 @@ func RemoveMember(ctx context.Context, user, permission, author string, deps com
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	err = query.Scan(&permissionID)
 	if err != nil {
-		newErr := fmt.Errorf("error scanning permisionID: %s", err)
 		sp.Error("error scanning permissionID", zap.Error(err))
-		return common.SendFatal(newErr.Error())
+		return common.SendFatal(err.Error())
 	}
+
+	sp.With(zap.Int("permission_id", permissionID))
 
 	delQuery := deps.DB.Delete("permission_membership").
 		Where(sq.Eq{"permission": permissionID}).
@@ -340,15 +390,15 @@ func RemoveMember(ctx context.Context, user, permission, author string, deps com
 	sqlStr, args, err = delQuery.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := delQuery.QueryContext(ctx)
 	if err != nil {
-		newErr := fmt.Errorf("error deleting permission: %s", err)
 		sp.Error("error deleting permission", zap.Error(err))
-		return common.SendFatal(newErr.Error())
+		return common.SendFatal(err.Error())
 	}
 	defer func() {
 		err := rows.Close()
@@ -357,12 +407,15 @@ func RemoveMember(ctx context.Context, user, permission, author string, deps com
 		}
 	}()
 
+	sp.Info("removed user from permission")
 	return common.SendSuccess(fmt.Sprintf("Removed <@%s> from `%s`", userID, permission))
 }
 
 func UserPerms(ctx context.Context, user string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(zap.String("user", user))
 
 	var (
 		buffer     bytes.Buffer
@@ -374,6 +427,7 @@ func UserPerms(ctx context.Context, user string, deps common.Dependencies) []*di
 	defer cancel()
 
 	if !common.IsDiscordUser(user) {
+		sp.Warn("second argument must be a discord user")
 		return common.SendError("second argument must be a discord user")
 	}
 
@@ -387,15 +441,15 @@ func UserPerms(ctx context.Context, user string, deps common.Dependencies) []*di
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return common.SendFatal(err.Error())
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
-		newErr := fmt.Errorf("error getting user perms: %s", err)
 		sp.Error("error getting user perms", zap.Error(err))
-		return common.SendFatal(newErr.Error())
+		return common.SendFatal(err.Error())
 	}
 	defer func() {
 		err := rows.Close()
@@ -424,12 +478,17 @@ func CanPerform(ctx context.Context, authorID, permission string, deps common.De
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
+	sp.With(
+		zap.String("author_id", authorID),
+		zap.String("permission", permission),
+	)
+
 	var (
 		count        int
 		permissionID int
 	)
 
-	// This is super jank and I don't like it, need to come up with a better way.
+	// This is super jank, and I don't like it, need to come up with a better way.
 	if authorID == "auth-web" {
 		return true
 	}
@@ -441,6 +500,7 @@ func CanPerform(ctx context.Context, authorID, permission string, deps common.De
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return false
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -450,6 +510,9 @@ func CanPerform(ctx context.Context, authorID, permission string, deps common.De
 		sp.Error("error scanning permissionID", zap.Error(err))
 		return false
 	}
+
+	sp.With(zap.Int("permission_id", permissionID))
+
 	query = deps.DB.Select("COUNT(*)").
 		From("permission_membership").
 		Where(sq.Eq{"user_id": authorID}).
@@ -458,6 +521,7 @@ func CanPerform(ctx context.Context, authorID, permission string, deps common.De
 	sqlStr, args, err = query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return false
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}

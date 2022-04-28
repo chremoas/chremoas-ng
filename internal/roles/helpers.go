@@ -47,18 +47,19 @@ func queueUpdate(ctx context.Context, role payloads.Role, action payloads.Action
 		CorrelationID: sp.GetCorrelationID(),
 	}
 
+	sp.With(
+		zap.Any("role", role),
+		zap.Any("action", action),
+		zap.Any("payload", payload),
+	)
+
 	b, err := json.Marshal(payload)
 	if err != nil {
 		sp.Error("error marshalling json for queue", zap.Error(err))
 		return err
 	}
 
-	sp.Debug("Submitting role queue message",
-		zap.String("name", role.Name),
-		zap.String("id", role.ID),
-		zap.Int64("chat_id", role.ChatID),
-		zap.Any("payload", payload),
-	)
+	sp.Debug("Submitting role queue message")
 	err = deps.RolesProducer.Publish(ctx, b)
 	if err != nil {
 		sp.Error("error publishing message", zap.Error(err))
@@ -72,6 +73,11 @@ func queueUpdate(ctx context.Context, role payloads.Role, action payloads.Action
 func GetRoleMembers(ctx context.Context, sig bool, name string, deps common.Dependencies) ([]int, error) {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(
+		zap.String("name", name),
+		zap.String("role_type", roleType[sig]),
+	)
 
 	var (
 		err        error
@@ -92,6 +98,7 @@ func GetRoleMembers(ctx context.Context, sig bool, name string, deps common.Depe
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return nil, err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
@@ -111,7 +118,8 @@ func GetRoleMembers(ctx context.Context, sig bool, name string, deps common.Depe
 	for rows.Next() {
 		err = rows.Scan(&id)
 		if err != nil {
-			return nil, fmt.Errorf("error scanning role's id (%s): %s", name, err.Error())
+			sp.Error("error scanning role's id", zap.Error(err))
+			return nil, err
 		}
 
 		filterList = append(filterList, id)
@@ -126,13 +134,14 @@ func GetRoleMembers(ctx context.Context, sig bool, name string, deps common.Depe
 	sqlStr, args, err = query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return nil, err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err = query.QueryContext(ctx)
 	if err != nil {
-		sp.Error("error getting filter memberhship", zap.Error(err))
+		sp.Error("error getting filter membership", zap.Error(err))
 		return nil, err
 	}
 	defer func() {
@@ -145,7 +154,8 @@ func GetRoleMembers(ctx context.Context, sig bool, name string, deps common.Depe
 	for rows.Next() {
 		err = rows.Scan(&id)
 		if err != nil {
-			return nil, fmt.Errorf("error scanning filter's userID (%s): %s", name, err.Error())
+			sp.Error("error scanning filter's userID", zap.Error(err))
+			return nil, err
 		}
 
 		members = append(members, id)
@@ -158,6 +168,11 @@ func GetRoleMembers(ctx context.Context, sig bool, name string, deps common.Depe
 func GetRoles(ctx context.Context, sig bool, shortName *string, deps common.Dependencies) ([]payloads.Role, error) {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
+
+	sp.With(
+		zap.String("role_type", roleType[sig]),
+		zap.Stringp("short_name", shortName),
+	)
 
 	var (
 		rs        []payloads.Role
@@ -179,15 +194,15 @@ func GetRoles(ctx context.Context, sig bool, shortName *string, deps common.Depe
 	sqlStr, args, err := q.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
+		return nil, err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
 	rows, err := q.QueryContext(ctx)
 	if err != nil {
-		newErr := fmt.Errorf("error getting %ss: %s", roleType[sig], err)
-		sp.Error("error getting role", zap.Error(err), zap.Bool("sig", sig))
-		return nil, newErr
+		sp.Error("error getting role", zap.Error(err))
+		return nil, err
 	}
 	defer func() {
 		if err = rows.Close(); err != nil {
@@ -211,15 +226,15 @@ func GetRoles(ctx context.Context, sig bool, shortName *string, deps common.Depe
 			&role.Sync,
 		)
 		if err != nil {
-			newErr := fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
-			sp.Error("error scanning role", zap.Error(err), zap.Bool("sig", sig))
-			return nil, newErr
+			sp.Error("error scanning role", zap.Error(err))
+			return nil, err
 		}
 		charTotal += len(role.ShortName) + len(role.Name) + 15 // Guessing on bool excess
 		rs = append(rs, role)
 	}
 
 	if charTotal >= 2000 {
+		sp.Error("too many characters for response", zap.Int("char_total", charTotal))
 		return nil, fmt.Errorf("too many %ss (exceeds Discord 2k character limit)", roleType[sig])
 	}
 

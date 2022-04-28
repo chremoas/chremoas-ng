@@ -79,32 +79,33 @@ func (aep *authEsiPoller) Poll(ctx context.Context) {
 	count, errorCount, err = aep.syncRoles(ctx)
 	if err == nil {
 		sp.Info("syncRoles() completed", zap.Int("count", count), zap.Int("errorCount", errorCount))
+		return
 	} else {
 		sp.Error("error synchronizing discord roles", zap.Error(err))
 	}
 
 	sp.Info("Calling updateAlliances()")
 	count, errorCount, err = aep.updateAlliances(ctx)
-	if err == nil {
-		sp.Info("updateAlliances() completed", zap.Int("count", count), zap.Int("errorCount", errorCount))
-	} else {
+	if err != nil {
 		sp.Error("error updating alliances", zap.Error(err))
+	} else {
+		sp.Info("updateAlliances() completed", zap.Int("count", count), zap.Int("errorCount", errorCount))
 	}
 
 	sp.Info("Calling updateCorporations()")
 	count, errorCount, err = aep.updateCorporations(ctx)
-	if err == nil {
-		sp.Info("updateCorporations() completed.", zap.Int("count", count), zap.Int("errorCount", errorCount))
-	} else {
+	if err != nil {
 		sp.Error("error updating corporations", zap.Error(err))
+	} else {
+		sp.Info("updateCorporations() completed.", zap.Int("count", count), zap.Int("errorCount", errorCount))
 	}
 
 	sp.Info("Calling updateCharacters()")
 	count, errorCount, err = aep.updateCharacters(ctx)
-	if err == nil {
-		sp.Info("updateCharacters() completed", zap.Int("count", count), zap.Int("errorCount", errorCount))
-	} else {
+	if err != nil {
 		sp.Error("error updating characters", zap.Error(err))
+	} else {
+		sp.Info("updateCharacters() completed", zap.Int("count", count), zap.Int("errorCount", errorCount))
 	}
 }
 
