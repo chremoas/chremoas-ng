@@ -68,14 +68,12 @@ func (c Command) doSig(ctx context.Context, m *discordgo.Message) []*discordgo.M
 	switch cmdStr[1] {
 	case "list":
 		if len(cmdStr) < 3 {
-			return common.SendError("Shit be busted, yo (check pinned message for sig list)")
-			// return roles.List(roles.Sig, false, c.dependencies)
+			return roles.List(ctx, roles.Sig, false, c.dependencies)
 		}
 
 		switch cmdStr[2] {
 		case "all":
-			return common.SendError("Shit be busted, yo (check pinned message for sig list)")
-			// return roles.List(roles.Sig, true, c.dependencies)
+			return roles.List(ctx, roles.Sig, true, c.dependencies)
 
 		case "members":
 			if len(cmdStr) < 4 {

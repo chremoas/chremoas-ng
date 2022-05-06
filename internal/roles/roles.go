@@ -40,6 +40,7 @@ func List(ctx context.Context, sig, all bool, deps common.Dependencies) []*disco
 	defer sp.Close()
 
 	sp.With(
+		zap.String("command", "list"),
 		zap.String("role_type", roleType[sig]),
 		zap.Bool("all", all),
 	)
@@ -76,48 +77,31 @@ func List(ctx context.Context, sig, all bool, deps common.Dependencies) []*disco
 		messages   []*discordgo.MessageSend
 	)
 
-	// This code is horrifically ugly and I absolutely hate it but it works so I'm leaving it be for now.
 	for _, k := range keys {
-		if sig {
-			if charCount+len(k)+len(roleList[k])+2 > common.EmbedLimitDescription {
-				// send the current one and start a new one
-				embed := common.NewEmbed()
-				if firstChunk {
-					embed.SetTitle(clientType[sig] + "s")
-					firstChunk = false
-				}
-				embed.SetDescription(buffer.String())
-				sp.Debug("debug", zap.String("sig buffer", buffer.String()))
-				messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
-				buffer.Reset()
-				charCount = len(k) + len(roleList[k]) + 2
-				buffer.WriteString(fmt.Sprintf("%s: %s\n", k, roleList[k]))
-			} else {
-				charCount += charCount + len(k) + len(roleList[k]) + 2
-				buffer.WriteString(fmt.Sprintf("%s: %s\n", k, roleList[k]))
+		// Check if the current role + desc pushes us over the limit for descriptions
+		if charCount+len(k)+len(roleList[k])+2 > common.EmbedLimitDescription {
+			sp.Info("Starting a new embed")
+			// send the current one and start a new one
+			embed := common.NewEmbed()
+			if firstChunk {
+				sp.Info("First chunk so setting title")
+				embed.SetTitle(clientType[sig] + "s")
+				firstChunk = false
 			}
+			embed.SetDescription(buffer.String())
+			sp.Debug("description buffer for chunk", zap.String("buffer", buffer.String()))
+			messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+			buffer.Reset()
+			charCount = len(k) + len(roleList[k]) + 2
+			buffer.WriteString(fmt.Sprintf("%s: %s\n", k, roleList[k]))
 		} else {
-			if charCount+len(k)+1 > common.EmbedLimitDescription {
-				// send the current one and start a new one
-				embed := common.NewEmbed()
-				if firstChunk {
-					embed.SetTitle(clientType[sig] + "s")
-					firstChunk = false
-				}
-				embed.SetDescription(buffer.String())
-				messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
-				sp.Debug("debug", zap.String("role buffer", buffer.String()))
-				buffer.Reset()
-				charCount = len(k) + 1
-				buffer.WriteString(fmt.Sprintf("%s\n", k))
-			} else {
-				charCount += charCount + len(k) + 1
-				buffer.WriteString(fmt.Sprintf("%s\n", k))
-			}
+			sp.Info("still within chunk boundary, appending")
+			charCount += charCount + len(k) + len(roleList[k]) + 2
+			buffer.WriteString(fmt.Sprintf("%s: %s\n", k, roleList[k]))
 		}
 	}
 
-	sp.Debug("debug", zap.String("leftover buffer", buffer.String()))
+	sp.Debug("leftover buffer to send", zap.String("buffer", buffer.String()))
 	embed := common.NewEmbed()
 	if firstChunk {
 		embed.SetTitle(clientType[sig] + "s")
