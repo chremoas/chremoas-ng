@@ -60,12 +60,14 @@ func (c Command) doRole(ctx context.Context, m *discordgo.Message) []*discordgo.
 	switch cmdStr[1] {
 	case "list":
 		if len(cmdStr) < 3 {
-			return roles.List(ctx, roles.Role, false, m.ChannelID, c.dependencies)
+			return common.SendError("Just.... no")
+			// return roles.List(ctx, roles.Role, false, m.ChannelID, c.dependencies)
 		}
 
 		switch cmdStr[2] {
 		case "all":
-			return roles.List(ctx, roles.Role, true, m.ChannelID, c.dependencies)
+			return common.SendError("Just.... no")
+			// return roles.List(ctx, roles.Role, true, m.ChannelID, c.dependencies)
 
 		case "members":
 			if len(cmdStr) < 4 {
