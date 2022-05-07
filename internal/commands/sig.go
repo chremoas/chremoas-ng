@@ -68,12 +68,12 @@ func (c Command) doSig(ctx context.Context, m *discordgo.Message) []*discordgo.M
 	switch cmdStr[1] {
 	case "list":
 		if len(cmdStr) < 3 {
-			return roles.List(ctx, roles.Sig, false, c.dependencies)
+			return roles.List(ctx, roles.Sig, false, m.ChannelID, c.dependencies)
 		}
 
 		switch cmdStr[2] {
 		case "all":
-			return roles.List(ctx, roles.Sig, true, c.dependencies)
+			return roles.List(ctx, roles.Sig, true, m.ChannelID, c.dependencies)
 
 		case "members":
 			if len(cmdStr) < 4 {

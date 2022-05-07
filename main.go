@@ -167,6 +167,7 @@ func main() {
 	)
 
 	// Consumers
+	// Member consumer
 	members := discordMembers.New(ctx, dependencies)
 	membersConsumer, err := queue.NewConsumer(ctx, queueURI, "members", "direct", "members",
 		"members", "members", members.HandleMessage)
@@ -180,6 +181,7 @@ func main() {
 		}
 	}()
 
+	// Role consumer
 	roles := discordRoles.New(ctx, dependencies)
 	rolesConsumer, err := queue.NewConsumer(ctx, queueURI, "roles", "direct", "roles",
 		"roles", "roles", roles.HandleMessage)
@@ -194,6 +196,7 @@ func main() {
 	}()
 
 	// Producers
+	// Members producer
 	dependencies.MembersProducer, err = queue.NewPublisher(ctx, queueURI, "members", "direct",
 		"members")
 	if err != nil {
@@ -201,6 +204,7 @@ func main() {
 	}
 	defer dependencies.MembersProducer.Shutdown(ctx)
 
+	// Roles producer
 	dependencies.RolesProducer, err = queue.NewPublisher(ctx, queueURI, "roles", "direct",
 		"roles")
 	if err != nil {

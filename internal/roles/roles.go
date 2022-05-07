@@ -35,7 +35,7 @@ const (
 
 var roleType = map[bool]string{Role: "role", Sig: "sig"}
 
-func List(ctx context.Context, sig, all bool, deps common.Dependencies) []*discordgo.MessageSend {
+func List(ctx context.Context, sig, all bool, channelID string, deps common.Dependencies) []*discordgo.MessageSend {
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
@@ -74,7 +74,6 @@ func List(ctx context.Context, sig, all bool, deps common.Dependencies) []*disco
 		charCount  int
 		firstChunk = true
 		buffer     bytes.Buffer
-		messages   []*discordgo.MessageSend
 	)
 
 	for _, k := range keys {
@@ -90,7 +89,12 @@ func List(ctx context.Context, sig, all bool, deps common.Dependencies) []*disco
 			}
 			embed.SetDescription(buffer.String())
 			sp.Debug("description buffer for chunk", zap.String("buffer", buffer.String()))
-			messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+
+			_, err = deps.Session.ChannelMessageSendEmbed(channelID, embed.GetMessageEmbed())
+			if err != nil {
+				sp.Error("Error sending message", zap.Error(err))
+				return common.SendError("Error sending response message")
+			}
 			buffer.Reset()
 			charCount = len(k) + len(roleList[k]) + 2
 			buffer.WriteString(fmt.Sprintf("%s: %s\n", k, roleList[k]))
@@ -107,9 +111,14 @@ func List(ctx context.Context, sig, all bool, deps common.Dependencies) []*disco
 		embed.SetTitle(clientType[sig] + "s")
 	}
 	embed.SetDescription(buffer.String())
-	messages = append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 
-	return messages
+	_, err = deps.Session.ChannelMessageSendEmbed(channelID, embed.GetMessageEmbed())
+	if err != nil {
+		sp.Error("Error sending message", zap.Error(err))
+		return common.SendError("Error sending response message")
+	}
+
+	return nil
 }
 
 func Keys() []*discordgo.MessageSend {
