@@ -3,7 +3,6 @@ package roles
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
@@ -231,11 +230,6 @@ func GetRoles(ctx context.Context, sig bool, shortName *string, deps common.Depe
 		}
 		charTotal += len(role.ShortName) + len(role.Name) + 15 // Guessing on bool excess
 		rs = append(rs, role)
-	}
-
-	if charTotal >= 2000 {
-		sp.Error("too many characters for response", zap.Int("char_total", charTotal))
-		return nil, fmt.Errorf("too many %ss (exceeds Discord 2k character limit)", roleType[sig])
 	}
 
 	return rs, nil
