@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 
 	sq "github.com/Masterminds/squirrel"
@@ -18,14 +19,13 @@ import (
 	"go.uber.org/zap"
 )
 
-func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSend {
+func List(ctx context.Context, channelID string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
 	var (
-		buffer   bytes.Buffer
-		filter   payloads.Filter
-		messages []*discordgo.MessageSend
+		filter     payloads.Filter
+		filterList []string
 	)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -61,26 +61,21 @@ func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSen
 			return common.SendFatal(err.Error())
 		}
 
-		buffer.WriteString(fmt.Sprintf("%s: %s\n", filter.Name, filter.Description))
+		filterList = append(filterList, fmt.Sprintf("%s: %s", filter.Name, filter.Description))
 	}
+	sort.Strings(filterList)
 
-	bufLen := buffer.Len()
-
-	sp.With(zap.Int("char_total", bufLen))
-
-	if bufLen == 0 {
+	if len(filterList) == 0 {
 		return common.SendError("No filters")
 	}
 
-	if bufLen > 2000 {
-		sp.Error("too many characters for response")
-		return common.SendError("too many filters (exceeds Discord 2k character limit)")
+	err = common.SendChunkedMessage(ctx, channelID, "Filter List", filterList, deps)
+	if err != nil {
+		sp.Error("Error sending message")
+		return common.SendError("Error sending message")
 	}
 
-	embed := common.NewEmbed()
-	embed.SetTitle("Filters")
-	embed.SetDescription(buffer.String())
-	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+	return nil
 }
 
 func AuthedAdd(ctx context.Context, name, description, author string, deps common.Dependencies) ([]*discordgo.MessageSend, int) {

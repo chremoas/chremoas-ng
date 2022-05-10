@@ -56,7 +56,7 @@ func (c Command) doPerms(ctx context.Context, m *discordgo.Message) []*discordgo
 	switch cmdStr[1] {
 	case "list":
 		if len(cmdStr) < 3 {
-			return perms.List(ctx, c.dependencies)
+			return perms.List(ctx, m.ChannelID, c.dependencies)
 		}
 
 		switch cmdStr[2] {

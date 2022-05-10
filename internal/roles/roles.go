@@ -45,77 +45,30 @@ func List(ctx context.Context, sig, all bool, channelID string, deps common.Depe
 		zap.Bool("all", all),
 	)
 
-	var roleList = make(map[string]string)
-
 	roles, err := GetRoles(ctx, sig, nil, deps)
 	if err != nil {
 		sp.Error("error getting roles", zap.Error(err))
 		return common.SendFatal(err.Error())
 	}
 
+	roleList := make([]string, 0, len(roles))
+
 	for _, role := range roles {
 		if sig && !role.Joinable && !all {
 			continue
 		}
-		roleList[role.ShortName] = role.Name
+		roleList = append(roleList, fmt.Sprintf("%s: %s", role.ShortName, role.Name))
 	}
+	sort.Strings(roleList)
 
 	if len(roleList) == 0 {
 		return common.SendError(fmt.Sprintf("No %ss\n", clientType[sig]))
 	}
 
-	keys := make([]string, 0, len(roleList))
-	for k := range roleList {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var (
-		charCount  int
-		firstChunk = true
-		buffer     bytes.Buffer
-	)
-
-	for _, k := range keys {
-		// Check if the current role + desc pushes us over the limit for descriptions
-		if charCount+len(k)+len(roleList[k])+2 > common.EmbedLimitDescription {
-			sp.Info("Starting a new embed")
-			// send the current one and start a new one
-			embed := common.NewEmbed()
-			if firstChunk {
-				sp.Info("First chunk so setting title")
-				embed.SetTitle(clientType[sig] + "s")
-				firstChunk = false
-			}
-			embed.SetDescription(buffer.String())
-			sp.Debug("description buffer for chunk", zap.String("buffer", buffer.String()))
-
-			_, err = deps.Session.ChannelMessageSendEmbed(channelID, embed.GetMessageEmbed())
-			if err != nil {
-				sp.Error("Error sending message", zap.Error(err))
-				return common.SendError("Error sending response message")
-			}
-			buffer.Reset()
-			charCount = len(k) + len(roleList[k]) + 2
-			buffer.WriteString(fmt.Sprintf("%s: %s\n", k, roleList[k]))
-		} else {
-			sp.Info("still within chunk boundary, appending")
-			charCount += charCount + len(k) + len(roleList[k]) + 2
-			buffer.WriteString(fmt.Sprintf("%s: %s\n", k, roleList[k]))
-		}
-	}
-
-	sp.Debug("leftover buffer to send", zap.String("buffer", buffer.String()))
-	embed := common.NewEmbed()
-	if firstChunk {
-		embed.SetTitle(clientType[sig] + "s")
-	}
-	embed.SetDescription(buffer.String())
-
-	_, err = deps.Session.ChannelMessageSendEmbed(channelID, embed.GetMessageEmbed())
+	err = common.SendChunkedMessage(ctx, channelID, fmt.Sprintf("%s List", clientType[sig]), roleList, deps)
 	if err != nil {
-		sp.Error("Error sending message", zap.Error(err))
-		return common.SendError("Error sending response message")
+		sp.Error("Error sending message")
+		return common.SendError("Error sending message")
 	}
 
 	return nil
