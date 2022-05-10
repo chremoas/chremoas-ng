@@ -57,6 +57,11 @@ func List(ctx context.Context, sig, all bool, channelID string, deps common.Depe
 		if sig && !role.Joinable && !all {
 			continue
 		}
+
+		if !sig && !role.Sync && !all {
+			continue
+		}
+
 		roleList = append(roleList, fmt.Sprintf("%s: %s", role.ShortName, role.Name))
 	}
 	sort.Strings(roleList)
