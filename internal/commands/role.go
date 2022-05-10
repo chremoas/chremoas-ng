@@ -16,7 +16,7 @@ import (
 const (
 	roleUsage       = `!role <subcommand> <parameters>`
 	roleSubcommands = `
-    list: List all Roles
+    list: List all Roles that are set to sync
     create: Add Role
     destroy: Delete role
     info: Get Role Info
@@ -64,8 +64,8 @@ func (c Command) doRole(ctx context.Context, m *discordgo.Message) []*discordgo.
 		}
 
 		switch cmdStr[2] {
-		case "all":
-			return roles.List(ctx, roles.Role, true, m.ChannelID, c.dependencies)
+		// case "all":
+		// 	return roles.List(ctx, roles.Role, true, m.ChannelID, c.dependencies)
 
 		case "members":
 			if len(cmdStr) < 4 {
