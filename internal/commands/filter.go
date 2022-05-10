@@ -55,7 +55,7 @@ func (c Command) doFilter(ctx context.Context, m *discordgo.Message) []*discordg
 	switch cmdStr[1] {
 	case "list":
 		if len(cmdStr) < 3 {
-			return filters.List(ctx, c.dependencies)
+			return filters.List(ctx, m.ChannelID, c.dependencies)
 		}
 
 		switch cmdStr[2] {

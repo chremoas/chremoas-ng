@@ -16,15 +16,13 @@ import (
 
 const serverAdmins = "server_admins"
 
-func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSend {
+func List(ctx context.Context, channelID string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
 	var (
-		count    int
-		buffer   bytes.Buffer
 		filter   payloads.Filter
-		messages []*discordgo.MessageSend
+		permList []string
 	)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -59,20 +57,21 @@ func List(ctx context.Context, deps common.Dependencies) []*discordgo.MessageSen
 			return common.SendFatal(err.Error())
 		}
 
-		buffer.WriteString(fmt.Sprintf("%s: %s\n", filter.Name, filter.Description))
-		count += 1
+		permList = append(permList, fmt.Sprintf("%s: %s", filter.Name, filter.Description))
 	}
 
-	if count == 0 {
+	if len(permList) == 0 {
 		sp.Error("no permissions")
 		return common.SendError("No permissions")
 	}
 
-	embed := common.NewEmbed()
-	embed.SetTitle("Permissions")
-	embed.SetDescription(buffer.String())
+	err = common.SendChunkedMessage(ctx, channelID, "Perm List", permList, deps)
+	if err != nil {
+		sp.Error("Error sending message")
+		return common.SendError("Error sending message")
+	}
 
-	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+	return nil
 }
 
 func Add(ctx context.Context, permission, description, author string, deps common.Dependencies) []*discordgo.MessageSend {
