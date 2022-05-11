@@ -79,7 +79,6 @@ func (aep *authEsiPoller) Poll(ctx context.Context) {
 	count, errorCount, err = aep.syncRoles(ctx)
 	if err == nil {
 		sp.Info("syncRoles() completed", zap.Int("count", count), zap.Int("errorCount", errorCount))
-		return
 	} else {
 		sp.Error("error synchronizing discord roles", zap.Error(err))
 	}
