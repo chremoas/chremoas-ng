@@ -92,8 +92,7 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 
 	response, _, err := aep.esiClient.ESI.CharacterApi.GetCharactersCharacterId(ctx, character.ID, nil)
 	if err != nil {
-		sp.Warn("Character not found")
-
+		sp.Error("Character not found")
 		return err
 	}
 
@@ -102,7 +101,7 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 		return fmt.Errorf("CorpID is 0: ESI error most likely, probably transient")
 	}
 
-	sp.With(zap.Any("response", response))
+	sp.With(zap.Any("esi_response", response))
 
 	if character.CorporationID != response.CorporationId {
 		sp.Info("Updating character's corp")
@@ -236,10 +235,11 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 			err = query.Scan(&oldAlliance)
 			if err != nil {
 				sp.Error("error getting old alliance ticker", zap.Error(err))
-				return err
+			} else {
+				sp.With(zap.String("old_alliance", oldAlliance))
+				sp.Debug("removing user from alliance")
+				filters.RemoveMember(ctx, discordID, oldAlliance, aep.dependencies)
 			}
-
-			sp.With(zap.String("old_alliance", oldAlliance))
 
 			query = aep.dependencies.DB.Select("ticker").
 				From("alliances").
@@ -255,20 +255,12 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 
 			err = query.Scan(&newAlliance)
 			if err != nil {
-				sp.Error(
-					"error getting new alliance ticker",
-					zap.Error(err),
-					zap.Any("allianceID", newAllianceID),
-				)
-				return err
+				sp.Error("error getting new alliance ticker", zap.Error(err))
+			} else {
+				sp.With(zap.String("new_alliance", newAlliance))
+				sp.Debug("adding user to alliance")
+				filters.AddMember(ctx, discordID, newAlliance, aep.dependencies)
 			}
-
-			sp.With(zap.String("new_alliance", newAlliance))
-
-			sp.Debug("removing user from alliance")
-			filters.RemoveMember(ctx, discordID, oldAlliance, aep.dependencies)
-			sp.Debug("adding user to alliance")
-			filters.AddMember(ctx, discordID, newAlliance, aep.dependencies)
 		}
 	}
 

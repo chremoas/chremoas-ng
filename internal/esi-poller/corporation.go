@@ -182,7 +182,7 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation aut
 		sp.Error("Error calling GetCorporationsCorporationId", zap.Error(err))
 	}
 
-	sp.With(zap.Any("response", response))
+	sp.With(zap.Any("esi_response", response))
 
 	if response.AllianceId != 0 {
 		// corp has joined or switched alliances so let's make sure the new alliance is up to date

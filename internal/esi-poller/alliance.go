@@ -95,7 +95,7 @@ func (aep *authEsiPoller) updateAlliance(ctx context.Context, alliance auth.Alli
 		return err
 	}
 
-	sp.With(zap.Any("response", response))
+	sp.With(zap.Any("esi_response", response))
 
 	if alliance.Name != response.Name || alliance.Ticker != response.Ticker {
 		sp.Info("Updating alliance")
