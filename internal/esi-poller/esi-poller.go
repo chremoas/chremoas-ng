@@ -24,8 +24,6 @@ type authEsiPoller struct {
 	tickTime     time.Duration
 	ticker       *time.Ticker
 	esiClient    *goesi.APIClient
-
-	badDiscordUsers map[string]int
 }
 
 func New(ctx context.Context, userAgent string, deps common.Dependencies) AuthEsiPoller {
