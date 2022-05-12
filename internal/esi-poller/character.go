@@ -8,12 +8,15 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bhechinger/go-sets"
 	sl "github.com/bhechinger/spiffylogger"
+	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/auth"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"go.uber.org/zap"
 )
+
+const deleteAfterCount = 10
 
 func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error) {
 	ctx, sp := sl.OpenSpan(ctx)
@@ -290,6 +293,101 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 
 	member, err := aep.dependencies.Session.GuildMember(aep.dependencies.GuildID, strChatID)
 	if err != nil {
+		if restError, ok := err.(discordgo.RESTError); ok {
+			if restError.Response.StatusCode == 404 {
+				if errCount, exists := aep.badDiscordUsers[strChatID]; exists {
+
+					sp.Debug("Failed to update user in discord, user not found",
+						zap.Int("bad attempt count", aep.badDiscordUsers[strChatID]),
+					)
+
+					if errCount > deleteAfterCount {
+						sp.Warn("Deleting user afer too many Discord failures",
+							zap.Int("threshold", deleteAfterCount),
+						)
+						// Too many failures in Discord, deleting from chremoas
+						query = aep.dependencies.DB.Select("character_id").
+							From("user_character_map").
+							Where(sq.Eq{"chat_id": strChatID})
+
+						sqlStr, args, err = query.ToSql()
+						if err != nil {
+							sp.Error("error getting sql", zap.Error(err))
+							return err
+						} else {
+							sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+						}
+
+						rows, err := query.QueryContext(ctx)
+						if err != nil {
+							sp.Error("error getting character list from the db", zap.Error(err))
+							return err
+						}
+
+						defer func() {
+							if err = rows.Close(); err != nil {
+								sp.Error("error closing role", zap.Error(err))
+							}
+						}()
+
+						var characterID int
+						for rows.Next() {
+							err = rows.Scan(&characterID)
+							if err != nil {
+								sp.Error("error scanning character id", zap.Error(err))
+								return err
+							}
+
+							sp.With(zap.Int("character_id", characterID))
+
+							sp.Info("Deleting user's authentication codes")
+
+							query := aep.dependencies.DB.Delete("authentication_codes").
+								Where(sq.Eq{"character_id": characterID})
+
+							sqlStr, args, err = query.ToSql()
+							if err != nil {
+								sp.Error("error getting sql", zap.Error(err))
+								return err
+							} else {
+								sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+							}
+
+							_, err := query.QueryContext(ctx)
+							if err != nil {
+								sp.Error("error deleting user's authentication codes from the db", zap.Error(err))
+								return err
+							}
+
+							sp.Info("Deleting user's character")
+
+							query = aep.dependencies.DB.Delete("characters").
+								Where(sq.Eq{"id": characterID})
+
+							sqlStr, args, err = query.ToSql()
+							if err != nil {
+								sp.Error("error getting sql", zap.Error(err))
+								return err
+							} else {
+								sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+							}
+
+							_, err = query.QueryContext(ctx)
+							if err != nil {
+								sp.Error("error deleting user's character from the db", zap.Error(err))
+								return err
+							}
+						}
+					}
+					aep.badDiscordUsers[strChatID]++
+				} else {
+					aep.badDiscordUsers[strChatID] = 1
+				}
+
+				return err
+			}
+
+		}
 		sp.Error("error getting guild member", zap.Error(err))
 		return err
 	}
