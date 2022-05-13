@@ -24,6 +24,7 @@ type authEsiPoller struct {
 	tickTime     time.Duration
 	ticker       *time.Ticker
 	esiClient    *goesi.APIClient
+	cad          common.CheckAndDelete
 }
 
 func New(ctx context.Context, userAgent string, deps common.Dependencies) AuthEsiPoller {
@@ -37,6 +38,7 @@ func New(ctx context.Context, userAgent string, deps common.Dependencies) AuthEs
 		dependencies: deps,
 		tickTime:     time.Minute * 60,
 		esiClient:    goesi.NewAPIClient(httpClient, userAgent),
+		cad:          common.NewCheckAndDelete(deps),
 	}
 }
 

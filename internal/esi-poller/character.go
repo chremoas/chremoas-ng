@@ -65,6 +65,14 @@ func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error
 
 		err := aep.updateCharacter(ctx, character)
 		if err != nil {
+			handled, hErr := aep.cad.CheckAndDelete(ctx, fmt.Sprintf("%d", character.ID), err)
+			if handled {
+				return -1, -1, err
+			}
+			if hErr != nil {
+				sp.Error("Additional errors from checkAndDelete", zap.Error(hErr))
+			}
+
 			sp.Error(
 				"error updating character",
 				zap.Error(err),
@@ -290,6 +298,14 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 
 	member, err := aep.dependencies.Session.GuildMember(aep.dependencies.GuildID, strChatID)
 	if err != nil {
+		handled, hErr := aep.cad.CheckAndDelete(ctx, fmt.Sprintf("%d", character.ID), err)
+		if handled {
+			return err
+		}
+		if hErr != nil {
+			sp.Error("Additional errors from checkAndDelete", zap.Error(hErr))
+		}
+
 		sp.Error("error getting guild member", zap.Error(err))
 		return err
 	}
