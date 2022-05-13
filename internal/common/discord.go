@@ -67,7 +67,7 @@ func (cad CheckAndDelete) CheckAndDelete(ctx context.Context, memberID string, c
 		if restError.Response.StatusCode == 404 {
 			if errCount, exists := cad.badDiscordUsers[memberID]; exists {
 
-				sp.Debug("Failed to update user in discord, user not found",
+				sp.Warn("Failed to update user in discord, user not found",
 					zap.Int("bad attempt count", cad.badDiscordUsers[memberID]),
 				)
 
@@ -110,7 +110,7 @@ func (cad CheckAndDelete) CheckAndDelete(ctx context.Context, memberID string, c
 
 						sp.With(zap.Int("character_id", characterID))
 
-						sp.Info("Deleting user's authentication codes")
+						sp.Warn("Deleting user's authentication codes")
 
 						query := cad.dependencies.DB.Delete("authentication_codes").
 							Where(sq.Eq{"character_id": characterID})
@@ -129,7 +129,7 @@ func (cad CheckAndDelete) CheckAndDelete(ctx context.Context, memberID string, c
 							return true, err
 						}
 
-						sp.Info("Deleting user's character")
+						sp.Warn("Deleting user's character")
 
 						query = cad.dependencies.DB.Delete("characters").
 							Where(sq.Eq{"id": characterID})
