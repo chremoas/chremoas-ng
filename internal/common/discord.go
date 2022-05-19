@@ -59,11 +59,11 @@ func (cad CheckAndDelete) CheckAndDelete(ctx context.Context, discordID string, 
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
-	sp.With(
-		zap.String("discordID", discordID),
-	)
+	sp.With(zap.String("discordID", discordID))
 
 	if restError, ok := checkErr.(discordgo.RESTError); ok {
+		sp.With(zap.Int("http_status_code", restError.Response.StatusCode))
+
 		if restError.Response.StatusCode == 404 {
 			sp.Warn("Failed to update user in discord, user not found")
 
