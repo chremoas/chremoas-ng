@@ -63,6 +63,7 @@ func (cad CheckAndDelete) CheckAndDelete(ctx context.Context, discordID string, 
 	sp.With(
 		zap.String("discordID", discordID),
 		zap.NamedError("checkErr", checkErr),
+		zap.String("error_type", fmt.Sprintf("%T", checkErr)),
 	)
 
 	sp.Warn("Got an error, checking")
