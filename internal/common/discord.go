@@ -59,7 +59,12 @@ func (cad CheckAndDelete) CheckAndDelete(ctx context.Context, discordID string, 
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
-	sp.With(zap.String("discordID", discordID))
+	sp.With(
+		zap.String("discordID", discordID),
+		zap.NamedError("checkErr", checkErr),
+	)
+
+	sp.Warn("Got an error, checking")
 
 	if restError, ok := checkErr.(discordgo.RESTError); ok {
 		sp.With(zap.Int("http_status_code", restError.Response.StatusCode))
