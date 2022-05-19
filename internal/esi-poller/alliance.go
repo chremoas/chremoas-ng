@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	sl "github.com/bhechinger/spiffylogger"
-	"github.com/chremoas/chremoas-ng/internal/auth"
+	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/roles"
 	"go.uber.org/zap"
 )
@@ -43,7 +43,7 @@ func (aep *authEsiPoller) updateAlliances(ctx context.Context) (int, int, error)
 	return count, errorCount, nil
 }
 
-func (aep *authEsiPoller) updateAlliance(ctx context.Context, alliance auth.Alliance) error {
+func (aep *authEsiPoller) updateAlliance(ctx context.Context, alliance payloads.Alliance) error {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 

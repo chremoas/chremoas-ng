@@ -6,7 +6,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
-	"github.com/chremoas/chremoas-ng/internal/auth"
+	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"go.uber.org/zap"
 )
 
@@ -37,7 +37,7 @@ func (s Storage) GetCorporationCount(ctx context.Context, corporationID int32) (
 	return count, nil
 }
 
-func (s Storage) GetCorporation(ctx context.Context, corporationID int32) (auth.Corporation, error) {
+func (s Storage) GetCorporation(ctx context.Context, corporationID int32) (payloads.Corporation, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 
@@ -48,12 +48,12 @@ func (s Storage) GetCorporation(ctx context.Context, corporationID int32) (auth.
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
-		return auth.Corporation{}, err
+		return payloads.Corporation{}, err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
-	var corporation auth.Corporation
+	var corporation payloads.Corporation
 
 	err = query.Scan(&corporation.Ticker, &corporation.AllianceID)
 	if err != nil {
@@ -61,13 +61,13 @@ func (s Storage) GetCorporation(ctx context.Context, corporationID int32) (auth.
 			"error getting corporation info",
 			zap.Error(err),
 		)
-		return auth.Corporation{}, err
+		return payloads.Corporation{}, err
 	}
 
 	return corporation, nil
 }
 
-func (s Storage) GetCorporations(ctx context.Context) ([]auth.Corporation, error) {
+func (s Storage) GetCorporations(ctx context.Context) ([]payloads.Corporation, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 
@@ -97,10 +97,10 @@ func (s Storage) GetCorporations(ctx context.Context) ([]auth.Corporation, error
 		}
 	}()
 
-	var corporations []auth.Corporation
+	var corporations []payloads.Corporation
 
 	for rows.Next() {
-		var corporation auth.Corporation
+		var corporation payloads.Corporation
 
 		err = rows.Scan(&corporation.ID, &corporation.Name, &corporation.Ticker, &corporation.AllianceID)
 		if err != nil {

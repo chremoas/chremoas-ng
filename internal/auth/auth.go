@@ -10,11 +10,12 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
+	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/roles"
 	"go.uber.org/zap"
 )
 
-func Create(ctx context.Context, request *CreateRequest, deps common.Dependencies) (*string, error) {
+func Create(ctx context.Context, request *payloads.CreateRequest, deps common.Dependencies) (*string, error) {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 

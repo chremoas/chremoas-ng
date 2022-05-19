@@ -6,7 +6,6 @@ import (
 
 	"github.com/bhechinger/go-sets"
 	sl "github.com/bhechinger/spiffylogger"
-	"github.com/chremoas/chremoas-ng/internal/auth"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
@@ -59,7 +58,7 @@ func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error
 	return count, errorCount, nil
 }
 
-func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Character) error {
+func (aep *authEsiPoller) updateCharacter(ctx context.Context, character payloads.Character) error {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 
@@ -85,7 +84,7 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character auth.Ch
 		sp.Info("Updating character's corp")
 
 		// Check if corporation exists, if not, add it.
-		corporation := auth.Corporation{ID: response.CorporationId}
+		corporation := payloads.Corporation{ID: response.CorporationId}
 		err = aep.updateCorporation(ctx, corporation)
 		if err != nil {
 			sp.Error("error updating corporation", zap.Error(err))

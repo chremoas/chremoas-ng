@@ -5,7 +5,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
-	"github.com/chremoas/chremoas-ng/internal/auth"
+	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"go.uber.org/zap"
 )
 
@@ -36,7 +36,7 @@ func (s Storage) GetAllianceCount(ctx context.Context, allianceID int32) (int, e
 	return count, nil
 }
 
-func (s Storage) GetAlliance(ctx context.Context, allianceID int32) (auth.Alliance, error) {
+func (s Storage) GetAlliance(ctx context.Context, allianceID int32) (payloads.Alliance, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 
@@ -47,23 +47,23 @@ func (s Storage) GetAlliance(ctx context.Context, allianceID int32) (auth.Allian
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
-		return auth.Alliance{}, err
+		return payloads.Alliance{}, err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
-	alliance := auth.Alliance{ID: allianceID}
+	alliance := payloads.Alliance{ID: allianceID}
 
 	err = query.Scan(&alliance.Name, &alliance.Ticker)
 	if err != nil {
 		sp.Error("error getting alliance", zap.Error(err))
-		return auth.Alliance{}, err
+		return payloads.Alliance{}, err
 	}
 
 	return alliance, nil
 }
 
-func (s Storage) GetAlliances(ctx context.Context) ([]auth.Alliance, error) {
+func (s Storage) GetAlliances(ctx context.Context) ([]payloads.Alliance, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 
@@ -93,10 +93,10 @@ func (s Storage) GetAlliances(ctx context.Context) ([]auth.Alliance, error) {
 		}
 	}()
 
-	var alliances []auth.Alliance
+	var alliances []payloads.Alliance
 
 	for rows.Next() {
-		var alliance auth.Alliance
+		var alliance payloads.Alliance
 
 		err = rows.Scan(&alliance.ID, &alliance.Name, &alliance.Ticker)
 		if err != nil {

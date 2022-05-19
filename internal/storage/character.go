@@ -5,7 +5,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
-	"github.com/chremoas/chremoas-ng/internal/auth"
+	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"go.uber.org/zap"
 )
 
@@ -36,7 +36,7 @@ func (s Storage) GetCharacterCount(ctx context.Context, characterID int32) (int,
 	return count, nil
 }
 
-func (s Storage) GetCharacter(ctx context.Context, characterID int) (auth.Character, error) {
+func (s Storage) GetCharacter(ctx context.Context, characterID int) (payloads.Character, error) {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
@@ -47,23 +47,23 @@ func (s Storage) GetCharacter(ctx context.Context, characterID int) (auth.Charac
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
 		sp.Error("error getting sql", zap.Error(err))
-		return auth.Character{}, err
+		return payloads.Character{}, err
 	} else {
 		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
 	}
 
-	var character auth.Character
+	var character payloads.Character
 
 	err = query.Scan(&character.Name, &character.CorporationID)
 	if err != nil {
 		sp.Error("error getting character name and corporation", zap.Error(err))
-		return auth.Character{}, err
+		return payloads.Character{}, err
 	}
 
 	return character, nil
 }
 
-func (s Storage) GetCharacters(ctx context.Context) ([]auth.Character, error) {
+func (s Storage) GetCharacters(ctx context.Context) ([]payloads.Character, error) {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
@@ -93,10 +93,10 @@ func (s Storage) GetCharacters(ctx context.Context) ([]auth.Character, error) {
 		}
 	}()
 
-	var characters []auth.Character
+	var characters []payloads.Character
 
 	for rows.Next() {
-		var character auth.Character
+		var character payloads.Character
 
 		err = rows.Scan(&character.ID, &character.Name, &character.CorporationID, &character.Token)
 		if err != nil {

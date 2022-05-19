@@ -1,4 +1,4 @@
-package auth
+package payloads
 
 import (
 	"database/sql"

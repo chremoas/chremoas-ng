@@ -16,6 +16,7 @@ import (
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/auth"
 	"github.com/chremoas/chremoas-ng/internal/common"
+	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/dimfeld/httptreemux"
 	"github.com/gregjones/httpcache"
 	"github.com/spf13/viper"
@@ -260,13 +261,13 @@ func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store
 
 	// Auth internally, this is the source of the bot's auth code.
 	// We know we'll have a corp and a character, we're not sure if the corp is in an alliance.
-	request := &auth.CreateRequest{
-		Corporation: &auth.Corporation{
+	request := &payloads.CreateRequest{
+		Corporation: &payloads.Corporation{
 			ID:     character.CorporationId,
 			Name:   corporation.Name,
 			Ticker: corporation.Ticker,
 		},
-		Character: &auth.Character{
+		Character: &payloads.Character{
 			ID:   verifyReponse.CharacterID,
 			Name: character.Name,
 		},
@@ -276,7 +277,7 @@ func (web Web) doAuth(w http.ResponseWriter, r *http.Request, sess session.Store
 	}
 
 	if corporation.AllianceId != 0 {
-		request.Alliance = &auth.Alliance{
+		request.Alliance = &payloads.Alliance{
 			// TODO: Damn, why did I put int64 here?  At least I can upcast...
 			ID:     corporation.AllianceId,
 			Name:   alliance.Name,

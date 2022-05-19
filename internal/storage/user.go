@@ -5,7 +5,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
-	"github.com/chremoas/chremoas-ng/internal/auth"
+	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/lib/pq"
 	"go.uber.org/zap"
 )
@@ -37,7 +37,7 @@ func (s Storage) GetDiscordUser(ctx context.Context, characterID int32) (string,
 	return discordID, nil
 }
 
-func (s Storage) GetDiscordCharacters(ctx context.Context, discordID string) ([]auth.Character, error) {
+func (s Storage) GetDiscordCharacters(ctx context.Context, discordID string) ([]payloads.Character, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 
@@ -65,10 +65,10 @@ func (s Storage) GetDiscordCharacters(ctx context.Context, discordID string) ([]
 		}
 	}()
 
-	var characters []auth.Character
+	var characters []payloads.Character
 
 	for rows.Next() {
-		var character auth.Character
+		var character payloads.Character
 
 		err = rows.Scan(&character.ID)
 		if err != nil {
