@@ -25,6 +25,21 @@ type MemberPayload struct {
 
 // Filter is the filter data structure
 type Filter struct {
+	ID          int    `json:"id,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// RoleFilter is the filter data structure
+type RoleFilter struct {
+	ID     int   `json:"id,omitempty"`
+	Role   int64 `json:"role"`
+	Filter int64 `json:"filter"`
+}
+
+// Permission is the filter data structure
+type Permission struct {
+	ID          int    `json:"id,omitempty"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }

@@ -23,6 +23,7 @@ import (
 	discordMembers "github.com/chremoas/chremoas-ng/internal/discord/members"
 	discordRoles "github.com/chremoas/chremoas-ng/internal/discord/roles"
 	esiPoller "github.com/chremoas/chremoas-ng/internal/esi-poller"
+	"github.com/chremoas/chremoas-ng/internal/storage"
 	"github.com/gregjones/httpcache"
 	_ "github.com/lib/pq"
 	"github.com/spf13/pflag"
@@ -115,11 +116,13 @@ func main() {
 	// =========================================================================
 	// Setup DB connection
 
-	dependencies.DB, err = database.New(ctx)
+	db, err := database.New(ctx)
 	if err != nil {
 		sp.Error("error opening connection to PostgreSQL", zap.Error(err))
 		return
 	}
+
+	dependencies.Storage = storage.New(db)
 
 	// =========================================================================
 	// Start the discord session

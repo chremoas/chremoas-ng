@@ -80,7 +80,7 @@ func (c Command) doFilter(ctx context.Context, m *discordgo.Message) []*discordg
 		if len(cmdStr) < 3 {
 			return getHelp("!filter destroy help", "!filter destroy <filter_name>", "")
 		}
-		f, _ := filters.AuthedDelete(ctx, cmdStr[2], m.Author.ID, c.dependencies)
+		f := filters.AuthedDelete(ctx, cmdStr[2], m.Author.ID, c.dependencies)
 		return f
 
 	case "add":

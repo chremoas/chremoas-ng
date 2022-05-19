@@ -27,8 +27,6 @@ func GetUserRoles(ctx context.Context, sig bool, userID string, deps Dependencie
 		zap.String("user_id", userID),
 	)
 
-	var roles []payloads.Role
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -41,47 +39,7 @@ func GetUserRoles(ctx context.Context, sig bool, userID string, deps Dependencie
 		userID = ExtractUserId(userID)
 	}
 
-	query := deps.DB.Select("role_nick", "name", "chat_id").
-		From("").
-		Suffix("getMemberRoles(?, ?)", userID, strconv.FormatBool(sig))
-
-	sqlStr, args, err := query.ToSql()
-	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return nil, err
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-	}
-
-	rows, err := query.QueryContext(ctx)
-	if err != nil {
-		sp.Error("error getting role membership", zap.Error(err))
-		return nil, fmt.Errorf("error getting user %ss (%s): %s", roleType[sig], userID, err)
-	}
-
-	defer func() {
-		if err = rows.Close(); err != nil {
-			sp.Error("error closing row", zap.Error(err))
-		}
-	}()
-
-	for rows.Next() {
-		var role payloads.Role
-
-		err = rows.Scan(
-			&role.ShortName,
-			&role.Name,
-			&role.ChatID,
-		)
-		if err != nil {
-			sp.Error("error scanning row", zap.Error(err))
-			return nil, fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
-		}
-
-		roles = append(roles, role)
-	}
-
-	return roles, nil
+	return deps.Storage.GetMemberRoles(ctx, userID, sig)
 }
 
 func GetMembership(ctx context.Context, userID string, deps Dependencies) (*sets.StringSet, error) {

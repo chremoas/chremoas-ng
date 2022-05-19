@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 
-	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
@@ -122,11 +121,6 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 
 	sp.With(zap.String("queue", "role"))
 
-	var (
-		err  error
-		sync bool
-	)
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -136,28 +130,16 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 		r.dependencies.Session.Unlock()
 	}()
 
-	query := r.dependencies.DB.Select("sync").
-		From("roles").
-		Where(sq.Eq{"name": role.Role.Name})
-
-	sqlStr, args, err := query.ToSql()
+	roleData, err := r.dependencies.Storage.GetRole(ctx, "", role.Role.Name, &role.Role.Sig)
 	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return err
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-	}
-
-	err = query.Scan(&sync)
-	if err != nil {
-		sp.Error("Error getting role sync status", zap.Error(err))
+		sp.Error("Error getting role", zap.Error(err))
 		return err
 	}
 
-	sp.With(zap.Bool("sync", sync))
+	sp.With(zap.Bool("sync", roleData.Sync))
 
 	// If this role isn't set to sync, ignore it.
-	if !sync {
+	if !roleData.Sync {
 		return nil
 	}
 
@@ -182,22 +164,9 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 
 		sp.Info("Create role")
 
-		update := r.dependencies.DB.Update("roles").
-			Set("chat_id", newRole.ID).
-			Where(sq.Eq{"name": role.Role.Name})
-
-		sqlStr, args, err = update.ToSql()
+		err = r.dependencies.Storage.UpdateRole(ctx, newRole.ID, role.Role.Name, "")
 		if err != nil {
-			sp.Error("error getting sql", zap.Error(err))
-			return err
-		} else {
-			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-		}
-
-		_, err = update.QueryContext(ctx)
-		if err != nil {
-			sp.Error("Error updating role id in db", zap.Error(err))
-			return err
+			sp.Error("Error updating role", zap.Error(err))
 		}
 
 		role.Role.ID = newRole.ID
@@ -246,7 +215,7 @@ func (r Role) delete(ctx context.Context, role payloads.RolePayload) error {
 	return nil
 }
 
-// Maybe ditch this in favor of just trying to create and if that fails update. Maybe.
+// Maybe ditch this in favor of just trying to create and if that fails update, maybe.
 func (r Role) exists(ctx context.Context, name, guildID string) bool {
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()

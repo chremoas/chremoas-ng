@@ -3,19 +3,16 @@ package filters
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
 
-	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
-	"github.com/lib/pq"
 	"go.uber.org/zap"
 )
 
@@ -23,45 +20,19 @@ func List(ctx context.Context, channelID string, deps common.Dependencies) []*di
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
-	var (
-		filter     payloads.Filter
-		filterList []string
-	)
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	query := deps.DB.Select("name", "description").
-		From("filters")
-
-	sqlStr, args, err := query.ToSql()
+	filters, err := deps.Storage.GetFilters(ctx)
 	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return common.SendFatal(err.Error())
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.Error("Error getting filters")
+		return common.SendFatal("Error getting filters")
 	}
 
-	rows, err := query.QueryContext(ctx)
-	if err != nil {
-		sp.Error("error getting filter", zap.Error(err))
-		return common.SendFatal(err.Error())
-	}
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			sp.Error("error closing database", zap.Error(err))
-		}
-	}()
+	var filterList []string
 
-	for rows.Next() {
-		err = rows.Scan(&filter.Name, &filter.Description)
-		if err != nil {
-			sp.Error("error scanning filter row", zap.Error(err))
-			return common.SendFatal(err.Error())
-		}
-
-		filterList = append(filterList, fmt.Sprintf("%s: %s", filter.Name, filter.Description))
+	for f := range filters {
+		filterList = append(filterList, fmt.Sprintf("%s: %s", filters[f].Name, filters[f].Description))
 	}
 	sort.Strings(filterList)
 
@@ -88,8 +59,8 @@ func AuthedAdd(ctx context.Context, name, description, author string, deps commo
 		zap.String("author", author),
 	)
 
-	if !perms.CanPerform(ctx, author, "role_admins", deps) {
-		sp.Warn("user doesn't have permission to this command")
+	if err := perms.CanPerform(ctx, author, "role_admins", deps); err != nil {
+		sp.Warn("user doesn't have permission to this command", zap.Error(err))
 		return common.SendError("User doesn't have permission to this command"), -1
 	}
 
@@ -106,28 +77,9 @@ func Add(ctx context.Context, name, description string, deps common.Dependencies
 		zap.String("description", description),
 	)
 
-	var id int
-	insert := deps.DB.Insert("filters").
-		Columns("name", "description").
-		Values(name, description).
-		Suffix("RETURNING \"id\"")
-
-	sqlStr, args, err := insert.ToSql()
+	id, err := deps.Storage.InsertFilter(ctx, name, description)
 	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return common.SendFatal(err.Error()), -1
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-	}
-
-	err = insert.Scan(&id)
-	if err != nil {
-		// I don't love this, but I can't find a better way right now
-		if err.(*pq.Error).Code == "23505" {
-			return common.SendError(fmt.Sprintf("filter `%s` already exists", name)), -1
-		}
-		sp.Error("error inserting filter", zap.Error(err))
-		return common.SendFatal(err.Error()), -1
+		return common.SendError(err.Error()), -1
 	}
 	sp.With(zap.Int("id", id))
 
@@ -135,7 +87,7 @@ func Add(ctx context.Context, name, description string, deps common.Dependencies
 	return common.SendSuccess(fmt.Sprintf("Created filter `%s`", name)), id
 }
 
-func AuthedDelete(ctx context.Context, name, author string, deps common.Dependencies) ([]*discordgo.MessageSend, int) {
+func AuthedDelete(ctx context.Context, name, author string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
@@ -144,60 +96,31 @@ func AuthedDelete(ctx context.Context, name, author string, deps common.Dependen
 		zap.String("author", author),
 	)
 
-	if !perms.CanPerform(ctx, author, "role_admins", deps) {
-		sp.Warn("user doesn't have permission to this command")
-		return common.SendError("User doesn't have permission to this command"), -1
+	if err := perms.CanPerform(ctx, author, "role_admins", deps); err != nil {
+		sp.Warn("user doesn't have permission to this command", zap.Error(err))
+		return common.SendError("User doesn't have permission to this command")
 	}
 
 	sp.Debug("deleting filter")
 	return Delete(ctx, name, deps)
 }
 
-func Delete(ctx context.Context, name string, deps common.Dependencies) ([]*discordgo.MessageSend, int) {
+func Delete(ctx context.Context, name string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
 	sp.With(zap.String("name", name))
 
 	var id int
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	query := deps.DB.Delete("filters").
-		Where(sq.Eq{"name": name}).
-		Suffix("RETURNING \"id\"")
-
-	sqlStr, args, err := query.ToSql()
+	err := deps.Storage.DeleteFilter(ctx, name)
 	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return common.SendFatal(err.Error()), -1
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.Error("Error deleting filter")
+		return common.SendError("Error deleting filter")
 	}
 
-	rows, err := query.QueryContext(ctx)
-	if err != nil {
-		sp.Error("error deleting filter", zap.Error(err))
-		return common.SendFatal(err.Error()), -1
-	}
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			sp.Error("error closing database", zap.Error(err))
-		}
-	}()
+	sp.Info("deleted filter", zap.Int("id", id))
 
-	for rows.Next() {
-		err = rows.Scan(&id)
-		if err != nil {
-			sp.Error("error scanning filters", zap.Error(err))
-			return common.SendFatal(err.Error()), -1
-		}
-		sp.Info("deleted filter", zap.Int("id", id))
-	}
-
-	return common.SendSuccess(fmt.Sprintf("Deleted filter `%s`", name)), id
+	return common.SendSuccess(fmt.Sprintf("Deleted filter `%s`", name))
 }
 
 func ListMembers(ctx context.Context, filter string, deps common.Dependencies) []*discordgo.MessageSend {
@@ -207,46 +130,18 @@ func ListMembers(ctx context.Context, filter string, deps common.Dependencies) [
 	sp.With(zap.String("filter", filter))
 
 	var (
-		userID   int
 		buffer   bytes.Buffer
 		messages []*discordgo.MessageSend
 	)
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	query := deps.DB.Select("user_id").
-		From("filters").
-		Join("filter_membership ON filters.id = filter_membership.filter").
-		Where(sq.Eq{"filters.name": filter})
-
-	sqlStr, args, err := query.ToSql()
+	userIDs, err := deps.Storage.ListFilterMembers(ctx, filter)
 	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return common.SendFatal(err.Error())
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.Error("Error listing filter members")
+		return common.SendError("Error getting filter member list")
 	}
 
-	rows, err := query.QueryContext(ctx)
-	if err != nil {
-		sp.Error("error getting filter membership list", zap.Error(err))
-		return common.SendFatal(err.Error())
-	}
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			sp.Error("error closing database", zap.Error(err))
-		}
-	}()
-
-	for rows.Next() {
-		err = rows.Scan(&userID)
-		if err != nil {
-			sp.Error("error scanning filter_membership userID", zap.Error(err))
-			return common.SendFatal(err.Error())
-		}
-		buffer.WriteString(fmt.Sprintf("%s\n", common.GetUsername(userID, deps.Session)))
+	for u := range userIDs {
+		buffer.WriteString(fmt.Sprintf("%s\n", common.GetUsername(userIDs[u], deps.Session)))
 	}
 
 	bufLen := buffer.Len()
@@ -278,8 +173,8 @@ func AuthedAddMember(ctx context.Context, userID, filter, author string, deps co
 		zap.String("author", author),
 	)
 
-	if !perms.CanPerform(ctx, author, "role_admins", deps) {
-		sp.Warn("user doesn't have permission to this command")
+	if err := perms.CanPerform(ctx, author, "role_admins", deps); err != nil {
+		sp.Warn("user doesn't have permission to this command", zap.Error(err))
 		return common.SendError("User doesn't have permission to this command")
 	}
 
@@ -295,8 +190,6 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 		zap.String("user_id", userID),
 		zap.String("filter", filter),
 	)
-
-	var filterID int
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -316,60 +209,20 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 		return common.SendFatal(err.Error())
 	}
 
-	query := deps.DB.Select("id").
-		From("filters").
-		Where(sq.Eq{"name": filter})
-
-	sqlStr, args, err := query.ToSql()
+	filterData, err := deps.Storage.GetFilter(ctx, filter)
 	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return common.SendFatal(err.Error())
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.Error("Error getting filter", zap.Error(err))
+		return common.SendError(fmt.Sprintf("Error getting filter: %s", err.Error()))
 	}
-
-	err = query.Scan(&filterID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			sp.Error("no such filter")
-			return common.SendError(fmt.Sprintf("No such filter: %s", filter))
-		}
-		sp.Error("error scanning filterID", zap.Error(err))
-		return common.SendFatal(err.Error())
-	}
-
-	sp.With(zap.Int("filter_id", filterID))
+	sp.With(zap.Int("filter_id", filterData.ID))
 
 	sp.Info("Got member info")
 
-	insert := deps.DB.Insert("filter_membership").
-		Columns("filter", "user_id").
-		Values(filterID, userID)
-
-	sqlStr, args, err = insert.ToSql()
+	err = deps.Storage.AddFilterMembership(ctx, filterData.ID, userID)
 	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return common.SendFatal(err.Error())
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-	}
-
-	rows, err := insert.QueryContext(ctx)
-	if err != nil {
-		// I don't love this, but I can't find a better way right now
-		if err.(*pq.Error).Code == "23505" {
-			sp.Warn("already a member", zap.Bool("maybe", false))
-			return common.SendError(fmt.Sprintf("<@%s> already a member of `%s`", userID, filter))
-		}
-		sp.Error("error inserting filter", zap.Error(err))
+		sp.Error("error getting membership")
 		return common.SendFatal(err.Error())
 	}
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			sp.Error("error closing database", zap.Error(err))
-		}
-	}()
 
 	after, err := common.GetMembership(ctx, userID, deps)
 	if err != nil {
@@ -405,8 +258,8 @@ func AuthedRemoveMember(ctx context.Context, userID, filter, author string, deps
 		zap.String("author", author),
 	)
 
-	if !perms.CanPerform(ctx, author, "role_admins", deps) {
-		sp.Warn("user doesn't have permission to this command")
+	if err := perms.CanPerform(ctx, author, "role_admins", deps); err != nil {
+		sp.Warn("user doesn't have permission to this command", zap.Error(err))
 		return common.SendError("User doesn't have permission to this command")
 	}
 
@@ -414,16 +267,14 @@ func AuthedRemoveMember(ctx context.Context, userID, filter, author string, deps
 	return RemoveMember(ctx, userID, filter, deps)
 }
 
-func RemoveMember(ctx context.Context, userID, filter string, deps common.Dependencies) []*discordgo.MessageSend {
+func RemoveMember(ctx context.Context, userID, filterName string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
 	sp.With(
 		zap.String("user_id", userID),
-		zap.String("filter", filter),
+		zap.String("filter", filterName),
 	)
-
-	var filterID int
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -443,50 +294,19 @@ func RemoveMember(ctx context.Context, userID, filter string, deps common.Depend
 		userID = common.ExtractUserId(userID)
 	}
 
-	query := deps.DB.Select("id").
-		From("filters").
-		Where(sq.Eq{"name": filter})
-
-	sqlStr, args, err := query.ToSql()
+	filter, err := deps.Storage.GetFilter(ctx, filterName)
 	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return common.SendFatal(err.Error())
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.Error("error getting filter")
+		return common.SendError("Error getting filter")
 	}
 
-	err = query.Scan(&filterID)
+	sp.With(zap.Int("filter_id", filter.ID))
+
+	err = deps.Storage.DeleteFilterMembership(ctx, filter.ID, userID)
 	if err != nil {
-		sp.Error("error scanning filterID", zap.Error(err))
-		return common.SendFatal(err.Error())
+		sp.Error("Error deleting filter membership", zap.Error(err))
+		return common.SendError("Error deleting filter membership")
 	}
-
-	sp.With(zap.Int("filter_id", filterID))
-
-	delQuery := deps.DB.Delete("filter_membership").
-		Where(sq.Eq{"filter": filterID}).
-		Where(sq.Eq{"user_id": userID}).
-		Suffix("RETURNING \"id\"")
-
-	sqlStr, args, err = delQuery.ToSql()
-	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return common.SendFatal(err.Error())
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-	}
-
-	rows, err := delQuery.QueryContext(ctx)
-	if err != nil {
-		sp.Error("error deleting filter", zap.Error(err))
-		return common.SendFatal(err.Error())
-	}
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			sp.Error("error closing database", zap.Error(err))
-		}
-	}()
 
 	after, err := common.GetMembership(ctx, userID, deps)
 	if err != nil {
@@ -497,7 +317,7 @@ func RemoveMember(ctx context.Context, userID, filter string, deps common.Depend
 	removeSet := before.Difference(after)
 
 	if removeSet.Len() == 0 {
-		return common.SendError(fmt.Sprintf("<@%s> not a member of `%s`", userID, filter))
+		return common.SendError(fmt.Sprintf("<@%s> not a member of `%s`", userID, filter.Name))
 	}
 
 	for _, role := range removeSet.ToSlice() {
@@ -505,7 +325,7 @@ func RemoveMember(ctx context.Context, userID, filter string, deps common.Depend
 	}
 
 	sp.Info("removed user from filter")
-	return common.SendSuccess(fmt.Sprintf("Removed <@%s> from `%s`", userID, filter))
+	return common.SendSuccess(fmt.Sprintf("Removed <@%s> from `%s`", userID, filter.Name))
 }
 
 func QueueUpdate(ctx context.Context, action payloads.Action, memberID, roleID string, deps common.Dependencies) {

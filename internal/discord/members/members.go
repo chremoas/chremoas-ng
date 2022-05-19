@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 
-	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
@@ -114,35 +113,14 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 
 			switch body.Action {
 			case payloads.Add, payloads.Upsert:
-				var sync bool
-				query := m.dependencies.DB.Select("sync").
-					From("roles").
-					Where(sq.Eq{"chat_id": body.RoleID})
+				role, err := m.dependencies.Storage.GetRole(ctx, body.RoleID, "", nil)
 
-				sqlStr, args, err := query.ToSql()
-				if err != nil {
-					sp.Error("error getting sql", zap.Error(err))
-					return
-				} else {
-					sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-				}
+				sp.With(zap.Bool("sync", role.Sync))
 
-				err = query.Scan(&sync)
-				if err != nil {
-					sp.Error(
-						"Error getting role sync status",
-						zap.Error(err),
-						zap.String("role", body.RoleID),
-					)
-					return
-				}
-
-				sp.With(zap.Bool("sync", sync))
-
-				if !sync {
+				if !role.Sync {
 					err = d.Reject(false)
 					if err != nil {
-						sp.Error("Error rejecting role not set to sync", zap.Error(err))
+						sp.Error("Rejecting role not set to sync", zap.Error(err))
 					}
 
 					return
@@ -151,11 +129,11 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				err = m.dependencies.Session.GuildMemberRoleAdd(body.GuildID, body.MemberID, body.RoleID)
 				if err != nil {
 					handled, hErr := m.cad.CheckAndDelete(ctx, body.MemberID, err)
-					if handled {
-						return
-					}
 					if hErr != nil {
 						sp.Error("Additional errors from checkAndDelete", zap.Error(hErr))
+					}
+					if handled {
+						return
 					}
 
 					sp.Error("Error adding role to user", zap.Error(err))
@@ -172,11 +150,11 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 				err = m.dependencies.Session.GuildMemberRoleRemove(body.GuildID, body.MemberID, body.RoleID)
 				if err != nil {
 					handled, hErr := m.cad.CheckAndDelete(ctx, body.MemberID, err)
-					if handled {
-						return
-					}
 					if hErr != nil {
 						sp.Error("Additional errors from checkAndDelete", zap.Error(hErr))
+					}
+					if handled {
+						return
 					}
 
 					sp.Error("Error removing role from user", zap.Error(err))

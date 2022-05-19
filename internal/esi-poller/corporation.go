@@ -2,10 +2,8 @@ package esi_poller
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
-	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/auth"
 	"github.com/chremoas/chremoas-ng/internal/filters"
@@ -23,27 +21,13 @@ func (aep *authEsiPoller) addCorpMembers(ctx context.Context, corpTicker string,
 		zap.Int32("alliance_id", allianceID),
 	)
 
-	var allianceTicker string
-
-	query := aep.dependencies.DB.Select("ticker").
-		From("alliances").
-		Where(sq.Eq{"id": allianceID})
-
-	sqlStr, args, err := query.ToSql()
+	alliance, err := aep.dependencies.Storage.GetAlliance(ctx, allianceID)
 	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-	}
-
-	err = query.Scan(&allianceTicker)
-	if err != nil {
-		sp.Error("error getting alliance ticker", zap.Error(err), zap.Int32("id", allianceID))
+		sp.Error("error getting alliance", zap.Error(err))
 		return
 	}
 
-	sp.With(zap.String("alliance_ticker", allianceTicker))
+	sp.With(zap.String("alliance_ticker", alliance.Ticker))
 
 	members, err := roles.GetRoleMembers(ctx, roles.Role, corpTicker, aep.dependencies)
 	if err != nil {
@@ -52,7 +36,7 @@ func (aep *authEsiPoller) addCorpMembers(ctx context.Context, corpTicker string,
 	}
 
 	for member := range members {
-		filters.AddMember(ctx, fmt.Sprintf("%d", member), allianceTicker, aep.dependencies)
+		filters.AddMember(ctx, fmt.Sprintf("%d", member), alliance.Ticker, aep.dependencies)
 	}
 }
 
@@ -66,27 +50,13 @@ func (aep *authEsiPoller) removeCorpMembers(ctx context.Context, corpTicker stri
 		zap.Int32("alliance_id", allianceID),
 	)
 
-	var allianceTicker string
-
-	query := aep.dependencies.DB.Select("ticker").
-		From("alliances").
-		Where(sq.Eq{"id": allianceID})
-
-	sqlStr, args, err := query.ToSql()
+	alliance, err := aep.dependencies.Storage.GetAlliance(ctx, allianceID)
 	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-	}
-
-	err = query.Scan(&allianceTicker)
-	if err != nil {
-		sp.Error("error getting alliance ticker", zap.Error(err), zap.Int32("id", allianceID))
+		sp.Error("error getting alliance", zap.Error(err))
 		return
 	}
 
-	sp.With(zap.String("alliance_ticker", allianceTicker))
+	sp.With(zap.String("alliance_ticker", alliance.Ticker))
 
 	members, err := roles.GetRoleMembers(ctx, roles.Role, corpTicker, aep.dependencies)
 	if err != nil {
@@ -95,7 +65,7 @@ func (aep *authEsiPoller) removeCorpMembers(ctx context.Context, corpTicker stri
 	}
 
 	for member := range members {
-		filters.RemoveMember(ctx, fmt.Sprintf("%d", member), allianceTicker, aep.dependencies)
+		filters.RemoveMember(ctx, fmt.Sprintf("%d", member), alliance.Ticker, aep.dependencies)
 	}
 }
 
@@ -106,49 +76,20 @@ func (aep *authEsiPoller) updateCorporations(ctx context.Context) (int, int, err
 	sp.With(zap.String("sub-component", "corporation"))
 
 	var (
-		count       int
-		errorCount  int
-		err         error
-		corporation auth.Corporation
+		count      int
+		errorCount int
+		err        error
 	)
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	query := aep.dependencies.DB.Select("id", "name", "ticker", "alliance_id").
-		From("corporations")
-
-	sqlStr, args, err := query.ToSql()
+	corporations, err := aep.dependencies.Storage.GetCorporations(ctx)
 	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return -1, -1, err
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-	}
-
-	rows, err := query.QueryContext(ctx)
-	if err != nil {
-		sp.Error("error getting corporation list from db", zap.Error(err))
 		return -1, -1, err
 	}
 
-	defer func() {
-		if err = rows.Close(); err != nil {
-			sp.Error("error closing row", zap.Error(err))
-		}
-	}()
+	for c := range corporations {
+		sp.With(zap.Any("corporation", corporations[c]))
 
-	for rows.Next() {
-		err = rows.Scan(&corporation.ID, &corporation.Name, &corporation.Ticker, &corporation.AllianceID)
-		if err != nil {
-			sp.Error("error scanning corporation values", zap.Error(err))
-			errorCount += 1
-			continue
-		}
-
-		sp.With(zap.Any("corporation", corporation))
-
-		err := aep.updateCorporation(ctx, corporation)
+		err := aep.updateCorporation(ctx, corporations[c])
 		if err != nil {
 			sp.Error("error updating corporation", zap.Error(err))
 			errorCount += 1
@@ -185,25 +126,12 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation aut
 	sp.With(zap.Any("esi_response", response))
 
 	if response.AllianceId != 0 {
-		// corp has joined or switched alliances so let's make sure the new alliance is up to date
+		// corp has joined or switched alliances so let's make sure the new alliance is up-to-date
 		sp.Debug("Updating corporation's alliance")
 
-		alliance := auth.Alliance{ID: response.AllianceId}
-		query := aep.dependencies.DB.Select("name", "ticker").
-			From("alliances").
-			Where(sq.Eq{"id": response.AllianceId})
-
-		sqlStr, args, err := query.ToSql()
+		alliance, err := aep.dependencies.Storage.GetAlliance(ctx, response.AllianceId)
 		if err != nil {
-			sp.Error("error getting sql", zap.Error(err))
-			return err
-		} else {
-			sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-		}
-
-		err = query.Scan(&alliance.Name, &alliance.Ticker)
-		if err != nil {
-			sp.Error("Error fetching alliance", zap.Error(err))
+			sp.Error("error getting alliance", zap.Error(err))
 			return err
 		}
 
@@ -218,7 +146,7 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation aut
 
 	if corporation.Name != response.Name || corporation.Ticker != response.Ticker || corporation.AllianceID.Int32 != response.AllianceId {
 		sp.Debug("Updating corporation")
-		err = aep.upsertCorporation(ctx, corporation.ID, response.AllianceId, response.Name, response.Ticker)
+		err = aep.dependencies.Storage.UpsertCorporation(ctx, corporation.ID, response.AllianceId, response.Name, response.Ticker)
 		if err != nil {
 			sp.Error("Error updating alliance", zap.Error(err))
 			return err
@@ -239,27 +167,8 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation aut
 		}
 	}
 
-	var count int
-	query := aep.dependencies.DB.Select("count(id)").
-		From("roles").
-		Where(sq.Eq{"role_nick": response.Ticker}).
-		Where(sq.Eq{"sig": roles.Role})
-
-	sqlStr, args, err := query.ToSql()
+	count, err := aep.dependencies.Storage.GetRoleCount(ctx, roles.Role, response.Ticker)
 	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return err
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-	}
-
-	err = query.Scan(&count)
-	if err != nil {
-		sp.Error(
-			"error getting count of corporations by name",
-			zap.Error(err),
-			zap.String("role_nick", response.Ticker),
-		)
 		return err
 	}
 
@@ -278,62 +187,4 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation aut
 	}
 
 	return nil
-}
-
-func (aep *authEsiPoller) upsertCorporation(ctx context.Context, corporationID, allianceID int32, name, ticker string) error {
-	ctx, sp := sl.OpenSpan(ctx)
-	defer sp.Close()
-
-	var (
-		err                error
-		allianceNullableID sql.NullInt32
-	)
-
-	if allianceID != 0 {
-		allianceNullableID.Int32 = allianceID
-		allianceNullableID.Valid = true
-	}
-
-	sp.With(
-		zap.String("sub-component", "corporation"),
-		zap.Int32("corporation_id", corporationID),
-		zap.Any("alliance_id", allianceNullableID),
-		zap.String("name", name),
-		zap.String("ticker", ticker),
-	)
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	sp.Debug("Upserting corporation")
-
-	insert := aep.dependencies.DB.Insert("corporations").
-		Columns("id", "name", "ticker", "alliance_id").
-		Values(corporationID, name, ticker, allianceNullableID).
-		Suffix("ON CONFLICT (id) DO UPDATE SET name=?, ticker=?, alliance_id=?", name, ticker, allianceNullableID)
-
-	sqlStr, args, err := insert.ToSql()
-	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return err
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-	}
-
-	rows, err := insert.QueryContext(ctx)
-	if err != nil {
-		sp.Error("Error upserting corporation %d alliance: %v: %s", zap.Error(err))
-	}
-
-	defer func() {
-		if rows == nil {
-			return
-		}
-
-		if err = rows.Close(); err != nil {
-			sp.Error("error closing row", zap.Error(err))
-		}
-	}()
-
-	return err
 }

@@ -41,23 +41,23 @@ func New(ctx context.Context, member, sig, author string, deps common.Dependenci
 		member = common.ExtractUserId(member)
 	}
 
-	role, err := roles.GetRoles(ctx, roles.Sig, &sig, deps)
+	roleList, err := deps.Storage.GetRolesByType(ctx, roles.Sig)
 	if err != nil {
 		sp.Error("error getting roles")
 		return nil, err
 	}
-	if len(role) == 0 {
+	if len(roleList) == 0 {
 		sp.Error("no such sig")
 		return nil, fmt.Errorf("no such sig: `%s`", sig)
 	}
-	if !role[0].Sig {
+	if !roleList[0].Sig {
 		sp.Error("not a sig")
 		return nil, fmt.Errorf("not a sig: `%s`", sig)
 	}
 
 	return &Sig{
 		dependencies: deps,
-		role:         role[0],
+		role:         roleList[0],
 		sig:          sig,
 		userID:       member,
 		author:       author,
@@ -68,7 +68,8 @@ func (s Sig) Add(ctx context.Context) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
-	if !perms.CanPerform(ctx, s.author, "sig_admins", s.dependencies) {
+	if err := perms.CanPerform(ctx, s.author, "sig_admins", s.dependencies); err != nil {
+		sp.Error("User not authorized", zap.Error(err))
 		return common.SendError("User not authorized")
 	}
 	return filters.AddMember(ctx, s.userID, s.sig, s.dependencies)
@@ -78,7 +79,8 @@ func (s Sig) Remove(ctx context.Context) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
-	if !perms.CanPerform(ctx, s.author, "sig_admins", s.dependencies) {
+	if err := perms.CanPerform(ctx, s.author, "sig_admins", s.dependencies); err != nil {
+		sp.Error("User not authorizee", zap.Error(err))
 		return common.SendError("User not authorized")
 	}
 	return filters.RemoveMember(ctx, s.userID, s.sig, s.dependencies)

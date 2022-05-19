@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 
-	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
@@ -53,76 +52,24 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 		}
 	}
 
-	query := aep.dependencies.DB.Select("chat_id", "name", "managed", "mentionable", "hoist", "color", "position", "permissions").
-		From("roles").
-		Where(sq.Eq{"sync": "true"})
+	dbRoles, err := aep.dependencies.Storage.GetRolesBySync(ctx, true)
 
-	sqlStr, args, err := query.ToSql()
-	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return -1, -1, err
-	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-	}
-
-	rows, err := query.QueryContext(ctx)
-	if err != nil {
-		sp.Error("error selecting role", zap.Error(err))
-		return -1, -1, err
-	}
-	defer func() {
-		if err = rows.Close(); err != nil {
-			sp.Error("error closing row", zap.Error(err))
-		}
-	}()
-
-	for rows.Next() {
-		var role payloads.Role
-		err = rows.Scan(
-			&role.ID,
-			&role.Name,
-			&role.Managed,
-			&role.Mentionable,
-			&role.Hoist,
-			&role.Color,
-			&role.Position,
-			&role.Permissions,
-		)
-		if err != nil {
-			sp.Error("error scanning role fields", zap.Error(err))
-			errorCount += 1
-			continue
-		}
-
-		sp.With(zap.Any("role", role))
-
+	for r := range dbRoles {
 		// Check if we need to update the role ID in the database
-		if val, ok := discordRoles[role.Name]; ok {
-			if val.ID != role.ID {
+		if val, ok := discordRoles[dbRoles[r].Name]; ok {
+			if val.ID != dbRoles[r].ID {
 				sp.Info("Discord role ID doesn't match what we have", zap.String("discord_id", val.ID))
-				update := aep.dependencies.DB.Update("roles").
-					Set("chat_id", val.ID).
-					Where(sq.Eq{"name": role.Name})
-
-				sqlStr, args, err = update.ToSql()
+				err = aep.dependencies.Storage.UpdateRole(ctx, val.ID, dbRoles[r].Name, "")
 				if err != nil {
-					sp.Error("error getting sql", zap.Error(err))
-					continue
-				} else {
-					sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+					sp.Error("error updating role", zap.Error(err))
+					return -1, -1, err
 				}
 
-				_, err = update.QueryContext(ctx)
-				if err != nil {
-					sp.Error("Error updating role id in db", zap.Error(err))
-					continue
-				}
-
-				role.ID = val.ID
+				dbRoles[r].ID = val.ID
 			}
 		}
 
-		chremoasRoles[role.Name] = role
+		chremoasRoles[dbRoles[r].Name] = dbRoles[r]
 	}
 
 	sp.Debug("current roles", zap.Any("chremoas", chremoasRoles))
@@ -207,31 +154,11 @@ func interDiff(ctx context.Context, chremoasMap, discordMap map[string]payloads.
 	for _, r := range roleList {
 		if chremoasMap[r].ID != discordMap[r].ID {
 			// The role was probably recreated manually.
-			func() {
-				update := deps.DB.Update("roles").
-					Set("chat_id", discordMap[r].ID).
-					Where(sq.Eq{"name": r})
-
-				sqlStr, args, err := update.ToSql()
-				if err != nil {
-					sp.Error("error getting sql", zap.Error(err))
-					return
-				} else {
-					sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
-				}
-
-				rows, err := update.QueryContext(ctx)
-				if err != nil {
-					sp.Error("error updating role's chat_id", zap.Error(err), zap.String("chat_id", discordMap[r].ID))
-					return
-				}
-				defer func() {
-					err := rows.Close()
-					if err != nil {
-						sp.Error("error closing database", zap.Error(err))
-					}
-				}()
-			}()
+			err := deps.Storage.UpdateRole(ctx, discordMap[r].ID, r, "")
+			if err != nil {
+				sp.Error("error updating role", zap.Error(err))
+				continue
+			}
 		}
 
 		if chremoasMap[r].Mentionable != discordMap[r].Mentionable ||
