@@ -19,7 +19,7 @@ func (s Storage) GetFilter(ctx context.Context, name string) (payloads.Filter, e
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	query := s.DB.Select("name, description").
+	query := s.DB.Select("id", "name", "description").
 		From("filters").
 		Where(sq.Eq{"name": name})
 
@@ -37,7 +37,7 @@ func (s Storage) GetFilter(ctx context.Context, name string) (payloads.Filter, e
 
 	var filter payloads.Filter
 
-	err = query.Scan(&filter.Name, &filter.Description)
+	err = query.Scan(&filter.ID, &filter.Name, &filter.Description)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return payloads.Filter{}, fmt.Errorf("no such filter: %s", name)
