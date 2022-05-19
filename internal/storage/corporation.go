@@ -23,7 +23,11 @@ func (s Storage) GetCorporationCount(ctx context.Context, corporationID int32) (
 		sp.Error("error getting sql", zap.Error(err))
 		return -1, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	var count int
@@ -50,7 +54,11 @@ func (s Storage) GetCorporation(ctx context.Context, corporationID int32) (paylo
 		sp.Error("error getting sql", zap.Error(err))
 		return payloads.Corporation{}, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	var corporation payloads.Corporation
@@ -82,7 +90,11 @@ func (s Storage) GetCorporations(ctx context.Context) ([]payloads.Corporation, e
 		sp.Error("error getting sql", zap.Error(err))
 		return nil, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -148,7 +160,11 @@ func (s Storage) UpsertCorporation(ctx context.Context, corporationID, allianceI
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := insert.QueryContext(ctx)

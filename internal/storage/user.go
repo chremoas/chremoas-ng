@@ -25,7 +25,11 @@ func (s Storage) GetDiscordUser(ctx context.Context, characterID int32) (string,
 		sp.Error("error getting sql", zap.Error(err))
 		return "", err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	err = query.Scan(&discordID)
@@ -50,7 +54,11 @@ func (s Storage) GetDiscordCharacters(ctx context.Context, discordID string) ([]
 		sp.Error("error getting sql", zap.Error(err))
 		return nil, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -97,7 +105,11 @@ func (s Storage) InsertUserCharacterMap(ctx context.Context, sender string, char
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	_, err = query.QueryContext(ctx)

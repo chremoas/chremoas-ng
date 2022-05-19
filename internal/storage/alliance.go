@@ -22,7 +22,11 @@ func (s Storage) GetAllianceCount(ctx context.Context, allianceID int32) (int, e
 		sp.Error("error getting sql", zap.Error(err))
 		return -1, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	var count int
@@ -49,7 +53,11 @@ func (s Storage) GetAlliance(ctx context.Context, allianceID int32) (payloads.Al
 		sp.Error("error getting sql", zap.Error(err))
 		return payloads.Alliance{}, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	alliance := payloads.Alliance{ID: allianceID}
@@ -78,7 +86,11 @@ func (s Storage) GetAlliances(ctx context.Context) ([]payloads.Alliance, error) 
 		sp.Error("error getting sql", zap.Error(err))
 		return nil, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -127,7 +139,11 @@ func (s Storage) UpsertAlliance(ctx context.Context, allianceID int32, name, tic
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := insert.QueryContext(ctx)

@@ -22,7 +22,11 @@ func (s Storage) GetCharacterCount(ctx context.Context, characterID int32) (int,
 		sp.Error("error getting sql", zap.Error(err))
 		return -1, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	var count int
@@ -49,7 +53,11 @@ func (s Storage) GetCharacter(ctx context.Context, characterID int) (payloads.Ch
 		sp.Error("error getting sql", zap.Error(err))
 		return payloads.Character{}, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	var character payloads.Character
@@ -78,7 +86,11 @@ func (s Storage) GetCharacters(ctx context.Context) ([]payloads.Character, error
 		sp.Error("error getting sql", zap.Error(err))
 		return nil, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -145,7 +157,11 @@ func (s Storage) UpsertCharacter(ctx context.Context, characterID, corporationID
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -181,7 +197,11 @@ func (s Storage) DeleteCharacter(ctx context.Context, characterID int32) error {
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	_, err = query.QueryContext(ctx)

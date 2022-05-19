@@ -27,7 +27,11 @@ func (s Storage) GetRoleFilters(ctx context.Context, sig bool, name string) ([]p
 		sp.Error("error getting sql", zap.Error(err))
 		return nil, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -73,7 +77,11 @@ func (s Storage) DeleteRoleFilter(ctx context.Context, filterID int) error {
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	_, err = query.QueryContext(ctx)
@@ -101,7 +109,11 @@ func (s Storage) InsertRoleFilter(ctx context.Context, roleID, filterID int) err
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)

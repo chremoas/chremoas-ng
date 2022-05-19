@@ -36,7 +36,11 @@ func (s Storage) GetRoleCount(ctx context.Context, sig bool, ticker string) (int
 		sp.Error("error getting sql", zap.Error(err))
 		return -1, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	err = query.Scan(&count)
@@ -76,7 +80,11 @@ func (s Storage) GetRole(ctx context.Context, name, ticker string, sig *bool) (p
 		sp.Error("error getting sql", zap.Error(err))
 		return payloads.Role{}, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	var role payloads.Role
@@ -155,7 +163,11 @@ func (s Storage) doGetRoles(ctx context.Context, sig bool, shortName *string) ([
 		sp.Error("error getting sql", zap.Error(err))
 		return nil, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -216,7 +228,11 @@ func (s Storage) GetRolesBySync(ctx context.Context, syncOnly bool) ([]payloads.
 		sp.Error("error getting sql", zap.Error(err))
 		return nil, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -284,7 +300,11 @@ func (s Storage) UpdateRole(ctx context.Context, chatID, name, id string) error 
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	_, err = query.QueryContext(ctx)
@@ -332,7 +352,11 @@ func (s Storage) UpdateRoleValues(ctx context.Context, sig bool, name string, va
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	_, err = query.Where(sq.Eq{"name": name}).
@@ -362,7 +386,11 @@ func (s Storage) GetMemberRoles(ctx context.Context, userID string, sig bool) ([
 		sp.Error("error getting sql", zap.Error(err))
 		return nil, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -418,7 +446,11 @@ func (s Storage) InsertRole(ctx context.Context, name, ticker, chatType string, 
 		sp.Error("error getting sql", zap.Error(err))
 		return -1, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	var roleID int
@@ -475,7 +507,11 @@ func (s Storage) DeleteRole(ctx context.Context, ticker string, sig bool) error 
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)

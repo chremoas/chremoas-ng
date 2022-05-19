@@ -24,7 +24,11 @@ func (s Storage) GetAuthCode(ctx context.Context, authCode string) (int, bool, e
 		sp.Error("error getting sql", zap.Error(err))
 		return -1, false, err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	var (
@@ -55,7 +59,11 @@ func (s Storage) DeleteAuthCodes(ctx context.Context, characterID int32) error {
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	_, err = query.QueryContext(ctx)
@@ -83,7 +91,11 @@ func (s Storage) InsertAuthCode(ctx context.Context, characterID int32, authCode
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	_, err = insert.QueryContext(ctx)
@@ -111,7 +123,11 @@ func (s Storage) UpdateAuthCode(ctx context.Context, authCode string) error {
 		sp.Error("error getting sql", zap.Error(err))
 		return err
 	} else {
-		sp.Debug("sql query", zap.String("query", sqlStr), zap.Any("args", args))
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
 	}
 
 	_, err = query.QueryContext(ctx)
