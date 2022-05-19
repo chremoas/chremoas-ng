@@ -113,7 +113,15 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 
 			switch body.Action {
 			case payloads.Add, payloads.Upsert:
-				role, err := m.dependencies.Storage.GetRole(ctx, body.RoleID, "", nil)
+				role, err := m.dependencies.Storage.GetRoleByID(ctx, body.RoleID)
+				if err != nil {
+					sp.Error("Error getting role", zap.Error(err))
+					err = d.Reject(false)
+					if err != nil {
+						sp.Error("Error rejecting invalid (ignored role) Role Add message", zap.Error(err))
+					}
+					return
+				}
 
 				sp.With(zap.Bool("sync", role.Sync))
 

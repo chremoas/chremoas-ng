@@ -481,7 +481,7 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 
 	if role.ID != dRole.ID {
 		// The role was probably created/recreated manually.
-		err = deps.Storage.UpdateRole(ctx, "", dRole.ID, role.Name)
+		err = deps.Storage.UpdateRole(ctx, dRole.ID, role.Name, "")
 		if err != nil {
 			sp.Error("Error updating Role", zap.Error(err))
 		}

@@ -98,6 +98,37 @@ func (s Storage) GetRole(ctx context.Context, name, ticker string, sig *bool) (p
 	return role, nil
 }
 
+func (s Storage) GetRoleByID(ctx context.Context, id string) (payloads.Role, error) {
+	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
+	defer sp.Close()
+
+	query := s.DB.Select("sync", "chat_id").
+		From("roles").
+		Where(sq.Eq{"id": id})
+
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+		return payloads.Role{}, err
+	} else {
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
+	}
+
+	var role payloads.Role
+
+	err = query.Scan(&role.Sync, &role.ChatID)
+	if err != nil {
+		sp.Error("Error getting role sync status", zap.Error(err))
+		return payloads.Role{}, err
+	}
+
+	return role, nil
+}
+
 func (s Storage) GetRoleByType(ctx context.Context, sig bool, shortName string) (payloads.Role, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()

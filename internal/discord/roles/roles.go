@@ -130,7 +130,7 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 		r.dependencies.Session.Unlock()
 	}()
 
-	roleData, err := r.dependencies.Storage.GetRole(ctx, "", role.Role.Name, &role.Role.Sig)
+	roleData, err := r.dependencies.Storage.GetRole(ctx, role.Role.Name, role.Role.ShortName, &role.Role.Sig)
 	if err != nil {
 		sp.Error("Error getting role", zap.Error(err))
 		return err
