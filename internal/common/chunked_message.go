@@ -29,7 +29,7 @@ func SendChunkedMessage(ctx context.Context, channelID, title string, message []
 		)
 
 		if buffer.Len()+len(m)+2 > EmbedLimitDescription {
-			sp.Info(
+			sp.Debug(
 				"Starting a new embed",
 				zap.Int("buffer_len", buffer.Len()),
 			)
@@ -37,11 +37,11 @@ func SendChunkedMessage(ctx context.Context, channelID, title string, message []
 			// send the current one and start a new one
 			embed := NewEmbed()
 			if firstChunk {
-				sp.Info("First chunk so setting first title")
+				sp.Debug("First chunk so setting first title")
 				embed.SetTitle(title)
 				firstChunk = false
 			} else {
-				sp.Info("Not first chunk so setting continuation title")
+				sp.Debug("Not first chunk so setting continuation title")
 				embed.SetTitle(fmt.Sprintf("%s (cont)", title))
 			}
 
@@ -56,7 +56,7 @@ func SendChunkedMessage(ctx context.Context, channelID, title string, message []
 			buffer.Reset()
 			buffer.WriteString(fmt.Sprintf("%s\n", m))
 		} else {
-			sp.Info(
+			sp.Debug(
 				"still within chunk boundary, appending",
 				zap.Int("buffer_len", buffer.Len()),
 			)
