@@ -113,7 +113,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 
 			switch body.Action {
 			case payloads.Add, payloads.Upsert:
-				role, err := m.dependencies.Storage.GetRoleByID(ctx, body.RoleID)
+				role, err := m.dependencies.Storage.GetRoleByChatID(ctx, body.RoleID)
 				if err != nil {
 					sp.Error("Error getting role", zap.Error(err))
 					err = d.Reject(false)

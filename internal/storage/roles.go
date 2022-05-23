@@ -98,13 +98,13 @@ func (s Storage) GetRole(ctx context.Context, name, ticker string, sig *bool) (p
 	return role, nil
 }
 
-func (s Storage) GetRoleByID(ctx context.Context, id string) (payloads.Role, error) {
+func (s Storage) GetRoleByChatID(ctx context.Context, chatID string) (payloads.Role, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 
 	query := s.DB.Select("sync", "chat_id").
 		From("roles").
-		Where(sq.Eq{"id": id})
+		Where(sq.Eq{"chat_id": chatID})
 
 	sqlStr, args, err := query.ToSql()
 	if err != nil {
