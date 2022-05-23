@@ -136,6 +136,7 @@ func (s Storage) DeleteDiscordUser(ctx context.Context, chatID string) error {
 	// Clean up dependencies
 	characters, err := s.GetDiscordCharacters(ctx, chatID)
 	if err != nil {
+		sp.Error("Error getting discord users", zap.Error(err))
 		return err
 	}
 
@@ -145,12 +146,14 @@ func (s Storage) DeleteDiscordUser(ctx context.Context, chatID string) error {
 		sp.Warn("Deleting user's authentication codes")
 		err := s.DeleteAuthCodes(ctx, characters[c].ID)
 		if err != nil {
+			sp.Error("Error deleting auth codes", zap.Error(err))
 			return err
 		}
 
 		sp.Warn("Deleting user's character")
 		err = s.DeleteCharacter(ctx, characters[c].ID)
 		if err != nil {
+			sp.Error("Error deleting character", zap.Error(err))
 			return err
 		}
 	}
