@@ -67,7 +67,7 @@ func (cad CheckAndDelete) CheckAndDelete(ctx context.Context, discordID string, 
 
 	sp.Warn("Got an error, checking")
 
-	if restError, ok := checkErr.(discordgo.RESTError); ok {
+	if restError, ok := checkErr.(*discordgo.RESTError); ok {
 		// if strings.Contains(checkErr.Error(), "HTTP 404 Not Found") {
 		sp.With(
 			zap.Int("StatusCode", restError.Response.StatusCode),
