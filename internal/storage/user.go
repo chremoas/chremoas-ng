@@ -158,6 +158,7 @@ func (s Storage) DeleteDiscordUser(ctx context.Context, chatID string) error {
 		}
 	}
 
+	sp.Warn("Deleting user from character map")
 	query := s.DB.Delete("user_character_map").
 		Where(sq.Eq{"chat_id": chatID})
 
