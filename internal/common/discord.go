@@ -3,7 +3,6 @@ package common
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
@@ -68,32 +67,16 @@ func (cad CheckAndDelete) CheckAndDelete(ctx context.Context, discordID string, 
 
 	sp.Warn("Got an error, checking")
 
-	// if restError, ok := checkErr.(discordgo.RESTError); ok {
-	if strings.Contains(checkErr.Error(), "HTTP 404 Not Found") {
-		// if restError.Response.StatusCode == 404 {
-		sp.Warn("Failed to update user in discord, user not found")
+	if restError, ok := checkErr.(discordgo.RESTError); ok {
+		// if strings.Contains(checkErr.Error(), "HTTP 404 Not Found") {
+		if restError.Response.StatusCode == 404 {
+			sp.Warn("Failed to update user in discord, user not found")
 
-		characters, err := cad.dependencies.Storage.GetDiscordCharacters(ctx, discordID)
-		if err != nil {
-			return true, err
-		}
-
-		for c := range characters {
-			sp.With(zap.Any("character", characters[c]))
-
-			sp.Warn("Deleting user's authentication codes")
-			err := cad.dependencies.Storage.DeleteAuthCodes(ctx, characters[c].ID)
-			if err != nil {
-				return true, err
-			}
-
-			sp.Warn("Deleting user's character")
-			err = cad.dependencies.Storage.DeleteCharacter(ctx, characters[c].ID)
+			err := cad.dependencies.Storage.DeleteDiscordUser(ctx, discordID)
 			if err != nil {
 				return true, err
 			}
 		}
-		// }
 	}
 
 	return false, nil

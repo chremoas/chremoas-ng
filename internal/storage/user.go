@@ -125,3 +125,56 @@ func (s Storage) InsertUserCharacterMap(ctx context.Context, sender string, char
 
 	return nil
 }
+
+func (s Storage) DeleteDiscordUser(ctx context.Context, chatID string) error {
+	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
+	defer sp.Close()
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Clean up dependencies
+	characters, err := s.GetDiscordCharacters(ctx, chatID)
+	if err != nil {
+		return err
+	}
+
+	for c := range characters {
+		sp.With(zap.Any("character", characters[c]))
+
+		sp.Warn("Deleting user's authentication codes")
+		err := s.DeleteAuthCodes(ctx, characters[c].ID)
+		if err != nil {
+			return err
+		}
+
+		sp.Warn("Deleting user's character")
+		err = s.DeleteCharacter(ctx, characters[c].ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	query := s.DB.Delete("user_character_map").
+		Where(sq.Eq{"chat_id": chatID})
+
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+		return err
+	} else {
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("sql query")
+	}
+
+	_, err = query.QueryContext(ctx)
+	if err != nil {
+		sp.Error("error deleting role", zap.Error(err))
+		return err
+	}
+
+	return nil
+}
