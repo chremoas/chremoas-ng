@@ -69,6 +69,11 @@ func (cad CheckAndDelete) CheckAndDelete(ctx context.Context, discordID string, 
 
 	if restError, ok := checkErr.(discordgo.RESTError); ok {
 		// if strings.Contains(checkErr.Error(), "HTTP 404 Not Found") {
+		sp.With(
+			zap.Int("StatusCode", restError.Response.StatusCode),
+			zap.String("Status", restError.Response.Status),
+		)
+		sp.Info("Checking response code")
 		if restError.Response.StatusCode == 404 {
 			sp.Warn("Failed to update user in discord, user not found")
 
