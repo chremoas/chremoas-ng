@@ -180,7 +180,7 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character payload
 			return err
 		}
 
-		sp.Error("error getting guild member", zap.Error(err))
+		sp.Error("error getting guild member", zap.Error(err), zap.NamedError("hErr", hErr))
 		return err
 	}
 
