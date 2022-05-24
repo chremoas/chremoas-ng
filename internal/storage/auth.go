@@ -28,7 +28,7 @@ func (s Storage) GetAuthCode(ctx context.Context, authCode string) (int, bool, e
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetAuthCode(): sql query")
 	}
 
 	var (
@@ -63,7 +63,7 @@ func (s Storage) DeleteAuthCodes(ctx context.Context, characterID int32) error {
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("DeleteAuthCode(): sql query")
 	}
 
 	_, err = query.QueryContext(ctx)
@@ -95,7 +95,7 @@ func (s Storage) InsertAuthCode(ctx context.Context, characterID int32, authCode
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("InsertAuthCode(): sql query")
 	}
 
 	_, err = insert.QueryContext(ctx)
@@ -127,7 +127,7 @@ func (s Storage) UpdateAuthCode(ctx context.Context, authCode string) error {
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("UpdateAuthCode(): sql query")
 	}
 
 	_, err = query.QueryContext(ctx)

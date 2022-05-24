@@ -29,7 +29,7 @@ func (s Storage) GetDiscordUser(ctx context.Context, characterID int32) (string,
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetDiscordUser(): sql query")
 	}
 
 	err = query.Scan(&discordID)
@@ -58,7 +58,7 @@ func (s Storage) GetDiscordCharacters(ctx context.Context, discordID string) ([]
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetDiscordCharacter(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -109,7 +109,7 @@ func (s Storage) InsertUserCharacterMap(ctx context.Context, sender string, char
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("InsertUserCharacterMap(): sql query")
 	}
 
 	_, err = query.QueryContext(ctx)
@@ -133,10 +133,12 @@ func (s Storage) DeleteDiscordUser(ctx context.Context, chatID string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	sp.With(zap.String("chatID", chatID))
+
 	// Clean up dependencies
 	characters, err := s.GetDiscordCharacters(ctx, chatID)
 	if err != nil {
-		sp.Error("Error getting discord users", zap.Error(err))
+		sp.Error("Error getting discord user characters", zap.Error(err))
 		return err
 	}
 
@@ -171,7 +173,7 @@ func (s Storage) DeleteDiscordUser(ctx context.Context, chatID string) error {
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("DeleteDiscordUser(): sql query")
 	}
 
 	_, err = query.QueryContext(ctx)

@@ -27,7 +27,7 @@ func (s Storage) GetPermission(ctx context.Context, name string) (payloads.Permi
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetPermission(): sql query")
 	}
 
 	var permission payloads.Permission
@@ -57,7 +57,7 @@ func (s Storage) GetPermissions(ctx context.Context) ([]payloads.Permission, err
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetPermissions(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -105,7 +105,7 @@ func (s Storage) InsertPermission(ctx context.Context, name, description string)
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("InsertPermission(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -144,7 +144,7 @@ func (s Storage) DeletePermission(ctx context.Context, name string) error {
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("DeletePermission(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -183,7 +183,7 @@ func (s Storage) ListPermissionMembers(ctx context.Context, name string) ([]int,
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("ListPermissionMembers(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -234,7 +234,7 @@ func (s Storage) InsertPermissionMembership(ctx context.Context, permissionID in
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("InsertPermissionMembership(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -277,7 +277,7 @@ func (s Storage) DeletePermissionMembership(ctx context.Context, permissionID in
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("DeletePermissionMembership(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -316,7 +316,7 @@ func (s Storage) GetUserPermissions(ctx context.Context, userID string) ([]paylo
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetUserPermissions(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -366,7 +366,7 @@ func (s Storage) GetPermissionCount(ctx context.Context, authorID string, permis
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetPermissionCount(): sql query")
 	}
 
 	var count int

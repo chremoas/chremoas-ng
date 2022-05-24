@@ -26,7 +26,7 @@ func (s Storage) GetCharacterCount(ctx context.Context, characterID int32) (int,
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetCharacterCount(): sql query")
 	}
 
 	var count int
@@ -57,7 +57,7 @@ func (s Storage) GetCharacter(ctx context.Context, characterID int) (payloads.Ch
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetCharacter(): sql query")
 	}
 
 	var character payloads.Character
@@ -90,7 +90,7 @@ func (s Storage) GetCharacters(ctx context.Context) ([]payloads.Character, error
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetCharacters(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -161,7 +161,7 @@ func (s Storage) UpsertCharacter(ctx context.Context, characterID, corporationID
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("UpsertCharacter(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -201,7 +201,7 @@ func (s Storage) DeleteCharacter(ctx context.Context, characterID int32) error {
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("DeleteCharacter(): sql query")
 	}
 
 	_, err = query.QueryContext(ctx)

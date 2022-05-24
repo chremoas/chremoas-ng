@@ -32,7 +32,7 @@ func (s Storage) GetFilter(ctx context.Context, name string) (payloads.Filter, e
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetFilter(): sql query")
 	}
 
 	var filter payloads.Filter
@@ -71,7 +71,7 @@ func (s Storage) GetFilters(ctx context.Context) ([]payloads.Filter, error) {
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetFilters(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -127,7 +127,7 @@ func (s Storage) GetTickerFilters(ctx context.Context, sig bool, ticker string) 
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetTickerFilters(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -177,7 +177,7 @@ func (s Storage) InsertFilter(ctx context.Context, name, description string) (in
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("InsertFilter(): sql query")
 	}
 
 	var id int
@@ -232,7 +232,7 @@ func (s Storage) DeleteFilter(ctx context.Context, name string) error {
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("DeleteFilter(): sql query")
 	}
 
 	_, err = query.QueryContext(ctx)
@@ -274,7 +274,7 @@ func (s Storage) DeleteFilterByID(ctx context.Context, id int) error {
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("DeleteFilterByID(): sql query")
 	}
 
 	_, err = query.QueryContext(ctx)
@@ -311,7 +311,7 @@ func (s Storage) DeleteFilterMembership(ctx context.Context, filterID int, userI
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("DeleteFilterMembership(): sql query")
 	}
 
 	_, err = query.QueryContext(ctx)
@@ -344,7 +344,7 @@ func (s Storage) ListFilterMembers(ctx context.Context, filter string) ([]int64,
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("ListFIlterMembers(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -394,7 +394,7 @@ func (s Storage) AddFilterMembership(ctx context.Context, filterID int, userID s
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("AddFilterMembership(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -440,7 +440,7 @@ func (s Storage) GetRoleMembers(ctx context.Context, filterList []int64) ([]int6
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetRoleMembers(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)

@@ -40,7 +40,7 @@ func (s Storage) GetRoleCount(ctx context.Context, sig bool, ticker string) (int
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetRoleCount(): sql query")
 	}
 
 	err = query.Scan(&count)
@@ -84,7 +84,7 @@ func (s Storage) GetRole(ctx context.Context, name, ticker string, sig *bool) (p
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetRole(): sql query")
 	}
 
 	var role payloads.Role
@@ -115,7 +115,7 @@ func (s Storage) GetRoleByChatID(ctx context.Context, chatID string) (payloads.R
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetRoleByChatID(): sql query")
 	}
 
 	var role payloads.Role
@@ -198,7 +198,7 @@ func (s Storage) doGetRoles(ctx context.Context, sig bool, shortName *string) ([
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("doGetRoles(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -263,7 +263,7 @@ func (s Storage) GetRolesBySync(ctx context.Context, syncOnly bool) ([]payloads.
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetRolesBySync(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -335,7 +335,7 @@ func (s Storage) UpdateRole(ctx context.Context, chatID, name, id string) error 
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("UpdateRole(): sql query")
 	}
 
 	_, err = query.QueryContext(ctx)
@@ -387,7 +387,7 @@ func (s Storage) UpdateRoleValues(ctx context.Context, sig bool, name string, va
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("UpdateRoleValues(): sql query")
 	}
 
 	_, err = query.Where(sq.Eq{"name": name}).
@@ -421,7 +421,7 @@ func (s Storage) GetMemberRoles(ctx context.Context, userID string, sig bool) ([
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetMemberRoles(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -481,7 +481,7 @@ func (s Storage) InsertRole(ctx context.Context, name, ticker, chatType string, 
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("InsertRole(): sql query")
 	}
 
 	var roleID int
@@ -542,7 +542,7 @@ func (s Storage) DeleteRole(ctx context.Context, ticker string, sig bool) error 
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("DeleteRoles(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)

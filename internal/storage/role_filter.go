@@ -31,7 +31,7 @@ func (s Storage) GetRoleFilters(ctx context.Context, sig bool, name string) ([]p
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetRoleFilters(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -81,7 +81,7 @@ func (s Storage) DeleteRoleFilter(ctx context.Context, filterID int) error {
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("DeleteRoleFilter(): sql query")
 	}
 
 	_, err = query.QueryContext(ctx)
@@ -113,7 +113,7 @@ func (s Storage) InsertRoleFilter(ctx context.Context, roleID, filterID int) err
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("InsertRoleFilter(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)

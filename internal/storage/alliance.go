@@ -26,7 +26,7 @@ func (s Storage) GetAllianceCount(ctx context.Context, allianceID int32) (int, e
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetAllianceCount(): sql query")
 	}
 
 	var count int
@@ -57,7 +57,7 @@ func (s Storage) GetAlliance(ctx context.Context, allianceID int32) (payloads.Al
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetAlliance(): sql query")
 	}
 
 	alliance := payloads.Alliance{ID: allianceID}
@@ -90,7 +90,7 @@ func (s Storage) GetAlliances(ctx context.Context) ([]payloads.Alliance, error) 
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetAlliances(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -143,7 +143,7 @@ func (s Storage) UpsertAlliance(ctx context.Context, allianceID int32, name, tic
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("UpsertAlliance(): sql query")
 	}
 
 	rows, err := insert.QueryContext(ctx)

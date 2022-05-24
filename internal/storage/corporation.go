@@ -27,7 +27,7 @@ func (s Storage) GetCorporationCount(ctx context.Context, corporationID int32) (
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetCorporationCount(): sql query")
 	}
 
 	var count int
@@ -58,7 +58,7 @@ func (s Storage) GetCorporation(ctx context.Context, corporationID int32) (paylo
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetCorporation(): sql query")
 	}
 
 	var corporation payloads.Corporation
@@ -94,7 +94,7 @@ func (s Storage) GetCorporations(ctx context.Context) ([]payloads.Corporation, e
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("GetCorporations(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
@@ -164,7 +164,7 @@ func (s Storage) UpsertCorporation(ctx context.Context, corporationID, allianceI
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("sql query")
+		sp.Debug("UpsertCorporation(): sql query")
 	}
 
 	rows, err := insert.QueryContext(ctx)
