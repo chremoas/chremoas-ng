@@ -45,6 +45,7 @@ func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error
 			sp.Error(
 				"error updating character",
 				zap.Error(err),
+				zap.NamedError("hErr", hErr),
 				zap.Int32("id", characters[c].ID),
 				zap.String("name", characters[c].Name),
 			)

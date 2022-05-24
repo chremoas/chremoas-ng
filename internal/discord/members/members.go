@@ -144,7 +144,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 						return
 					}
 
-					sp.Error("Error adding role to user", zap.Error(err))
+					sp.Error("Error adding role to user", zap.Error(err), zap.NamedError("hErr", hErr))
 
 					err = d.Reject(true)
 					if err != nil {
@@ -165,7 +165,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 						return
 					}
 
-					sp.Error("Error removing role from user", zap.Error(err))
+					sp.Error("Error removing role from user", zap.Error(err), zap.NamedError("hErr", hErr))
 
 					err = d.Reject(true)
 					if err != nil {
