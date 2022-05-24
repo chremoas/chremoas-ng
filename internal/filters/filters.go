@@ -136,7 +136,7 @@ func ListMembers(ctx context.Context, filter, channelID string, deps common.Depe
 
 	var memberList []string
 	for u := range userIDs {
-		memberList = append(memberList, fmt.Sprintf("%d", userIDs[u]))
+		memberList = append(memberList, fmt.Sprintf("%s", common.GetUsername(userIDs[u], deps.Session)))
 	}
 	sort.Strings(memberList)
 
