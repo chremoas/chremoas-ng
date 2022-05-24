@@ -34,7 +34,13 @@ func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error
 
 		err := aep.updateCharacter(ctx, characters[c])
 		if err != nil {
-			handled, hErr := aep.cad.CheckAndDelete(ctx, fmt.Sprintf("%d", characters[c].ID), err)
+			discordID, err := aep.dependencies.Storage.GetDiscordUser(ctx, characters[c].ID)
+			if err != nil {
+				sp.Error("Error getting discord user", zap.Error(err))
+				return -1, -1, err
+			}
+
+			handled, hErr := aep.cad.CheckAndDelete(ctx, discordID, err)
 			if hErr != nil {
 				sp.Error("Additional errors from checkAndDelete", zap.Error(hErr))
 			}
@@ -173,7 +179,12 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character payload
 
 	member, err := aep.dependencies.Session.GuildMember(aep.dependencies.GuildID, chatID)
 	if err != nil {
-		handled, hErr := aep.cad.CheckAndDelete(ctx, fmt.Sprintf("%d", character.ID), err)
+		discordID, err := aep.dependencies.Storage.GetDiscordUser(ctx, character.ID)
+		if err != nil {
+			return err
+		}
+
+		handled, hErr := aep.cad.CheckAndDelete(ctx, discordID, err)
 		if hErr != nil {
 			sp.Error("Additional errors from checkAndDelete", zap.Error(hErr))
 		}
