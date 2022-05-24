@@ -63,7 +63,7 @@ func (c Command) doFilter(ctx context.Context, m *discordgo.Message) []*discordg
 			if len(cmdStr) < 4 {
 				return getHelp("!filter list help", "!filter list members <filter_name>", "")
 			}
-			return filters.ListMembers(ctx, cmdStr[3], c.dependencies)
+			return filters.ListMembers(ctx, cmdStr[3], m.ChannelID, c.dependencies)
 
 		default:
 			return getHelp("!filter list help", "!filter list members <filter_name>", "")

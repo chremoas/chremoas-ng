@@ -1,7 +1,6 @@
 package filters
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -123,16 +122,11 @@ func Delete(ctx context.Context, name string, deps common.Dependencies) []*disco
 	return common.SendSuccess(fmt.Sprintf("Deleted filter `%s`", name))
 }
 
-func ListMembers(ctx context.Context, filter string, deps common.Dependencies) []*discordgo.MessageSend {
+func ListMembers(ctx context.Context, filter, channelID string, deps common.Dependencies) []*discordgo.MessageSend {
 	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
 	sp.With(zap.String("filter", filter))
-
-	var (
-		buffer   bytes.Buffer
-		messages []*discordgo.MessageSend
-	)
 
 	userIDs, err := deps.Storage.ListFilterMembers(ctx, filter)
 	if err != nil {
@@ -140,27 +134,23 @@ func ListMembers(ctx context.Context, filter string, deps common.Dependencies) [
 		return common.SendError("Error getting filter member list")
 	}
 
+	var memberList []string
 	for u := range userIDs {
-		buffer.WriteString(fmt.Sprintf("%s\n", common.GetUsername(userIDs[u], deps.Session)))
+		memberList = append(memberList, fmt.Sprintf("%d", userIDs[u]))
+	}
+	sort.Strings(memberList)
+
+	if len(memberList) == 0 {
+		return common.SendError("No members in filter")
 	}
 
-	bufLen := buffer.Len()
-
-	sp.With(zap.Int("char_total", bufLen))
-
-	if bufLen == 0 {
-		return common.SendError(fmt.Sprintf("Filter has no members: %s", filter))
+	err = common.SendChunkedMessage(ctx, channelID, "Filter List", memberList, deps)
+	if err != nil {
+		sp.Error("Error sending message")
+		return common.SendError("Error sending message")
 	}
 
-	if bufLen > 2000 {
-		sp.Error("too many characters for response")
-		return common.SendError("too many filter members (exceeds Discord 2k character limit)")
-	}
-
-	embed := common.NewEmbed()
-	embed.SetTitle(fmt.Sprintf("Filter membership (%s)", filter))
-	embed.SetDescription(buffer.String())
-	return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
+	return nil
 }
 
 func AuthedAddMember(ctx context.Context, userID, filter, author string, deps common.Dependencies) []*discordgo.MessageSend {

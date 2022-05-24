@@ -344,7 +344,7 @@ func (s Storage) ListFilterMembers(ctx context.Context, filter string) ([]int64,
 			zap.String("query", sqlStr),
 			zap.Any("args", args),
 		)
-		sp.Debug("ListFIlterMembers(): sql query")
+		sp.Debug("ListFilterMembers(): sql query")
 	}
 
 	rows, err := query.QueryContext(ctx)
