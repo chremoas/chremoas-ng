@@ -16,6 +16,10 @@ func GetUsername(userID interface{}, discord *discordgo.Session) string {
 	switch userID.(type) {
 	case int:
 		_userID = fmt.Sprintf("%d", userID.(int))
+	case int32:
+		_userID = fmt.Sprintf("%d", userID.(int32))
+	case int64:
+		_userID = fmt.Sprintf("%d", userID.(int64))
 	case string:
 		_userID = userID.(string)
 	}
