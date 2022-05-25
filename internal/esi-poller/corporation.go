@@ -2,6 +2,7 @@ package esi_poller
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	sl "github.com/bhechinger/spiffylogger"
@@ -130,7 +131,7 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation pay
 		sp.Debug("Updating corporation's alliance")
 
 		alliance, err := aep.dependencies.Storage.GetAlliance(ctx, response.AllianceId)
-		if err != nil {
+		if err != nil && err != sql.ErrNoRows {
 			sp.Error("error getting alliance", zap.Error(err))
 			return err
 		}
