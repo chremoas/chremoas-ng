@@ -464,7 +464,7 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 
 	dRole, err := GetDiscordRole(ctx, role.Name, deps)
 	if err != nil {
-		sp.Warn("error getting discord role", zap.Error(err))
+		sp.Info("error getting discord role", zap.Error(err))
 		// TODO: Figure out if there are errors we should really fail on
 		// return common.SendFatal(fmt.Sprintf("error fetching roles from discord: %s", err))
 		err = queueUpdate(ctx, role, payloads.Upsert, deps)
@@ -549,7 +549,7 @@ func GetDiscordRole(ctx context.Context, name string, deps common.Dependencies) 
 		}
 	}
 
-	sp.Warn("no such role")
+	sp.Info("no such role")
 	return nil, fmt.Errorf("no such role: %s", name)
 }
 
