@@ -132,7 +132,7 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation pay
 
 		alliance, err := aep.dependencies.Storage.GetAlliance(ctx, response.AllianceId)
 		if err != nil {
-			sp.Warn("Error getting alliance", zap.Error(err), zap.Any("error_type", fmt.Sprintf("%T", err)))
+			sp.Warn("Error getting alliance", zap.String("sql.ErrNoRows", sql.ErrNoRows.Error()), zap.Error(err), zap.Any("error_type", fmt.Sprintf("%T", err)))
 
 			if err != sql.ErrNoRows {
 				alliance = payloads.Alliance{ID: response.AllianceId}
