@@ -85,8 +85,9 @@ func (cad CheckAndDelete) CheckAndDelete(ctx context.Context, discordID string, 
 			err := cad.dependencies.Storage.DeleteDiscordUser(ctx, discordID)
 			if err != nil {
 				sp.Error("Error deleting discord user", zap.Error(err))
-				return true, err
 			}
+
+			return true, err
 		}
 	}
 
