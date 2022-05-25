@@ -2,6 +2,7 @@ package esi_poller
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/bhechinger/go-sets"
@@ -32,10 +33,19 @@ func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error
 	for c := range characters {
 		sp.With(zap.Any("character", characters[c]))
 
-		err := aep.updateCharacter(ctx, characters[c])
+		err = aep.updateCharacter(ctx, characters[c])
 		if err != nil {
 			discordID, err := aep.dependencies.Storage.GetDiscordUser(ctx, characters[c].ID)
 			if err != nil {
+				if err == sql.ErrNoRows {
+					// character is no longer associated with a discord user so we're going do delete it.
+					sp.Warn("Deleting character as they have no associated discord user")
+					err = aep.dependencies.Storage.DeleteCharacter(ctx, characters[c].ID)
+					if err != nil {
+						sp.Error("Error deleting character", zap.Error(err))
+						return -1, -1, err
+					}
+				}
 				sp.Error("Error getting discord user", zap.Error(err))
 				return -1, -1, err
 			}
