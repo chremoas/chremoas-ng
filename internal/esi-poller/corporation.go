@@ -131,6 +131,7 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation pay
 		sp.Debug("Updating corporation's alliance")
 
 		alliance, err := aep.dependencies.Storage.GetAlliance(ctx, response.AllianceId)
+		sp.Warn("Error getting alliance", zap.Any("error_type", fmt.Sprintf("%T", err)))
 		if err != nil {
 			if err != sql.ErrNoRows {
 				alliance = payloads.Alliance{ID: response.AllianceId}
