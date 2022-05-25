@@ -189,6 +189,13 @@ func (s Storage) DeleteCharacter(ctx context.Context, characterID int32) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Delete auth codes
+	err := s.DeleteAuthCodes(ctx, characterID)
+	if err != nil {
+		sp.Error("Error deleting auth codes", zap.Error(err))
+		return err
+	}
+
 	query := s.DB.Delete("characters").
 		Where(sq.Eq{"id": characterID})
 
