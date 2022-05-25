@@ -135,6 +135,28 @@ func (s Storage) DeleteDiscordUser(ctx context.Context, chatID string) error {
 
 	sp.With(zap.String("chatID", chatID))
 
+	sp.Warn("Deleting user from character map")
+	query := s.DB.Delete("user_character_map").
+		Where(sq.Eq{"chat_id": chatID})
+
+	sqlStr, args, err := query.ToSql()
+	if err != nil {
+		sp.Error("error getting sql", zap.Error(err))
+		return err
+	} else {
+		sp.With(
+			zap.String("query", sqlStr),
+			zap.Any("args", args),
+		)
+		sp.Debug("DeleteDiscordUser(): sql query")
+	}
+
+	_, err = query.QueryContext(ctx)
+	if err != nil {
+		sp.Error("error deleting role", zap.Error(err))
+		return err
+	}
+
 	// Clean up dependencies
 	characters, err := s.GetDiscordCharacters(ctx, chatID)
 	if err != nil {
@@ -158,28 +180,6 @@ func (s Storage) DeleteDiscordUser(ctx context.Context, chatID string) error {
 			sp.Error("Error deleting character", zap.Error(err))
 			return err
 		}
-	}
-
-	sp.Warn("Deleting user from character map")
-	query := s.DB.Delete("user_character_map").
-		Where(sq.Eq{"chat_id": chatID})
-
-	sqlStr, args, err := query.ToSql()
-	if err != nil {
-		sp.Error("error getting sql", zap.Error(err))
-		return err
-	} else {
-		sp.With(
-			zap.String("query", sqlStr),
-			zap.Any("args", args),
-		)
-		sp.Debug("DeleteDiscordUser(): sql query")
-	}
-
-	_, err = query.QueryContext(ctx)
-	if err != nil {
-		sp.Error("error deleting role", zap.Error(err))
-		return err
 	}
 
 	return nil
