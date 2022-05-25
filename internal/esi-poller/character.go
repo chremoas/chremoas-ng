@@ -190,8 +190,8 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character payload
 	member, err := aep.dependencies.Session.GuildMember(aep.dependencies.GuildID, chatID)
 	if err != nil {
 		discordID, err := aep.dependencies.Storage.GetDiscordUser(ctx, character.ID)
-		if err != nil {
-			return err
+		if err == nil {
+			return nil
 		}
 
 		handled, hErr := aep.cad.CheckAndDelete(ctx, discordID, err)
