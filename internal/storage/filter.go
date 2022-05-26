@@ -3,10 +3,12 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
+	"github.com/chremoas/chremoas-ng/internal/goof"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/lib/pq"
 	"go.uber.org/zap"
@@ -210,8 +212,11 @@ func (s Storage) DeleteFilter(ctx context.Context, name string) error {
 
 	err = s.DeleteFilterMembership(ctx, filter.ID, "")
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return goof.NotMember
+		}
 		sp.Error("Error deleting filter membership", zap.Error(err))
-		return err
+		return fmt.Errorf("error calling DeleteFilterMembership: %w", err)
 	}
 
 	err = s.DeleteRoleFilter(ctx, filter.ID)

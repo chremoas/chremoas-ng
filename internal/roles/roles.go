@@ -3,6 +3,7 @@ package roles
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
+	"github.com/chremoas/chremoas-ng/internal/goof"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
 	"go.uber.org/zap"
@@ -693,6 +695,10 @@ func RemoveFilter(ctx context.Context, sig bool, name, ticker string, deps commo
 
 	err := deps.Storage.DeleteFilter(ctx, name)
 	if err != nil {
+		if errors.Is(err, goof.NotMember) {
+			return common.SendError("User not a member of filter")
+		}
+
 		sp.Error("Error deleting filter", zap.Error(err))
 		return common.SendError("Error deleting filter")
 	}

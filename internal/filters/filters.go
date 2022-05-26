@@ -3,6 +3,7 @@ package filters
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
+	"github.com/chremoas/chremoas-ng/internal/goof"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
 	"go.uber.org/zap"
@@ -113,6 +115,10 @@ func Delete(ctx context.Context, name string, deps common.Dependencies) []*disco
 	var id int
 	err := deps.Storage.DeleteFilter(ctx, name)
 	if err != nil {
+		if errors.Is(err, goof.NotMember) {
+			return common.SendError("User not a member of filter")
+		}
+
 		sp.Error("Error deleting filter")
 		return common.SendError("Error deleting filter")
 	}
@@ -210,6 +216,9 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 
 	err = deps.Storage.AddFilterMembership(ctx, filterData.ID, userID)
 	if err != nil {
+		if err == goof.AlreadyMember() {
+			return common.SendError("Already member")
+		}
 		sp.Error("error getting membership")
 		return common.SendFatal(err.Error())
 	}
