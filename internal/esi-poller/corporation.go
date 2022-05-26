@@ -2,11 +2,11 @@ package esi_poller
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/filters"
+	"github.com/chremoas/chremoas-ng/internal/goof"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/roles"
 	"go.uber.org/zap"
@@ -132,12 +132,12 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation pay
 
 		alliance, err := aep.dependencies.Storage.GetAlliance(ctx, response.AllianceId)
 		if err != nil {
-			if err != sql.ErrNoRows {
+			if err == goof.NoSuchAlliance {
+				alliance = payloads.Alliance{ID: response.AllianceId}
+			} else {
 				sp.Error("error getting alliance", zap.Error(err))
-				return err
+				return fmt.Errorf("error getting alliance: %w", err)
 			}
-
-			alliance = payloads.Alliance{ID: response.AllianceId}
 		}
 
 		sp.With(zap.Any("alliance", alliance))
@@ -145,7 +145,7 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation pay
 		err = aep.updateAlliance(ctx, alliance)
 		if err != nil {
 			sp.Error("error updating alliance", zap.Error(err))
-			return err
+			return fmt.Errorf("error updating alliance: %w", err)
 		}
 	}
 

@@ -11,7 +11,7 @@ type User struct {
 }
 
 type Alliance struct {
-	ID         int32      `db:"id" json:"json"`
+	ID         int32      `db:"id" json:"id"`
 	Name       string     `db:"name" json:"name"`
 	Ticker     string     `db:"ticker" json:"ticker"`
 	InsertedAt *time.Time `db:"inserted_at" json:"insertedAt"`

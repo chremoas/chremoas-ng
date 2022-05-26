@@ -162,7 +162,7 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character payload
 			oldAlliance, err := aep.dependencies.Storage.GetAlliance(ctx, oldCorp.AllianceID.Int32)
 			if err != nil {
 				sp.Error("error getting old alliance ticker", zap.Error(err))
-				return err
+				return fmt.Errorf("error getting old alliance ticker: %w", err)
 			}
 
 			sp.With(zap.Any("old_alliance", oldAlliance))
@@ -172,7 +172,7 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character payload
 			newAlliance, err := aep.dependencies.Storage.GetAlliance(ctx, newCorp.AllianceID.Int32)
 			if err != nil {
 				sp.Error("error getting new alliance ticker", zap.Error(err))
-				return err
+				return fmt.Errorf("error getting new alliance ticker: %w", err)
 			}
 
 			sp.With(zap.Any("new_alliance", newAlliance))

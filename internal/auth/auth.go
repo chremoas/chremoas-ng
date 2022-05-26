@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
+	"github.com/chremoas/chremoas-ng/internal/goof"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/roles"
 	"go.uber.org/zap"
@@ -183,6 +185,10 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 		// get alliance ticker if there is an alliance
 		alliance, err := deps.Storage.GetAlliance(ctx, corporation.AllianceID.Int32)
 		if err != nil {
+			if errors.Is(err, goof.NoSuchAlliance) {
+				return common.SendError("No such alliance")
+			}
+
 			sp.Error("Error getting alliance", zap.Error(err))
 			return common.SendError("Error getting alliance")
 		}

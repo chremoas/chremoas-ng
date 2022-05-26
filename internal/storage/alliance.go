@@ -2,9 +2,12 @@ package storage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
+	"github.com/chremoas/chremoas-ng/internal/goof"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"go.uber.org/zap"
 )
@@ -64,6 +67,10 @@ func (s Storage) GetAlliance(ctx context.Context, allianceID int32) (payloads.Al
 
 	err = query.Scan(&alliance.Name, &alliance.Ticker)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return payloads.Alliance{}, goof.NoSuchAlliance
+
+		}
 		sp.Error("error getting alliance", zap.Error(err))
 		return payloads.Alliance{}, err
 	}

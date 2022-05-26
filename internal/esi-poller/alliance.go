@@ -47,9 +47,10 @@ func (aep *authEsiPoller) updateAlliance(ctx context.Context, alliance payloads.
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
 	defer sp.Close()
 
-	sp.With(zap.Any("alliance", alliance))
-
-	sp.With(zap.String("sub-component", "alliance"))
+	sp.With(
+		zap.Any("alliance", alliance),
+		zap.String("sub-component", "alliance"),
+	)
 
 	response, _, err := aep.esiClient.ESI.AllianceApi.GetAlliancesAllianceId(ctx, alliance.ID, nil)
 	if err != nil {
