@@ -406,7 +406,6 @@ func (s Storage) AddFilterMembership(ctx context.Context, filterID int, userID s
 	if err != nil {
 		// I don't love this, but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
-			sp.Warn("already a member", zap.Bool("maybe", false))
 			return goof.AlreadyMember
 		}
 
