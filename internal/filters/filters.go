@@ -240,7 +240,6 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 		/* TODO: this error is not always correct. If someone joins a sig they aren't a member of all filters of
 		 * it appears like they aren't in it.
 		 */
-		sp.Error("already a member", zap.Bool("maybe", true))
 		return common.SendError(fmt.Sprintf("<@%s> already a member of: `%s` (maybe)", userID, filter))
 	}
 
