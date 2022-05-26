@@ -8,11 +8,15 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
-	"github.com/chremoas/chremoas-ng/internal/goof"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/lib/pq"
 	"go.uber.org/zap"
 )
+
+var ErrNoFilter = errors.New("no such filter")
+var ErrFilterExists = errors.New("filter already exists")
+var ErrFilterMember = errors.New("already a member")
+var ErrNotFilterMember = errors.New("not a member")
 
 func (s Storage) GetFilter(ctx context.Context, name string) (payloads.Filter, error) {
 	ctx, sp := sl.OpenSpan(ctx)
@@ -41,14 +45,15 @@ func (s Storage) GetFilter(ctx context.Context, name string) (payloads.Filter, e
 
 	err = query.Scan(&filter.ID, &filter.Name, &filter.Description)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return payloads.Filter{}, fmt.Errorf("no such filter: %s", name)
+		if errors.Is(err, sql.ErrNoRows) {
+			return payloads.Filter{}, ErrNoFilter
 		}
+
 		sp.Error(
 			"error getting corporation info",
 			zap.Error(err),
 		)
-		return payloads.Filter{}, goof.NoSuchFilter
+		return payloads.Filter{}, fmt.Errorf("error getting filter: %w", err)
 	}
 
 	return filter, nil
@@ -187,7 +192,7 @@ func (s Storage) InsertFilter(ctx context.Context, name, description string) (in
 	if err != nil {
 		// I don't love this, but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
-			return -1, fmt.Errorf("filter `%s` already exists", name)
+			return -1, ErrFilterExists
 		}
 
 		sp.Error("error inserting filter", zap.Error(err))
@@ -213,8 +218,9 @@ func (s Storage) DeleteFilter(ctx context.Context, name string) error {
 	err = s.DeleteFilterMembership(ctx, filter.ID, "")
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return goof.NotMember
+			return ErrNotFilterMember
 		}
+
 		sp.Error("Error deleting filter membership", zap.Error(err))
 		return fmt.Errorf("error calling DeleteFilterMembership: %w", err)
 	}
@@ -406,7 +412,7 @@ func (s Storage) AddFilterMembership(ctx context.Context, filterID int, userID s
 	if err != nil {
 		// I don't love this, but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
-			return goof.AlreadyMember
+			return ErrFilterMember
 		}
 
 		sp.Error("error inserting filter", zap.Error(err))

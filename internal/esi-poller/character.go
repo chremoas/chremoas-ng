@@ -2,7 +2,7 @@ package esi_poller
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/bhechinger/go-sets"
@@ -10,6 +10,7 @@ import (
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
+	"github.com/chremoas/chremoas-ng/internal/storage"
 	"go.uber.org/zap"
 )
 
@@ -37,7 +38,7 @@ func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error
 		if err != nil {
 			discordID, err := aep.dependencies.Storage.GetDiscordUser(ctx, characters[c].ID)
 			if err != nil {
-				if err == sql.ErrNoRows {
+				if errors.Is(err, storage.ErrNoDiscordUser) {
 					// character is no longer associated with a discord user so we're going do delete it.
 					sp.Warn("Deleting character as they have no associated discord user")
 					err = aep.dependencies.Storage.DeleteCharacter(ctx, characters[c].ID)
@@ -147,6 +148,9 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character payload
 
 		// We need the discord user ID
 		discordID, err := aep.dependencies.Storage.GetDiscordUser(ctx, character.ID)
+		if err != nil {
+			return err
+		}
 
 		sp.With(zap.String("discord_id", discordID))
 
@@ -183,14 +187,17 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character payload
 
 	// We need the chatID of the user, so let's get that.
 	chatID, err := aep.dependencies.Storage.GetDiscordUser(ctx, character.ID)
+	if err != nil {
+		return err
+	}
 
 	sp.With(zap.String("chat_id", chatID))
 
 	member, err := aep.dependencies.Session.GuildMember(aep.dependencies.GuildID, chatID)
 	if err != nil {
-		discordID, err := aep.dependencies.Storage.GetDiscordUser(ctx, character.ID)
-		if err == nil {
-			return nil
+		discordID, dErr := aep.dependencies.Storage.GetDiscordUser(ctx, character.ID)
+		if dErr != nil {
+			return dErr
 		}
 
 		handled, hErr := aep.cad.CheckAndDelete(ctx, discordID, err)
@@ -198,7 +205,7 @@ func (aep *authEsiPoller) updateCharacter(ctx context.Context, character payload
 			sp.Error("Additional errors from checkAndDelete", zap.Error(hErr))
 		}
 		if handled {
-			return err
+			return nil
 		}
 
 		sp.Error("error getting guild member", zap.Error(err), zap.NamedError("hErr", hErr))

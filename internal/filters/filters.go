@@ -11,9 +11,9 @@ import (
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
-	"github.com/chremoas/chremoas-ng/internal/goof"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
+	"github.com/chremoas/chremoas-ng/internal/storage"
 	"go.uber.org/zap"
 )
 
@@ -80,8 +80,13 @@ func Add(ctx context.Context, name, description string, deps common.Dependencies
 
 	id, err := deps.Storage.InsertFilter(ctx, name, description)
 	if err != nil {
+		if errors.Is(err, storage.ErrFilterExists) {
+			return common.SendError("Filter already exists"), -1
+		}
+
 		return common.SendError(err.Error()), -1
 	}
+
 	sp.With(zap.Int("id", id))
 
 	sp.Info("created filter")
@@ -115,8 +120,12 @@ func Delete(ctx context.Context, name string, deps common.Dependencies) []*disco
 	var id int
 	err := deps.Storage.DeleteFilter(ctx, name)
 	if err != nil {
-		if errors.Is(err, goof.NotMember) {
+		if errors.Is(err, storage.ErrNotFilterMember) {
 			return common.SendError("User not a member of filter")
+		}
+
+		if errors.Is(err, storage.ErrNoFilter) {
+			return common.SendError("No such filter")
 		}
 
 		sp.Error("Error deleting filter")
@@ -207,7 +216,7 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 
 	filterData, err := deps.Storage.GetFilter(ctx, filter)
 	if err != nil {
-		if errors.Is(err, goof.NoSuchFilter) {
+		if errors.Is(err, storage.ErrNoFilter) {
 			return common.SendError("No such filter %s", filter)
 		}
 
@@ -220,7 +229,7 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 
 	err = deps.Storage.AddFilterMembership(ctx, filterData.ID, userID)
 	if err != nil {
-		if errors.Is(err, goof.AlreadyMember) {
+		if errors.Is(err, storage.ErrFilterMember) {
 			return common.SendError("Already member")
 		}
 
@@ -299,6 +308,10 @@ func RemoveMember(ctx context.Context, userID, filterName string, deps common.De
 
 	filter, err := deps.Storage.GetFilter(ctx, filterName)
 	if err != nil {
+		if errors.Is(err, storage.ErrNoFilter) {
+			return common.SendError("No such filter")
+		}
+
 		sp.Error("error getting filter")
 		return common.SendError("Error getting filter")
 	}

@@ -11,9 +11,9 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
-	"github.com/chremoas/chremoas-ng/internal/goof"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/roles"
+	"github.com/chremoas/chremoas-ng/internal/storage"
 	"go.uber.org/zap"
 )
 
@@ -130,6 +130,10 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 
 	characterID, used, err := deps.Storage.GetAuthCode(ctx, authCode)
 	if err != nil {
+		if errors.Is(err, storage.ErrNoAuthCode) {
+			return common.SendError("No such auth code")
+		}
+
 		sp.Error("Error getting auth code", zap.Error(err))
 		return common.SendError(fmt.Sprintf("Error getting character's auth code from the DB: %d", characterID))
 	}
@@ -146,6 +150,10 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 
 	character, err := deps.Storage.GetCharacter(ctx, characterID)
 	if err != nil {
+		if errors.Is(err, storage.ErrNoCharacter) {
+			return common.SendError("No such character")
+		}
+
 		sp.Error("Error getting character", zap.Error(err))
 		return common.SendError(fmt.Sprintf("Error getting character from the DB: %d", characterID))
 	}
@@ -170,6 +178,10 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 	// get corp ticker
 	corporation, err := deps.Storage.GetCorporation(ctx, character.CorporationID)
 	if err != nil {
+		if errors.Is(err, storage.ErrNoCorporation) {
+			return common.SendError("No such corporation")
+		}
+
 		sp.Error("Error getting corporation", zap.Error(err))
 		return common.SendError("Error getting corporation")
 	}
@@ -185,7 +197,7 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 		// get alliance ticker if there is an alliance
 		alliance, err := deps.Storage.GetAlliance(ctx, corporation.AllianceID.Int32)
 		if err != nil {
-			if errors.Is(err, goof.NoSuchAlliance) {
+			if errors.Is(err, storage.ErrNoAlliance) {
 				return common.SendError("No such alliance")
 			}
 

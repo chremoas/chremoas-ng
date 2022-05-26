@@ -12,9 +12,9 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
 	"github.com/chremoas/chremoas-ng/internal/filters"
-	"github.com/chremoas/chremoas-ng/internal/goof"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/perms"
+	"github.com/chremoas/chremoas-ng/internal/storage"
 	"go.uber.org/zap"
 )
 
@@ -45,6 +45,10 @@ func List(ctx context.Context, sig, all bool, channelID string, deps common.Depe
 
 	roles, err := deps.Storage.GetRolesByType(ctx, sig)
 	if err != nil {
+		if errors.Is(err, storage.ErrNoRole) {
+			return common.SendError("No such role")
+		}
+
 		sp.Error("error getting roles", zap.Error(err))
 		return common.SendFatal(err.Error())
 	}
@@ -281,6 +285,10 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 
 	roleID, err := deps.Storage.InsertRole(ctx, name, ticker, chatType, sig, joinable)
 	if err != nil {
+		if errors.Is(err, storage.ErrRoleExists) {
+			return common.SendError("Role already exists")
+		}
+
 		sp.Error("Error inserting role", zap.Error(err))
 		return common.SendError("Error inserting role")
 	}
@@ -309,6 +317,9 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 
 	err = deps.Storage.InsertRoleFilter(ctx, roleID, filterID)
 	if err != nil {
+		if errors.Is(err, storage.ErrRoleFilterExists) {
+			return common.SendError("Role filter already exists")
+		}
 		sp.Error("Error inserting role filter", zap.Error(err))
 		return common.SendError("Error inserting role filter")
 	}
@@ -367,6 +378,10 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 
 	role, err := deps.Storage.GetRole(ctx, "", ticker, &sig)
 	if err != nil {
+		if errors.Is(err, storage.ErrNoRole) {
+			return common.SendError("No such role")
+		}
+
 		sp.Error("Error getting role", zap.Error(err))
 		return common.SendError("Error getting role")
 	}
@@ -633,6 +648,10 @@ func AddFilter(ctx context.Context, sig bool, name, ticker string, deps common.D
 
 	filter, err := deps.Storage.GetFilter(ctx, name)
 	if err != nil {
+		if errors.Is(err, storage.ErrNoFilter) {
+			return common.SendError("No such filter")
+		}
+
 		sp.Error("Error getting filter", zap.Error(err))
 		return common.SendError("Error getting filter")
 	}
@@ -641,6 +660,10 @@ func AddFilter(ctx context.Context, sig bool, name, ticker string, deps common.D
 
 	role, err := deps.Storage.GetRole(ctx, "", ticker, &sig)
 	if err != nil {
+		if errors.Is(err, storage.ErrNoRole) {
+			return common.SendError("No such role")
+		}
+
 		sp.Error("Error getting role", zap.Error(err))
 		return common.SendError("Error getting role")
 	}
@@ -655,6 +678,9 @@ func AddFilter(ctx context.Context, sig bool, name, ticker string, deps common.D
 
 	err = deps.Storage.InsertRoleFilter(ctx, roleID, filter.ID)
 	if err != nil {
+		if errors.Is(err, storage.ErrRoleFilterExists) {
+			return common.SendError("Role filter already exists")
+		}
 		sp.Error("Error inserting role filter", zap.Error(err))
 		return common.SendError("Error inserting role filter")
 	}
@@ -695,7 +721,7 @@ func RemoveFilter(ctx context.Context, sig bool, name, ticker string, deps commo
 
 	err := deps.Storage.DeleteFilter(ctx, name)
 	if err != nil {
-		if errors.Is(err, goof.NotMember) {
+		if errors.Is(err, storage.ErrNotFilterMember) {
 			return common.SendError("User not a member of filter")
 		}
 

@@ -3,11 +3,13 @@ package perms
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
 	"github.com/chremoas/chremoas-ng/internal/common"
+	"github.com/chremoas/chremoas-ng/internal/storage"
 	"go.uber.org/zap"
 )
 
@@ -72,6 +74,10 @@ func Add(ctx context.Context, permission, description, author string, deps commo
 
 	err := deps.Storage.InsertPermission(ctx, permission, description)
 	if err != nil {
+		if errors.Is(err, storage.ErrPermissionExists) {
+			return common.SendError("Permission already exists")
+		}
+
 		sp.Error("Error Inserting permission", zap.Error(err))
 		return common.SendError("Error inserting permission")
 	}
@@ -183,6 +189,10 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 
 	perm, err := deps.Storage.GetPermission(ctx, permission)
 	if err != nil {
+		if errors.Is(err, storage.ErrNoPermission) {
+			return common.SendError("No such permission")
+		}
+
 		sp.Error("Error getting permission", zap.Error(err))
 		return common.SendError("Error getting permission")
 	}
@@ -191,6 +201,10 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 
 	err = deps.Storage.InsertPermissionMembership(ctx, permissionID, userID)
 	if err != nil {
+		if errors.Is(err, storage.ErrPermissionMember) {
+			return common.SendError("Already a member of permission")
+		}
+
 		return common.SendError("Error inserting permission membership")
 	}
 

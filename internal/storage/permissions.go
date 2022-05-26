@@ -2,6 +2,8 @@ package storage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
@@ -9,6 +11,10 @@ import (
 	"github.com/lib/pq"
 	"go.uber.org/zap"
 )
+
+var ErrNoPermission = errors.New("no such permission")
+var ErrPermissionExists = errors.New("permission already exists")
+var ErrPermissionMember = errors.New("user already member of permission")
 
 func (s Storage) GetPermission(ctx context.Context, name string) (payloads.Permission, error) {
 	ctx, sp := sl.OpenSpan(ctx)
@@ -34,6 +40,10 @@ func (s Storage) GetPermission(ctx context.Context, name string) (payloads.Permi
 
 	err = query.Scan(&permission.ID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return payloads.Permission{}, ErrNoPermission
+		}
+
 		sp.Error("error scanning permissionID", zap.Error(err))
 		return payloads.Permission{}, err
 	}
@@ -113,8 +123,9 @@ func (s Storage) InsertPermission(ctx context.Context, name, description string)
 		// I don't love this, but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
 			sp.Error("permission already exists")
-			return err
+			return ErrPermissionExists
 		}
+
 		sp.Error("error inserting permissions", zap.Error(err))
 		return err
 	}
@@ -242,7 +253,7 @@ func (s Storage) InsertPermissionMembership(ctx context.Context, permissionID in
 		// I don't love this, but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
 			sp.Error("user already a member of permission")
-			return err
+			return ErrPermissionMember
 		}
 		sp.Error("error inserting permission", zap.Error(err))
 		return err

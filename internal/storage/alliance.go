@@ -7,10 +7,11 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
-	"github.com/chremoas/chremoas-ng/internal/goof"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"go.uber.org/zap"
 )
+
+var ErrNoAlliance = errors.New("no such alliance")
 
 func (s Storage) GetAllianceCount(ctx context.Context, allianceID int32) (int, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
@@ -68,9 +69,10 @@ func (s Storage) GetAlliance(ctx context.Context, allianceID int32) (payloads.Al
 	err = query.Scan(&alliance.Name, &alliance.Ticker)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return payloads.Alliance{}, goof.NoSuchAlliance
+			return payloads.Alliance{}, ErrNoAlliance
 
 		}
+
 		sp.Error("error getting alliance", zap.Error(err))
 		return payloads.Alliance{}, err
 	}

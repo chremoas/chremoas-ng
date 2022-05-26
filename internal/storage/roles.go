@@ -2,6 +2,8 @@ package storage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,7 +20,9 @@ const (
 	Sig  = true
 )
 
-var roleType = map[bool]string{Role: "role", Sig: "sig"}
+var RoleType = map[bool]string{Role: "role", Sig: "sig"}
+var ErrNoRole = errors.New("no such role")
+var ErrRoleExists = errors.New("role already exists")
 
 func (s Storage) GetRoleCount(ctx context.Context, sig bool, ticker string) (int, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
@@ -91,7 +95,11 @@ func (s Storage) GetRole(ctx context.Context, name, ticker string, sig *bool) (p
 
 	err = query.Scan(&role.Sync, &role.ChatID)
 	if err != nil {
-		sp.Error("Error getting role sync status", zap.Error(err))
+		if errors.Is(err, sql.ErrNoRows) {
+			return payloads.Role{}, ErrNoRole
+		}
+
+		sp.Error("Error getting role", zap.Error(err))
 		return payloads.Role{}, err
 	}
 
@@ -122,7 +130,11 @@ func (s Storage) GetRoleByChatID(ctx context.Context, chatID string) (payloads.R
 
 	err = query.Scan(&role.Sync, &role.ChatID)
 	if err != nil {
-		sp.Error("Error getting role sync status", zap.Error(err))
+		if errors.Is(err, sql.ErrNoRows) {
+			return payloads.Role{}, ErrRoleExists
+		}
+
+		sp.Error("Error getting role", zap.Error(err))
 		return payloads.Role{}, err
 	}
 
@@ -203,6 +215,10 @@ func (s Storage) doGetRoles(ctx context.Context, sig bool, shortName *string) ([
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNoRole
+		}
+
 		sp.Error("error getting role", zap.Error(err))
 		return nil, err
 	}
@@ -268,7 +284,11 @@ func (s Storage) GetRolesBySync(ctx context.Context, syncOnly bool) ([]payloads.
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
-		sp.Error("error selecting role", zap.Error(err))
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNoRole
+		}
+
+		sp.Error("error getting role", zap.Error(err))
 		return nil, err
 	}
 	defer func() {
@@ -427,7 +447,7 @@ func (s Storage) GetMemberRoles(ctx context.Context, userID string, sig bool) ([
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error getting role membership", zap.Error(err))
-		return nil, fmt.Errorf("error getting user %ss (%s): %s", roleType[sig], userID, err)
+		return nil, fmt.Errorf("error getting user %ss (%s): %s", RoleType[sig], userID, err)
 	}
 
 	defer func() {
@@ -448,7 +468,7 @@ func (s Storage) GetMemberRoles(ctx context.Context, userID string, sig bool) ([
 		)
 		if err != nil {
 			sp.Error("error scanning row", zap.Error(err))
-			return nil, fmt.Errorf("error scanning %s row: %s", roleType[sig], err)
+			return nil, fmt.Errorf("error scanning %s row: %s", RoleType[sig], err)
 		}
 
 		roles = append(roles, role)
@@ -487,10 +507,9 @@ func (s Storage) InsertRole(ctx context.Context, name, ticker, chatType string, 
 	var roleID int
 	err = query.Scan(&roleID)
 	if err != nil {
-		// I don't love this but I can't find a better way right now
+		// I don't love this, but I can't find a better way right now
 		if err.(*pq.Error).Code == "23505" {
-			sp.Info("role already exists")
-			return -1, err
+			return -1, ErrRoleExists
 		}
 		sp.Error("error adding role", zap.Error(err))
 		return -1, err

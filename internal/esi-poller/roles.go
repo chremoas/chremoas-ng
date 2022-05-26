@@ -53,6 +53,10 @@ func (aep authEsiPoller) syncRoles(ctx context.Context) (int, int, error) {
 	}
 
 	dbRoles, err := aep.dependencies.Storage.GetRolesBySync(ctx, true)
+	if err != nil {
+		sp.Error("error getting roles by sync", zap.Error(err))
+		return -1, -1, err
+	}
 
 	for r := range dbRoles {
 		// Check if we need to update the role ID in the database

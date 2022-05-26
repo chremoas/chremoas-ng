@@ -3,12 +3,15 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"go.uber.org/zap"
 )
+
+var ErrNoCorporation = errors.New("no such corporation")
 
 func (s Storage) GetCorporationCount(ctx context.Context, corporationID int32) (int, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
@@ -65,10 +68,11 @@ func (s Storage) GetCorporation(ctx context.Context, corporationID int32) (paylo
 
 	err = query.Scan(&corporation.Ticker, &corporation.AllianceID)
 	if err != nil {
-		sp.Error(
-			"error getting corporation info",
-			zap.Error(err),
-		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return payloads.Corporation{}, ErrNoCorporation
+		}
+
+		sp.Error("error getting corporation info", zap.Error(err))
 		return payloads.Corporation{}, err
 	}
 

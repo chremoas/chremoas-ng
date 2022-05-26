@@ -6,9 +6,9 @@ import (
 
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/filters"
-	"github.com/chremoas/chremoas-ng/internal/goof"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"github.com/chremoas/chremoas-ng/internal/roles"
+	"github.com/chremoas/chremoas-ng/internal/storage"
 	"go.uber.org/zap"
 )
 
@@ -132,7 +132,7 @@ func (aep *authEsiPoller) updateCorporation(ctx context.Context, corporation pay
 
 		alliance, err := aep.dependencies.Storage.GetAlliance(ctx, response.AllianceId)
 		if err != nil {
-			if err == goof.NoSuchAlliance {
+			if err == storage.ErrNoAlliance {
 				alliance = payloads.Alliance{ID: response.AllianceId}
 			} else {
 				sp.Error("error getting alliance", zap.Error(err))

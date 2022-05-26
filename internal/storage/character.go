@@ -2,12 +2,16 @@ package storage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
 	"go.uber.org/zap"
 )
+
+var ErrNoCharacter = errors.New("no such character")
 
 func (s Storage) GetCharacterCount(ctx context.Context, characterID int32) (int, error) {
 	ctx, sp := sl.OpenSpan(ctx)
@@ -64,6 +68,10 @@ func (s Storage) GetCharacter(ctx context.Context, characterID int) (payloads.Ch
 
 	err = query.Scan(&character.Name, &character.CorporationID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return payloads.Character{}, ErrNoCharacter
+		}
+
 		sp.Error("error getting character name and corporation", zap.Error(err))
 		return payloads.Character{}, err
 	}
@@ -101,7 +109,7 @@ func (s Storage) GetCharacters(ctx context.Context) ([]payloads.Character, error
 
 	defer func() {
 		if err = rows.Close(); err != nil {
-			sp.Error("error closing role", zap.Error(err))
+			sp.Error("error closing rows", zap.Error(err))
 		}
 	}()
 

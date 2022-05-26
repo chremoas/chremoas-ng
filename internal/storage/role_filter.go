@@ -2,12 +2,16 @@ package storage
 
 import (
 	"context"
+	"errors"
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/chremoas/chremoas-ng/internal/payloads"
+	"github.com/lib/pq"
 	"go.uber.org/zap"
 )
+
+var ErrRoleFilterExists = errors.New("role filter already exists")
 
 func (s Storage) GetRoleFilters(ctx context.Context, sig bool, name string) ([]payloads.RoleFilter, error) {
 	ctx, sp := sl.OpenSpan(ctx)
@@ -118,6 +122,10 @@ func (s Storage) InsertRoleFilter(ctx context.Context, roleID, filterID int) err
 
 	rows, err := query.QueryContext(ctx)
 	if err != nil {
+		if err.(*pq.Error).Code == "23505" {
+			return ErrPermissionExists
+		}
+
 		sp.Error("error adding role_filter", zap.Error(err))
 		return err
 	}

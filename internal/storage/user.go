@@ -2,6 +2,8 @@ package storage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
@@ -9,6 +11,8 @@ import (
 	"github.com/lib/pq"
 	"go.uber.org/zap"
 )
+
+var ErrNoDiscordUser = errors.New("no such discord user")
 
 func (s Storage) GetDiscordUser(ctx context.Context, characterID int32) (string, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
@@ -34,6 +38,10 @@ func (s Storage) GetDiscordUser(ctx context.Context, characterID int32) (string,
 
 	err = query.Scan(&discordID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrNoDiscordUser
+		}
+
 		sp.Error("error getting discord info", zap.Error(err))
 		return "", err
 	}

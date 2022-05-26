@@ -2,11 +2,16 @@ package storage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
 	sl "github.com/bhechinger/spiffylogger"
 	"go.uber.org/zap"
 )
+
+var ErrNoAuthCode = errors.New("no such auth code")
 
 func (s Storage) GetAuthCode(ctx context.Context, authCode string) (int, bool, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
@@ -37,6 +42,10 @@ func (s Storage) GetAuthCode(ctx context.Context, authCode string) (int, bool, e
 	)
 	err = query.Scan(&characterID, &used)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return -1, false, ErrNoAuthCode
+		}
+
 		sp.Error("error getting authentication code details", zap.Error(err))
 		return -1, false, err
 	}
@@ -69,7 +78,7 @@ func (s Storage) DeleteAuthCodes(ctx context.Context, characterID int32) error {
 	_, err = query.QueryContext(ctx)
 	if err != nil {
 		sp.Error("error deleting user's authentication codes from the db", zap.Error(err))
-		return err
+		return fmt.Errorf("error deleting user's auth codes: %w", err)
 	}
 
 	return nil
