@@ -216,9 +216,10 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 
 	err = deps.Storage.AddFilterMembership(ctx, filterData.ID, userID)
 	if err != nil {
-		if err == goof.AlreadyMember() {
+		if errors.Is(err, goof.AlreadyMember) {
 			return common.SendError("Already member")
 		}
+
 		sp.Error("error getting membership")
 		return common.SendFatal(err.Error())
 	}
