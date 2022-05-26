@@ -63,6 +63,7 @@ func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error
 				zap.Int32("id", characters[c].ID),
 				zap.String("name", characters[c].Name),
 			)
+
 			errorCount += 1
 			continue
 		}

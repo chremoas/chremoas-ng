@@ -48,7 +48,7 @@ func (s Storage) GetFilter(ctx context.Context, name string) (payloads.Filter, e
 			"error getting corporation info",
 			zap.Error(err),
 		)
-		return payloads.Filter{}, err
+		return payloads.Filter{}, goof.NoSuchFilter
 	}
 
 	return filter, nil

@@ -207,6 +207,10 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 
 	filterData, err := deps.Storage.GetFilter(ctx, filter)
 	if err != nil {
+		if errors.Is(err, goof.NoSuchFilter) {
+			return common.SendError("No such filter %s", filter)
+		}
+
 		sp.Error("Error getting filter", zap.Error(err))
 		return common.SendError(fmt.Sprintf("Error getting filter: %s", err.Error()))
 	}
