@@ -1,0 +1,13 @@
+version: '3'
+services:
+  chremoas-ng:
+    image: docker.io/chremoas/chremoas-ng@sha256:3e47db77de3e16e7f9e5b3d18fcdd38831bf7ebedaaddc090d6d4dd6f8405bf0
+    restart: always
+    ports:
+      - "3000:3000"
+      - "4000:4000"
+    environment:
+      CONSUL: 10.42.1.30:8500
+      CONFIG_NAMESPACE: chremoas-dev
+
+---

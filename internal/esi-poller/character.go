@@ -43,11 +43,9 @@ func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error
 					err = aep.dependencies.Storage.DeleteCharacter(ctx, characters[c].ID)
 					if err != nil {
 						sp.Error("Error deleting character", zap.Error(err))
-						return -1, -1, err
 					}
 				}
 				sp.Error("Error getting discord user", zap.Error(err))
-				return -1, -1, err
 			}
 
 			handled, hErr := aep.cad.CheckAndDelete(ctx, discordID, err)
@@ -55,7 +53,7 @@ func (aep *authEsiPoller) updateCharacters(ctx context.Context) (int, int, error
 				sp.Error("Additional errors from checkAndDelete", zap.Error(hErr))
 			}
 			if handled {
-				return -1, -1, err
+				continue
 			}
 
 			sp.Error(
