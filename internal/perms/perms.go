@@ -27,7 +27,7 @@ func List(ctx context.Context, channelID string, deps common.Dependencies) []*di
 	permissions, err := deps.Storage.GetPermissions(ctx)
 	if err != nil {
 		sp.Error("Error getting permissions", zap.Error(err))
-		return common.SendError("Error getting permissions")
+		return common.SendErrorf(nil, "Error getting permissions: %s", err)
 	}
 
 	for p := range permissions {
@@ -41,8 +41,8 @@ func List(ctx context.Context, channelID string, deps common.Dependencies) []*di
 
 	err = common.SendChunkedMessage(ctx, channelID, "Perm List", permList, deps)
 	if err != nil {
-		sp.Error("Error sending message")
-		return common.SendError("Error sending message")
+		sp.Error("Error sending chunked message")
+		return common.SendErrorf(nil, "Error sending chunked message: %s", err)
 	}
 
 	return nil
@@ -64,26 +64,26 @@ func Add(ctx context.Context, permission, description, author string, deps commo
 
 	if permission == serverAdmins {
 		sp.Warn("user doesn't have rights to this permission")
-		return common.SendError("User doesn't have rights to this permission")
+		return common.SendError("User doesn't have rights to this permission", author)
 	}
 
 	if err := CanPerform(ctx, author, serverAdmins, deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command")
+		return common.SendError("User doesn't have permission to this command", author)
 	}
 
 	err := deps.Storage.InsertPermission(ctx, permission, description)
 	if err != nil {
 		if errors.Is(err, storage.ErrPermissionExists) {
-			return common.SendError("Permission already exists")
+			return common.SendErrorf(&author, "Permission already exists: %s", permission)
 		}
 
 		sp.Error("Error Inserting permission", zap.Error(err))
-		return common.SendError("Error inserting permission")
+		return common.SendErrorf(&author, "Error inserting permission: %s", permission)
 	}
 
 	sp.Info("created permission")
-	return common.SendSuccess(fmt.Sprintf("Created permission `%s`", permission))
+	return common.SendSuccessf(nil, "Created permission `%s`", permission)
 }
 
 func Delete(ctx context.Context, permission, author string, deps common.Dependencies) []*discordgo.MessageSend {
@@ -101,22 +101,22 @@ func Delete(ctx context.Context, permission, author string, deps common.Dependen
 
 	if permission == serverAdmins {
 		sp.Warn("user doesn't have rights to this permission")
-		return common.SendError("User doesn't have rights to this permission")
+		return common.SendError("User doesn't have rights to this permission", author)
 	}
 
 	if err := CanPerform(ctx, author, serverAdmins, deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command")
+		return common.SendError("User doesn't have permission to this command", author)
 	}
 
 	err := deps.Storage.DeletePermission(ctx, permission)
 	if err != nil {
 		sp.Error("Error deleting permission")
-		return common.SendError("Error deleting permission")
+		return common.SendErrorf(&author, "Error deleting permission: %s", permission)
 	}
 
 	sp.Info("deleted permission")
-	return common.SendSuccess(fmt.Sprintf("Deleted permission `%s`", permission))
+	return common.SendSuccessf(nil, "Deleted permission `%s`", permission)
 }
 
 func ListMembers(ctx context.Context, permission string, deps common.Dependencies) []*discordgo.MessageSend {
@@ -134,7 +134,7 @@ func ListMembers(ctx context.Context, permission string, deps common.Dependencie
 	userIDs, err := deps.Storage.ListPermissionMembers(ctx, permission)
 	if err != nil {
 		sp.Error("Error listing permission membership")
-		return common.SendError("Error listing permission membership")
+		return common.SendErrorf(nil, "Error listing permission membership for %s", permission)
 	}
 
 	for u := range userIDs {
@@ -144,7 +144,7 @@ func ListMembers(ctx context.Context, permission string, deps common.Dependencie
 
 	if count == 0 {
 		sp.Warn("permission has no members")
-		return common.SendError(fmt.Sprintf("Permission has no members: %s", permission))
+		return common.SendErrorf(nil, "Permission has no members: %s", permission)
 	}
 
 	embed := common.NewEmbed()
@@ -172,17 +172,17 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 
 	if permission == serverAdmins {
 		sp.Warn("user doesn't have rights to this permission")
-		return common.SendError("User doesn't have rights to this permission")
+		return common.SendError("User doesn't have rights to this permission", author)
 	}
 
 	if err := CanPerform(ctx, author, serverAdmins, deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command")
+		return common.SendError("User doesn't have permission to this command", author)
 	}
 
 	if !common.IsDiscordUser(user) {
 		sp.Warn("second argument must be a discord user")
-		return common.SendError("second argument must be a discord user")
+		return common.SendError("second argument must be a discord user", author)
 	}
 
 	userID := common.ExtractUserId(user)
@@ -190,11 +190,11 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 	perm, err := deps.Storage.GetPermission(ctx, permission)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoPermission) {
-			return common.SendError("No such permission")
+			return common.SendErrorf(&author, "No such permission: %s", permission)
 		}
 
 		sp.Error("Error getting permission", zap.Error(err))
-		return common.SendError("Error getting permission")
+		return common.SendErrorf(&author, "Error getting permission: %s", permission)
 	}
 
 	sp.With(zap.Int("permission_id", perm.ID))
@@ -202,14 +202,19 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 	err = deps.Storage.InsertPermissionMembership(ctx, permissionID, userID)
 	if err != nil {
 		if errors.Is(err, storage.ErrPermissionMember) {
-			return common.SendError("Already a member of permission")
+			return common.SendErrorf(&author, "Already a member of permission: %s", permission)
 		}
 
-		return common.SendError("Error inserting permission membership")
+		return common.SendErrorf(&author, "Error inserting permission membership: %s", permission)
 	}
 
 	sp.Info("added user to permission")
-	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, permission))
+	return common.SendSuccessf(
+		nil,
+		"Added %s to `%s`",
+		common.GetUsername(userID, deps.Session),
+		permission,
+	)
 }
 
 func RemoveMember(ctx context.Context, user, permission, author string, deps common.Dependencies) []*discordgo.MessageSend {
@@ -228,17 +233,17 @@ func RemoveMember(ctx context.Context, user, permission, author string, deps com
 
 	if permission == serverAdmins {
 		sp.Warn("user doesn't have rights to this permission")
-		return common.SendError("User doesn't have rights to this permission")
+		return common.SendError("User doesn't have rights to this permission", author)
 	}
 
 	if err := CanPerform(ctx, author, serverAdmins, deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command")
+		return common.SendError("User doesn't have permission to this command", author)
 	}
 
 	if !common.IsDiscordUser(user) {
 		sp.Warn("second argument must be a discord user")
-		return common.SendError("second argument must be a discord user")
+		return common.SendError("second argument must be a discord user", author)
 	}
 
 	userID := common.ExtractUserId(user)
@@ -248,7 +253,7 @@ func RemoveMember(ctx context.Context, user, permission, author string, deps com
 	perm, err := deps.Storage.GetPermission(ctx, permission)
 	if err != nil {
 		sp.Error("Error getting permission", zap.Error(err))
-		return common.SendError("Error getting permission")
+		return common.SendErrorf(&author, "Error getting permission: %s", permission)
 	}
 
 	sp.With(zap.Int("permission_id", perm.ID))
@@ -256,11 +261,16 @@ func RemoveMember(ctx context.Context, user, permission, author string, deps com
 	err = deps.Storage.DeletePermissionMembership(ctx, perm.ID, userID)
 	if err != nil {
 		sp.Error("Error removing permission membership", zap.Error(err))
-		return common.SendError("Error removing permission memberhsip")
+		return common.SendErrorf(&author, "Error removing permission memberhsip: %s", err)
 	}
 
 	sp.Info("removed user from permission")
-	return common.SendSuccess(fmt.Sprintf("Removed <@%s> from `%s`", userID, permission))
+	return common.SendSuccessf(
+		nil,
+		"Removed <@%s> from `%s`",
+		common.GetUsername(userID, deps.Session),
+		permission,
+	)
 }
 
 func UserPerms(ctx context.Context, user string, deps common.Dependencies) []*discordgo.MessageSend {
@@ -287,7 +297,7 @@ func UserPerms(ctx context.Context, user string, deps common.Dependencies) []*di
 	permissions, err := deps.Storage.GetUserPermissions(ctx, userID)
 	if err != nil {
 		sp.Error("Error getting user permissions", zap.Error(err))
-		return common.SendError("Error getting user permissions")
+		return common.SendError("Error getting user permissions", userID)
 	}
 
 	for p := range permissions {

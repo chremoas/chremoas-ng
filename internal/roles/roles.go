@@ -50,7 +50,7 @@ func List(ctx context.Context, sig, all bool, channelID string, deps common.Depe
 		}
 
 		sp.Error("error getting roles", zap.Error(err))
-		return common.SendFatal(err.Error())
+		return common.SendFatalf(nil, "Error getting roles: %s", err)
 	}
 
 	roleList := make([]string, 0, len(roles))
@@ -69,13 +69,13 @@ func List(ctx context.Context, sig, all bool, channelID string, deps common.Depe
 	sort.Strings(roleList)
 
 	if len(roleList) == 0 {
-		return common.SendError(fmt.Sprintf("No %ss\n", clientType[sig]))
+		return common.SendErrorf(nil, "No %ss\n", clientType[sig])
 	}
 
 	err = common.SendChunkedMessage(ctx, channelID, fmt.Sprintf("%s List", clientType[sig]), roleList, deps)
 	if err != nil {
-		sp.Error("Error sending message")
-		return common.SendError("Error sending message")
+		sp.Error("Error sending chunked message")
+		return common.SendErrorf(nil, "Error sending chunked message: %s", err)
 	}
 
 	return nil
@@ -135,12 +135,12 @@ func ListMembers(ctx context.Context, sig bool, name string, deps common.Depende
 	members, err := GetRoleMembers(ctx, sig, name, deps)
 	if err != nil {
 		sp.Error("error getting member list", zap.Error(err))
-		return common.SendError(fmt.Sprintf("error getting member list: %s", err))
+		return common.SendErrorf(nil, "error getting member list: %s", err)
 	}
 
 	if len(members) == 0 {
 		sp.Info("no members in role")
-		return common.SendError(fmt.Sprintf("No members in: %s", name))
+		return common.SendErrorf(nil, "No members in: %s", name)
 	}
 
 	for _, userID := range members {
@@ -170,12 +170,12 @@ func ListUserRoles(ctx context.Context, sig bool, userID string, deps common.Dep
 	roles, err := common.GetUserRoles(ctx, sig, userID, deps)
 	if err != nil {
 		sp.Error("error getting user roles", zap.Error(err))
-		return common.SendError(fmt.Sprintf("error getting user roles: %s", err))
+		return common.SendErrorf(nil, "error getting user roles: %s", err)
 	}
 
 	if len(roles) == 0 {
 		sp.Info("user has no roles")
-		return common.SendError(fmt.Sprintf("User has no %ss: <@%s>", roleType[sig], userID))
+		return common.SendErrorf(nil, "User has no %ss: <@%s>", roleType[sig], userID)
 	}
 
 	for _, role := range roles {
@@ -206,7 +206,7 @@ func Info(ctx context.Context, sig bool, ticker string, deps common.Dependencies
 	role, err := deps.Storage.GetRoleByType(ctx, sig, ticker)
 	if err != nil {
 		sp.Error("error getting roles", zap.Error(err))
-		return common.SendFatal(err.Error())
+		return common.SendFatalf(nil, "Error getting roles: %s", err)
 	}
 
 	buffer.WriteString(fmt.Sprintf("ShortName: %s\n", role.ShortName))
@@ -280,17 +280,17 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 	}
 
 	if !validListItem(chatType, roleTypes) {
-		return common.SendError(fmt.Sprintf("`%s` isn't a valid Role Type", chatType))
+		return common.SendErrorf(nil, "`%s` isn't a valid Role Type", chatType)
 	}
 
 	roleID, err := deps.Storage.InsertRole(ctx, name, ticker, chatType, sig, joinable)
 	if err != nil {
 		if errors.Is(err, storage.ErrRoleExists) {
-			return common.SendError("Role already exists")
+			return common.SendErrorf(nil, "Role already exists: %s", name)
 		}
 
 		sp.Error("Error inserting role", zap.Error(err))
-		return common.SendError("Error inserting role")
+		return common.SendErrorf(nil, "Error inserting role: %s", name)
 	}
 
 	sp.With(zap.Int("role_id", roleID))
@@ -327,11 +327,11 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 	err = queueUpdate(ctx, role, payloads.Upsert, deps)
 	if err != nil {
 		sp.Error("error adding role", zap.Error(err))
-		return common.SendFatal(fmt.Sprintf("error adding role for %s: %s", roleType[sig], err))
+		return common.SendFatalf(nil, "error adding role for %s: %s", roleType[sig], err)
 	}
 
 	sp.Info("created role")
-	messages := common.SendSuccess(fmt.Sprintf("Created %s `%s`", roleType[sig], ticker))
+	messages := common.SendSuccessf(nil, "Created %s `%s`", roleType[sig], ticker)
 
 	embed := common.NewEmbed()
 	embed.SetTitle("filter response")
@@ -397,11 +397,11 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 	err = queueUpdate(ctx, payloads.Role{ID: fmt.Sprintf("%d", role.ChatID)}, payloads.Delete, deps)
 	if err != nil {
 		sp.Error("error deleting role", zap.Error(err))
-		return common.SendFatal(fmt.Sprintf("error deleting role for %s: %s", roleType[sig], err))
+		return common.SendFatalf(nil, "error deleting role for %s: %s", roleType[sig], err)
 	}
 
 	sp.Info("deleted role")
-	messages := common.SendSuccess(fmt.Sprintf("Destroyed %s `%s`", roleType[sig], ticker))
+	messages := common.SendSuccessf(nil, "Destroyed %s `%s`", roleType[sig], ticker)
 
 	embed := common.NewEmbed()
 	embed.SetTitle("filter response")
@@ -474,7 +474,7 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 	role, err := GetChremoasRole(ctx, sig, ticker, deps)
 	if err != nil {
 		sp.Error("error fetching role", zap.Error(err))
-		return common.SendFatal(fmt.Sprintf("error fetching %s from db: %s", roleType[sig], err))
+		return common.SendFatalf(nil, "error fetching %s from db: %s", roleType[sig], err)
 	}
 
 	sp.With(zap.Any("role", role))
@@ -482,16 +482,15 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 	dRole, err := GetDiscordRole(ctx, role.Name, deps)
 	if err != nil {
 		sp.Info("error getting discord role", zap.Error(err))
-		// TODO: Figure out if there are errors we should really fail on
-		// return common.SendFatal(fmt.Sprintf("error fetching roles from discord: %s", err))
+
 		err = queueUpdate(ctx, role, payloads.Upsert, deps)
 		if err != nil {
 			sp.Error("error sending update", zap.Error(err))
-			return common.SendFatal(fmt.Sprintf("error updating role for %s: %s", roleType[sig], err))
+			return common.SendFatalf(nil, "error updating role for %s: %s", roleType[sig], err)
 		}
 
 		sp.Info("updated role")
-		return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], ticker))
+		return common.SendSuccessf(nil, "Updated %s `%s`", roleType[sig], ticker)
 	}
 
 	sp.With(zap.Any("discord_role", dRole))
@@ -506,7 +505,7 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 
 	if !roleData.Sync {
 		sp.Info("updated role but didn't sync to discord")
-		return common.SendSuccess(fmt.Sprintf("Updated %s in db but not Discord (sync not set): %s", roleType[sig], ticker))
+		return common.SendSuccessf(nil, "Updated %s in db but not Discord (sync not set): %s", roleType[sig], ticker)
 	}
 
 	if role.Mentionable != dRole.Mentionable ||
@@ -518,12 +517,12 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 		err = queueUpdate(ctx, role, payloads.Upsert, deps)
 		if err != nil {
 			sp.Error("error updating role", zap.Error(err))
-			return common.SendFatal(fmt.Sprintf("error updating role for %s: %s", roleType[sig], err))
+			return common.SendFatalf(nil, "error updating role for %s: %s", roleType[sig], err)
 		}
 	}
 
 	sp.Info("updated role")
-	return common.SendSuccess(fmt.Sprintf("Updated %s `%s`", roleType[sig], ticker))
+	return common.SendSuccessf(nil, "Updated %s `%s`", roleType[sig], ticker)
 }
 
 func GetChremoasRole(ctx context.Context, sig bool, ticker string, deps common.Dependencies) (payloads.Role, error) {
@@ -686,7 +685,7 @@ func AddFilter(ctx context.Context, sig bool, name, ticker string, deps common.D
 	}
 
 	sp.Info("added filter")
-	return common.SendSuccess(fmt.Sprintf("Added filter %s to role %s", filter, ticker))
+	return common.SendSuccessf(nil, "Added filter %s to role %s", filter, ticker)
 }
 
 func AuthedRemoveFilter(ctx context.Context, sig bool, filter, ticker, author string, deps common.Dependencies) []*discordgo.MessageSend {
@@ -730,5 +729,5 @@ func RemoveFilter(ctx context.Context, sig bool, name, ticker string, deps commo
 	}
 
 	sp.Info("removed filter")
-	return common.SendSuccess(fmt.Sprintf("Removed filter %s from role %s", name, ticker))
+	return common.SendSuccessf(nil, "Removed filter %s from role %s", name, ticker)
 }

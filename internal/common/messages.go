@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/spf13/viper"
 )
 
 func makeString(message string, sender string, sign string) string {
@@ -16,6 +15,10 @@ func makeString(message string, sender string, sign string) string {
 	output = fmt.Sprintf("%s %s %s", output, sign, message)
 
 	return output
+}
+
+func SendSuccessf(sender *string, format string, args ...interface{}) []*discordgo.MessageSend {
+	return SendSuccess(fmt.Sprintf(format, args...), *sender)
 }
 
 func SendSuccess(message string, sender ...string) []*discordgo.MessageSend {
@@ -32,6 +35,10 @@ func SendSuccess(message string, sender ...string) []*discordgo.MessageSend {
 	return append(messages, &discordgo.MessageSend{Content: makeString(message, s, ":white_check_mark:")})
 }
 
+func SendErrorf(sender *string, format string, args ...interface{}) []*discordgo.MessageSend {
+	return SendSuccess(fmt.Sprintf(format, args...), *sender)
+}
+
 func SendError(message string, sender ...string) []*discordgo.MessageSend {
 	var (
 		s        string
@@ -46,6 +53,10 @@ func SendError(message string, sender ...string) []*discordgo.MessageSend {
 	return append(messages, &discordgo.MessageSend{Content: makeString(message, s, ":warning:")})
 }
 
+func SendFatalf(sender *string, format string, args ...interface{}) []*discordgo.MessageSend {
+	return SendSuccess(fmt.Sprintf(format, args...), *sender)
+}
+
 func SendFatal(message string, sender ...string) []*discordgo.MessageSend {
 	var (
 		s        string
@@ -58,24 +69,4 @@ func SendFatal(message string, sender ...string) []*discordgo.MessageSend {
 		s = sender[0]
 	}
 	return append(messages, &discordgo.MessageSend{Content: makeString(message, s, ":octagonal_sign:")})
-}
-
-func GetTopic(topic string) string {
-	return fmt.Sprintf("%s-discord.%s", viper.GetString("namespace"), topic)
-}
-
-func NewConnectionString() string {
-	return viper.GetString("database.driver") +
-		"://" +
-		viper.GetString("database.username") +
-		":" +
-		viper.GetString("database.password") +
-		"@" +
-		viper.GetString("database.host") +
-		":" +
-		fmt.Sprintf("%d", viper.GetInt("database.port")) +
-		"/" +
-		viper.GetString("database.database") +
-		"?" +
-		viper.GetString("database.options")
 }

@@ -70,7 +70,7 @@ func (s Sig) Add(ctx context.Context) []*discordgo.MessageSend {
 
 	if err := perms.CanPerform(ctx, s.author, "sig_admins", s.dependencies); err != nil {
 		sp.Error("User not authorized", zap.Error(err))
-		return common.SendError("User not authorized")
+		return common.SendError("User not authorized", s.author)
 	}
 	return filters.AddMember(ctx, s.userID, s.sig, s.dependencies)
 }
@@ -81,7 +81,7 @@ func (s Sig) Remove(ctx context.Context) []*discordgo.MessageSend {
 
 	if err := perms.CanPerform(ctx, s.author, "sig_admins", s.dependencies); err != nil {
 		sp.Error("User not authorizee", zap.Error(err))
-		return common.SendError("User not authorized")
+		return common.SendError("User not authorized", s.author)
 	}
 	return filters.RemoveMember(ctx, s.userID, s.sig, s.dependencies)
 }
@@ -91,7 +91,7 @@ func (s Sig) Join(ctx context.Context) []*discordgo.MessageSend {
 	defer sp.Close()
 
 	if !s.role.Joinable {
-		return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", s.sig))
+		return common.SendErrorf(&s.author, "'%s' is not a joinable SIG, talk to an admin", s.sig)
 	}
 
 	return filters.AddMember(ctx, s.userID, s.sig, s.dependencies)
@@ -102,7 +102,7 @@ func (s Sig) Leave(ctx context.Context) []*discordgo.MessageSend {
 	defer sp.Close()
 
 	if !s.role.Joinable {
-		return common.SendError(fmt.Sprintf("'%s' is not a joinable SIG, talk to an admin", s.sig))
+		return common.SendErrorf(&s.author, "'%s' is not a joinable SIG, talk to an admin", s.sig)
 	}
 
 	return filters.RemoveMember(ctx, s.userID, s.sig, s.dependencies)

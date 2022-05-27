@@ -27,7 +27,7 @@ func List(ctx context.Context, channelID string, deps common.Dependencies) []*di
 	filters, err := deps.Storage.GetFilters(ctx)
 	if err != nil {
 		sp.Error("Error getting filters")
-		return common.SendFatal("Error getting filters")
+		return common.SendFatalf(nil, "Error getting filters: %s", err)
 	}
 
 	var filterList []string
@@ -43,8 +43,8 @@ func List(ctx context.Context, channelID string, deps common.Dependencies) []*di
 
 	err = common.SendChunkedMessage(ctx, channelID, "Filter List", filterList, deps)
 	if err != nil {
-		sp.Error("Error sending message")
-		return common.SendError("Error sending message")
+		sp.Error("Error sending chunked message")
+		return common.SendErrorf(nil, "Error sending chunked message: %s", err)
 	}
 
 	return nil
@@ -62,7 +62,7 @@ func AuthedAdd(ctx context.Context, name, description, author string, deps commo
 
 	if err := perms.CanPerform(ctx, author, "role_admins", deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command"), -1
+		return common.SendError("User doesn't have permission to this command", author), -1
 	}
 
 	sp.Debug("adding filter")
@@ -81,16 +81,16 @@ func Add(ctx context.Context, name, description string, deps common.Dependencies
 	id, err := deps.Storage.InsertFilter(ctx, name, description)
 	if err != nil {
 		if errors.Is(err, storage.ErrFilterExists) {
-			return common.SendError("Filter already exists"), -1
+			return common.SendErrorf(nil, "Filter already exists: %s", name), -1
 		}
 
-		return common.SendError(err.Error()), -1
+		return common.SendErrorf(nil, "Error inserting filter:%s", err), -1
 	}
 
 	sp.With(zap.Int("id", id))
 
 	sp.Info("created filter")
-	return common.SendSuccess(fmt.Sprintf("Created filter `%s`", name)), id
+	return common.SendSuccessf(nil, "Created filter `%s`", name), id
 }
 
 func AuthedDelete(ctx context.Context, name, author string, deps common.Dependencies) []*discordgo.MessageSend {
@@ -104,7 +104,7 @@ func AuthedDelete(ctx context.Context, name, author string, deps common.Dependen
 
 	if err := perms.CanPerform(ctx, author, "role_admins", deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command")
+		return common.SendError("User doesn't have permission to this command", author)
 	}
 
 	sp.Debug("deleting filter")
@@ -121,20 +121,20 @@ func Delete(ctx context.Context, name string, deps common.Dependencies) []*disco
 	err := deps.Storage.DeleteFilter(ctx, name)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFilterMember) {
-			return common.SendError("User not a member of filter")
+			return common.SendErrorf(nil, "User not a member of filter: %s", name)
 		}
 
 		if errors.Is(err, storage.ErrNoFilter) {
-			return common.SendError("No such filter")
+			return common.SendErrorf(nil, "No such filter: %s", name)
 		}
 
 		sp.Error("Error deleting filter")
-		return common.SendError("Error deleting filter")
+		return common.SendErrorf(nil, "Error deleting filter: %s", name)
 	}
 
 	sp.Info("deleted filter", zap.Int("id", id))
 
-	return common.SendSuccess(fmt.Sprintf("Deleted filter `%s`", name))
+	return common.SendSuccessf(nil, "Deleted filter `%s`", name)
 }
 
 func ListMembers(ctx context.Context, filter, channelID string, deps common.Dependencies) []*discordgo.MessageSend {
@@ -146,7 +146,7 @@ func ListMembers(ctx context.Context, filter, channelID string, deps common.Depe
 	userIDs, err := deps.Storage.ListFilterMembers(ctx, filter)
 	if err != nil {
 		sp.Error("Error listing filter members")
-		return common.SendError("Error getting filter member list")
+		return common.SendErrorf(nil, "Error getting filter member list for filter: %s", filter)
 	}
 
 	var memberList []string
@@ -156,13 +156,13 @@ func ListMembers(ctx context.Context, filter, channelID string, deps common.Depe
 	sort.Strings(memberList)
 
 	if len(memberList) == 0 {
-		return common.SendError("No members in filter")
+		return common.SendErrorf(nil, "No members in filter: %s", filter)
 	}
 
 	err = common.SendChunkedMessage(ctx, channelID, "Filter List", memberList, deps)
 	if err != nil {
-		sp.Error("Error sending message")
-		return common.SendError("Error sending message")
+		sp.Error("Error sending chunked message")
+		return common.SendErrorf(nil, "Error sending chunked message: %s", err)
 	}
 
 	return nil
@@ -180,7 +180,7 @@ func AuthedAddMember(ctx context.Context, userID, filter, author string, deps co
 
 	if err := perms.CanPerform(ctx, author, "role_admins", deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command")
+		return common.SendError("User doesn't have permission to this command", author)
 	}
 
 	sp.Debug("adding filter member")
@@ -211,17 +211,17 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 	before, err := common.GetMembership(ctx, userID, deps)
 	if err != nil {
 		sp.Error("error getting membership", zap.Error(err))
-		return common.SendFatal(err.Error())
+		return common.SendFatalf(nil, "Error getting membership: %s", err)
 	}
 
 	filterData, err := deps.Storage.GetFilter(ctx, filter)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoFilter) {
-			return common.SendError("No such filter %s", filter)
+			return common.SendErrorf(nil, "No such filter: %s", filter)
 		}
 
 		sp.Error("Error getting filter", zap.Error(err))
-		return common.SendError(fmt.Sprintf("Error getting filter: %s", err.Error()))
+		return common.SendErrorf(nil, "Error getting filter: %s", err)
 	}
 	sp.With(zap.Int("filter_id", filterData.ID))
 
@@ -230,17 +230,22 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 	err = deps.Storage.AddFilterMembership(ctx, filterData.ID, userID)
 	if err != nil {
 		if errors.Is(err, storage.ErrFilterMember) {
-			return common.SendError("Already member")
+			return common.SendErrorf(
+				nil,
+				"%s Already member of %s",
+				common.GetUsername(userID, deps.Session),
+				filter,
+			)
 		}
 
 		sp.Error("error getting membership")
-		return common.SendFatal(err.Error())
+		return common.SendFatalf(nil, "Error getting membership: %s", err)
 	}
 
 	after, err := common.GetMembership(ctx, userID, deps)
 	if err != nil {
 		sp.Error("error getting membership")
-		return common.SendFatal(err.Error())
+		return common.SendFatalf(nil, "Error getting membership: %s", err)
 	}
 
 	addSet := after.Difference(before)
@@ -249,7 +254,12 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 		/* TODO: this error is not always correct. If someone joins a sig they aren't a member of all filters of
 		 * it appears like they aren't in it.
 		 */
-		return common.SendError(fmt.Sprintf("<@%s> already a member of: `%s` (maybe)", userID, filter))
+		return common.SendErrorf(
+			nil,
+			"%s already a member of %s (maybe)",
+			common.GetUsername(userID, deps.Session),
+			filter,
+		)
 	}
 
 	for _, role := range addSet.ToSlice() {
@@ -257,7 +267,7 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 	}
 
 	sp.Info("added user to filter")
-	return common.SendSuccess(fmt.Sprintf("Added <@%s> to `%s`", userID, filter))
+	return common.SendSuccessf(nil, "Added <@%s> to `%s`", userID, filter)
 }
 
 func AuthedRemoveMember(ctx context.Context, userID, filter, author string, deps common.Dependencies) []*discordgo.MessageSend {
@@ -272,7 +282,7 @@ func AuthedRemoveMember(ctx context.Context, userID, filter, author string, deps
 
 	if err := perms.CanPerform(ctx, author, "role_admins", deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command")
+		return common.SendError("User doesn't have permission to this command", author)
 	}
 
 	sp.Debug("removing filter member")
@@ -294,7 +304,7 @@ func RemoveMember(ctx context.Context, userID, filterName string, deps common.De
 	before, err := common.GetMembership(ctx, userID, deps)
 	if err != nil {
 		sp.Error("error getting membership")
-		return common.SendFatal(err.Error())
+		return common.SendFatalf(nil, "Error getting membership: %s", err)
 	}
 
 	_, err = strconv.Atoi(userID)
@@ -309,11 +319,11 @@ func RemoveMember(ctx context.Context, userID, filterName string, deps common.De
 	filter, err := deps.Storage.GetFilter(ctx, filterName)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoFilter) {
-			return common.SendError("No such filter")
+			return common.SendErrorf(nil, "No such filter: %s", filter)
 		}
 
 		sp.Error("error getting filter")
-		return common.SendError("Error getting filter")
+		return common.SendErrorf(nil, "Error getting filter: %s", filter)
 	}
 
 	sp.With(zap.Int("filter_id", filter.ID))
@@ -321,19 +331,24 @@ func RemoveMember(ctx context.Context, userID, filterName string, deps common.De
 	err = deps.Storage.DeleteFilterMembership(ctx, filter.ID, userID)
 	if err != nil {
 		sp.Error("Error deleting filter membership", zap.Error(err))
-		return common.SendError("Error deleting filter membership")
+		return common.SendErrorf(
+			nil,
+			"Error removing %s from filter %s membership",
+			common.GetUsername(userID, deps.Session),
+			filter,
+		)
 	}
 
 	after, err := common.GetMembership(ctx, userID, deps)
 	if err != nil {
 		sp.Error("error getting membership")
-		return common.SendFatal(err.Error())
+		return common.SendFatalf(nil, "Error getting membership: %s", err)
 	}
 
 	removeSet := before.Difference(after)
 
 	if removeSet.Len() == 0 {
-		return common.SendError(fmt.Sprintf("<@%s> not a member of `%s`", userID, filter.Name))
+		return common.SendErrorf(nil, "<@%s> not a member of `%s`", userID, filter.Name)
 	}
 
 	for _, role := range removeSet.ToSlice() {
@@ -341,7 +356,12 @@ func RemoveMember(ctx context.Context, userID, filterName string, deps common.De
 	}
 
 	sp.Info("removed user from filter")
-	return common.SendSuccess(fmt.Sprintf("Removed <@%s> from `%s`", userID, filter.Name))
+	return common.SendSuccessf(
+		nil,
+		"Removed %s from `%s`",
+		common.GetUsername(userID, deps.Session),
+		filter.Name,
+	)
 }
 
 func QueueUpdate(ctx context.Context, action payloads.Action, memberID, roleID string, deps common.Dependencies) {
