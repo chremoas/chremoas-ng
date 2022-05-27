@@ -36,7 +36,7 @@ func List(ctx context.Context, channelID string, deps common.Dependencies) []*di
 
 	if len(permList) == 0 {
 		sp.Error("no permissions")
-		return common.SendError("No permissions")
+		return common.SendError(nil, "No permissions")
 	}
 
 	err = common.SendChunkedMessage(ctx, channelID, "Perm List", permList, deps)
@@ -64,12 +64,12 @@ func Add(ctx context.Context, permission, description, author string, deps commo
 
 	if permission == serverAdmins {
 		sp.Warn("user doesn't have rights to this permission")
-		return common.SendError("User doesn't have rights to this permission", author)
+		return common.SendError(&author, "User doesn't have rights to this permission")
 	}
 
 	if err := CanPerform(ctx, author, serverAdmins, deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command", author)
+		return common.SendError(&author, "User doesn't have permission to this command")
 	}
 
 	err := deps.Storage.InsertPermission(ctx, permission, description)
@@ -101,12 +101,12 @@ func Delete(ctx context.Context, permission, author string, deps common.Dependen
 
 	if permission == serverAdmins {
 		sp.Warn("user doesn't have rights to this permission")
-		return common.SendError("User doesn't have rights to this permission", author)
+		return common.SendError(&author, "User doesn't have rights to this permission")
 	}
 
 	if err := CanPerform(ctx, author, serverAdmins, deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command", author)
+		return common.SendError(&author, "User doesn't have permission to this command")
 	}
 
 	err := deps.Storage.DeletePermission(ctx, permission)
@@ -172,17 +172,17 @@ func AddMember(ctx context.Context, user, permission, author string, deps common
 
 	if permission == serverAdmins {
 		sp.Warn("user doesn't have rights to this permission")
-		return common.SendError("User doesn't have rights to this permission", author)
+		return common.SendError(&author, "User doesn't have rights to this permission")
 	}
 
 	if err := CanPerform(ctx, author, serverAdmins, deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command", author)
+		return common.SendError(&author, "User doesn't have permission to this command")
 	}
 
 	if !common.IsDiscordUser(user) {
 		sp.Warn("second argument must be a discord user")
-		return common.SendError("second argument must be a discord user", author)
+		return common.SendError(&author, "second argument must be a discord user")
 	}
 
 	userID := common.ExtractUserId(user)
@@ -233,17 +233,17 @@ func RemoveMember(ctx context.Context, user, permission, author string, deps com
 
 	if permission == serverAdmins {
 		sp.Warn("user doesn't have rights to this permission")
-		return common.SendError("User doesn't have rights to this permission", author)
+		return common.SendError(&author, "User doesn't have rights to this permission")
 	}
 
 	if err := CanPerform(ctx, author, serverAdmins, deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command", author)
+		return common.SendError(&author, "User doesn't have permission to this command")
 	}
 
 	if !common.IsDiscordUser(user) {
 		sp.Warn("second argument must be a discord user")
-		return common.SendError("second argument must be a discord user", author)
+		return common.SendError(&author, "second argument must be a discord user")
 	}
 
 	userID := common.ExtractUserId(user)
@@ -261,7 +261,7 @@ func RemoveMember(ctx context.Context, user, permission, author string, deps com
 	err = deps.Storage.DeletePermissionMembership(ctx, perm.ID, userID)
 	if err != nil {
 		sp.Error("Error removing permission membership", zap.Error(err))
-		return common.SendErrorf(&author, "Error removing permission memberhsip: %s", err)
+		return common.SendErrorf(&author, "Error removing permission membership: %s", err)
 	}
 
 	sp.Info("removed user from permission")
@@ -289,7 +289,7 @@ func UserPerms(ctx context.Context, user string, deps common.Dependencies) []*di
 
 	if !common.IsDiscordUser(user) {
 		sp.Warn("second argument must be a discord user")
-		return common.SendError("second argument must be a discord user")
+		return common.SendError(nil, "second argument must be a discord user")
 	}
 
 	userID := common.ExtractUserId(user)
@@ -297,7 +297,7 @@ func UserPerms(ctx context.Context, user string, deps common.Dependencies) []*di
 	permissions, err := deps.Storage.GetUserPermissions(ctx, userID)
 	if err != nil {
 		sp.Error("Error getting user permissions", zap.Error(err))
-		return common.SendError("Error getting user permissions", userID)
+		return common.SendErrorf(nil, "Error getting user permissions: %s", err)
 	}
 
 	for p := range permissions {

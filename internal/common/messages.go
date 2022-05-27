@@ -18,55 +18,58 @@ func makeString(message string, sender string, sign string) string {
 }
 
 func SendSuccessf(sender *string, format string, args ...interface{}) []*discordgo.MessageSend {
-	return SendSuccess(fmt.Sprintf(format, args...), *sender)
+	return SendSuccess(sender, fmt.Sprintf(format, args...))
 }
 
-func SendSuccess(message string, sender ...string) []*discordgo.MessageSend {
+func SendSuccess(sender *string, message string) []*discordgo.MessageSend {
 	var (
 		s        string
 		messages []*discordgo.MessageSend
 	)
 
-	if len(sender) == 0 {
+	if sender == nil {
 		s = ""
 	} else {
-		s = sender[0]
+		s = *sender
 	}
+
 	return append(messages, &discordgo.MessageSend{Content: makeString(message, s, ":white_check_mark:")})
 }
 
 func SendErrorf(sender *string, format string, args ...interface{}) []*discordgo.MessageSend {
-	return SendSuccess(fmt.Sprintf(format, args...), *sender)
+	return SendError(sender, fmt.Sprintf(format, args...))
 }
 
-func SendError(message string, sender ...string) []*discordgo.MessageSend {
+func SendError(sender *string, message string) []*discordgo.MessageSend {
 	var (
 		s        string
 		messages []*discordgo.MessageSend
 	)
 
-	if len(sender) == 0 {
+	if sender == nil {
 		s = ""
 	} else {
-		s = sender[0]
+		s = *sender
 	}
+
 	return append(messages, &discordgo.MessageSend{Content: makeString(message, s, ":warning:")})
 }
 
 func SendFatalf(sender *string, format string, args ...interface{}) []*discordgo.MessageSend {
-	return SendSuccess(fmt.Sprintf(format, args...), *sender)
+	return SendFatal(sender, fmt.Sprintf(format, args...))
 }
 
-func SendFatal(message string, sender ...string) []*discordgo.MessageSend {
+func SendFatal(sender *string, message string) []*discordgo.MessageSend {
 	var (
 		s        string
 		messages []*discordgo.MessageSend
 	)
 
-	if len(sender) == 0 {
+	if sender == nil {
 		s = ""
 	} else {
-		s = sender[0]
+		s = *sender
 	}
+
 	return append(messages, &discordgo.MessageSend{Content: makeString(message, s, ":octagonal_sign:")})
 }

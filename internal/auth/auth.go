@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
 
 	sl "github.com/bhechinger/spiffylogger"
 	"github.com/bwmarrin/discordgo"
@@ -131,11 +130,11 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 	characterID, used, err := deps.Storage.GetAuthCode(ctx, authCode)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoAuthCode) {
-			return common.SendError("No such auth code")
+			return common.SendError(&sender, "No such auth code")
 		}
 
 		sp.Error("Error getting auth code", zap.Error(err))
-		return common.SendError(fmt.Sprintf("Error getting character's auth code from the DB: %d", characterID))
+		return common.SendErrorf(&sender, "Error getting auth code from the DB: %s", err)
 	}
 
 	sp.With(
@@ -145,17 +144,17 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 
 	if used {
 		sp.Warn("auth code already used")
-		return common.SendError(fmt.Sprintf("Auth code already used: %s", authCode))
+		return common.SendErrorf(&sender, "Auth code already used: %s", authCode)
 	}
 
 	character, err := deps.Storage.GetCharacter(ctx, characterID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoCharacter) {
-			return common.SendError("No such character")
+			return common.SendErrorf(&sender, "No such character: %d", characterID)
 		}
 
 		sp.Error("Error getting character", zap.Error(err))
-		return common.SendError(fmt.Sprintf("Error getting character from the DB: %d", characterID))
+		return common.SendErrorf(&sender, "Error getting character from the DB: %d", characterID)
 	}
 
 	sp.With(
@@ -166,24 +165,24 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 	err = deps.Storage.UpdateAuthCode(ctx, authCode)
 	if err != nil {
 		sp.Error("Error updating auth code", zap.Error(err))
-		return common.SendError("Error updating auth code")
+		return common.SendErrorf(&sender, "Error updating auth code: %s", err)
 	}
 
 	err = deps.Storage.InsertUserCharacterMap(ctx, sender, characterID)
 	if err != nil {
 		sp.Error("Error inserting user character map", zap.Error(err))
-		return common.SendError("Error inserting user character map")
+		return common.SendErrorf(&sender, "Error inserting user character map: %s", err)
 	}
 
 	// get corp ticker
 	corporation, err := deps.Storage.GetCorporation(ctx, character.CorporationID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoCorporation) {
-			return common.SendError("No such corporation")
+			return common.SendErrorf(&sender, "No such corporation: %d", character.CorporationID)
 		}
 
 		sp.Error("Error getting corporation", zap.Error(err))
-		return common.SendError("Error getting corporation")
+		return common.SendErrorf(&sender, "Error getting corporation: %s", err)
 	}
 
 	sp.With(
@@ -198,11 +197,11 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 		alliance, err := deps.Storage.GetAlliance(ctx, corporation.AllianceID.Int32)
 		if err != nil {
 			if errors.Is(err, storage.ErrNoAlliance) {
-				return common.SendError("No such alliance")
+				return common.SendErrorf(&sender, "No such alliance: %d", corporation.AllianceID.Int32)
 			}
 
 			sp.Error("Error getting alliance", zap.Error(err))
-			return common.SendError("Error getting alliance")
+			return common.SendErrorf(&sender, "Error getting alliance: %s", err)
 		}
 		sp.With(zap.String("alliance_ticker", alliance.Ticker))
 
@@ -210,5 +209,9 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 	}
 
 	sp.Info("authed user")
-	return common.SendSuccess(fmt.Sprintf("<@%s> **Success**: %s has been successfully authed.", sender, character.Name))
+	return common.SendSuccessf(
+		&sender,
+		"**Success**: %s has been successfully authed.",
+		character.Name,
+	)
 }

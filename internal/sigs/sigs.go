@@ -70,7 +70,7 @@ func (s Sig) Add(ctx context.Context) []*discordgo.MessageSend {
 
 	if err := perms.CanPerform(ctx, s.author, "sig_admins", s.dependencies); err != nil {
 		sp.Error("User not authorized", zap.Error(err))
-		return common.SendError("User not authorized", s.author)
+		return common.SendError(&s.author, "User not authorized")
 	}
 	return filters.AddMember(ctx, s.userID, s.sig, s.dependencies)
 }
@@ -80,8 +80,8 @@ func (s Sig) Remove(ctx context.Context) []*discordgo.MessageSend {
 	defer sp.Close()
 
 	if err := perms.CanPerform(ctx, s.author, "sig_admins", s.dependencies); err != nil {
-		sp.Error("User not authorizee", zap.Error(err))
-		return common.SendError("User not authorized", s.author)
+		sp.Error("User not authorized", zap.Error(err))
+		return common.SendError(&s.author, "User not authorized")
 	}
 	return filters.RemoveMember(ctx, s.userID, s.sig, s.dependencies)
 }

@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -37,7 +36,7 @@ const (
 )
 
 // Sig will be called (due to AddHandler above) every time a new
-// message is created on any channel that the autenticated bot has access to.
+// message is created on any channel that the authenticated bot has access to.
 func (c Command) Sig(s *discordgo.Session, m *discordgo.Message, _ *mux.Context) {
 	ctx, sp := sl.OpenCorrelatedSpan(c.ctx, sl.NewID())
 	defer sp.Close()
@@ -87,7 +86,7 @@ func (c Command) doSig(ctx context.Context, m *discordgo.Message) []*discordgo.M
 			}
 
 			if !common.IsDiscordUser(cmdStr[3]) {
-				return common.SendError("member name must be a discord user")
+				return common.SendError(&m.Author.ID, "member name must be a discord user")
 			}
 
 			return roles.ListUserRoles(ctx, roles.Sig, common.ExtractUserId(cmdStr[3]), c.dependencies)
@@ -102,7 +101,7 @@ func (c Command) doSig(ctx context.Context, m *discordgo.Message) []*discordgo.M
 		} else {
 			joinable, err := strconv.ParseBool(cmdStr[3])
 			if err != nil {
-				return common.SendError(fmt.Sprintf("Error parsing joinable `%s` is not a bool value", cmdStr[3]))
+				return common.SendErrorf(&m.Author.ID, "Error parsing joinable `%s` is not a bool value", cmdStr[3])
 			}
 			return roles.AuthedAdd(ctx, roles.Sig, joinable, cmdStr[2], strings.Join(cmdStr[4:], " "), "discord", m.Author.ID, c.dependencies)
 		}
@@ -135,7 +134,7 @@ func (c Command) doSig(ctx context.Context, m *discordgo.Message) []*discordgo.M
 		}
 		sig, err = sigs.New(ctx, cmdStr[2], cmdStr[3], m.Author.ID, c.dependencies)
 		if err != nil {
-			return common.SendError(err.Error())
+			return common.SendErrorf(&m.Author.ID, "error instantiating sigs object: %s", err)
 		}
 		return sig.Add(ctx)
 
@@ -149,7 +148,7 @@ func (c Command) doSig(ctx context.Context, m *discordgo.Message) []*discordgo.M
 		}
 		sig, err = sigs.New(ctx, cmdStr[2], cmdStr[3], m.Author.ID, c.dependencies)
 		if err != nil {
-			return common.SendError(err.Error())
+			return common.SendErrorf(&m.Author.ID, "error instantiating sigs object: %s", err)
 		}
 		return sig.Remove(ctx)
 
@@ -163,7 +162,7 @@ func (c Command) doSig(ctx context.Context, m *discordgo.Message) []*discordgo.M
 		}
 		sig, err = sigs.New(ctx, m.Author.ID, cmdStr[2], m.Author.ID, c.dependencies)
 		if err != nil {
-			return common.SendError(err.Error())
+			return common.SendErrorf(&m.Author.ID, "error instantiating sigs object: %s", err)
 		}
 		return sig.Join(ctx)
 
@@ -177,7 +176,7 @@ func (c Command) doSig(ctx context.Context, m *discordgo.Message) []*discordgo.M
 		}
 		sig, err = sigs.New(ctx, m.Author.ID, cmdStr[2], m.Author.ID, c.dependencies)
 		if err != nil {
-			return common.SendError(err.Error())
+			return common.SendErrorf(&m.Author.ID, "error instantiating sigs object: %s", err)
 		}
 		return sig.Leave(ctx)
 

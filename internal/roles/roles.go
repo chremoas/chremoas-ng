@@ -46,7 +46,7 @@ func List(ctx context.Context, sig, all bool, channelID string, deps common.Depe
 	roles, err := deps.Storage.GetRolesByType(ctx, sig)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoRole) {
-			return common.SendError("No such role")
+			return common.SendError(nil, "No such role")
 		}
 
 		sp.Error("error getting roles", zap.Error(err))
@@ -244,7 +244,7 @@ func AuthedAdd(ctx context.Context, sig, joinable bool, ticker, name, chatType, 
 
 	if err := perms.CanPerform(ctx, author, adminType[sig], deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command")
+		return common.SendError(nil, "User doesn't have permission to this command")
 	}
 
 	sp.Debug("adding role")
@@ -268,15 +268,15 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 
 	// Type, Name and ShortName are required so let's check for those
 	if len(chatType) == 0 {
-		return common.SendError("type is required")
+		return common.SendError(nil, "type is required")
 	}
 
 	if len(ticker) == 0 {
-		return common.SendError("short name is required")
+		return common.SendError(nil, "short name is required")
 	}
 
 	if len(name) == 0 {
-		return common.SendError("name is required")
+		return common.SendError(nil, "name is required")
 	}
 
 	if !validListItem(chatType, roleTypes) {
@@ -318,10 +318,10 @@ func Add(ctx context.Context, sig, joinable bool, ticker, name, chatType string,
 	err = deps.Storage.InsertRoleFilter(ctx, roleID, filterID)
 	if err != nil {
 		if errors.Is(err, storage.ErrRoleFilterExists) {
-			return common.SendError("Role filter already exists")
+			return common.SendError(nil, "Role filter already exists")
 		}
 		sp.Error("Error inserting role filter", zap.Error(err))
-		return common.SendError("Error inserting role filter")
+		return common.SendError(nil, "Error inserting role filter")
 	}
 
 	err = queueUpdate(ctx, role, payloads.Upsert, deps)
@@ -353,7 +353,7 @@ func AuthedDestroy(ctx context.Context, sig bool, ticker, author string, deps co
 
 	if err := perms.CanPerform(ctx, author, adminType[sig], deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command")
+		return common.SendError(nil, "User doesn't have permission to this command")
 	}
 
 	sp.Debug("destroying role")
@@ -373,17 +373,17 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 	defer cancel()
 
 	if len(ticker) == 0 {
-		return common.SendError("short name is required")
+		return common.SendError(nil, "short name is required")
 	}
 
 	role, err := deps.Storage.GetRole(ctx, "", ticker, &sig)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoRole) {
-			return common.SendError("No such role")
+			return common.SendError(nil, "No such role")
 		}
 
 		sp.Error("Error getting role", zap.Error(err))
-		return common.SendError("Error getting role")
+		return common.SendError(nil, "Error getting role")
 	}
 
 	sp.With(zap.Int64("chat_id", role.ChatID))
@@ -391,7 +391,7 @@ func Destroy(ctx context.Context, sig bool, ticker string, deps common.Dependenc
 	err = deps.Storage.DeleteRole(ctx, ticker, sig)
 	if err != nil {
 		sp.Error("Error deleting role", zap.Error(err))
-		return common.SendError("Error deleting role")
+		return common.SendError(nil, "Error deleting role")
 	}
 
 	err = queueUpdate(ctx, payloads.Role{ID: fmt.Sprintf("%d", role.ChatID)}, payloads.Delete, deps)
@@ -424,11 +424,11 @@ func AuthedUpdate(ctx context.Context, sig bool, ticker, key, value, author stri
 
 	if err := perms.CanPerform(ctx, author, adminType[sig], deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command")
+		return common.SendError(nil, "User doesn't have permission to this command")
 	}
 
 	if !validListItem(key, roleKeys) {
-		return common.SendError(fmt.Sprintf("`%s` isn't a valid Role Key", key))
+		return common.SendErrorf(nil, "`%s` isn't a valid Role Key", key)
 	}
 
 	values := map[string]string{
@@ -454,11 +454,11 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 
 	// ShortName, Key and Value are required so let's check for those
 	if len(ticker) == 0 {
-		return common.SendError("ticker is required")
+		return common.SendError(nil, "ticker is required")
 	}
 
 	if len(values) == 0 {
-		return common.SendError("values is required")
+		return common.SendError(nil, "values is required")
 	}
 
 	roleData, err := deps.Storage.GetRoleByType(ctx, sig, ticker)
@@ -468,7 +468,7 @@ func Update(ctx context.Context, sig bool, ticker string, values map[string]stri
 	err = deps.Storage.UpdateRoleValues(ctx, sig, ticker, values)
 	if err != nil {
 		sp.Error("Error updating role", zap.Error(err))
-		return common.SendError("Error updating role")
+		return common.SendError(nil, "Error updating role")
 	}
 
 	role, err := GetChremoasRole(ctx, sig, ticker, deps)
@@ -590,7 +590,7 @@ func ListFilters(ctx context.Context, sig bool, ticker string, deps common.Depen
 	filterList, err := deps.Storage.GetTickerFilters(ctx, sig, ticker)
 	if err != nil {
 		sp.Error("Error getting ticker filters", zap.Error(err))
-		return common.SendError("Error getting filters")
+		return common.SendError(nil, "Error getting filters")
 	}
 
 	for f := range filterList {
@@ -608,7 +608,7 @@ func ListFilters(ctx context.Context, sig bool, ticker string, deps common.Depen
 		return append(messages, &discordgo.MessageSend{Embed: embed.GetMessageEmbed()})
 	} else {
 		sp.Warn("no such role")
-		return common.SendError(fmt.Sprintf("No such %s: %s", roleType[sig], ticker))
+		return common.SendErrorf(nil, "No such %s: %s", roleType[sig], ticker)
 	}
 }
 
@@ -625,7 +625,7 @@ func AuthedAddFilter(ctx context.Context, sig bool, filter, ticker, author strin
 
 	if err := perms.CanPerform(ctx, author, adminType[sig], deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command")
+		return common.SendError(&author, "User doesn't have permission to this command")
 	}
 
 	sp.Debug("adding filter")
@@ -648,11 +648,11 @@ func AddFilter(ctx context.Context, sig bool, name, ticker string, deps common.D
 	filter, err := deps.Storage.GetFilter(ctx, name)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoFilter) {
-			return common.SendError("No such filter")
+			return common.SendError(nil, "No such filter")
 		}
 
 		sp.Error("Error getting filter", zap.Error(err))
-		return common.SendError("Error getting filter")
+		return common.SendErrorf(nil, "Error getting filter: %s", err)
 	}
 
 	sp.With(zap.Int("filter_id", filter.ID))
@@ -660,11 +660,11 @@ func AddFilter(ctx context.Context, sig bool, name, ticker string, deps common.D
 	role, err := deps.Storage.GetRole(ctx, "", ticker, &sig)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoRole) {
-			return common.SendError("No such role")
+			return common.SendErrorf(nil, "No such role: %s", ticker)
 		}
 
 		sp.Error("Error getting role", zap.Error(err))
-		return common.SendError("Error getting role")
+		return common.SendErrorf(nil, "Error getting role: %s", err)
 	}
 
 	sp.With(zap.String("role_id", role.ID))
@@ -672,16 +672,16 @@ func AddFilter(ctx context.Context, sig bool, name, ticker string, deps common.D
 	roleID, err := strconv.Atoi(role.ID)
 	if err != nil {
 		sp.Error("Error converting role ID from string to int", zap.String("role.ID", role.ID), zap.Error(err))
-		return common.SendError("Error converting role ID from string to int")
+		return common.SendError(nil, "Error converting role ID from string to int")
 	}
 
 	err = deps.Storage.InsertRoleFilter(ctx, roleID, filter.ID)
 	if err != nil {
 		if errors.Is(err, storage.ErrRoleFilterExists) {
-			return common.SendError("Role filter already exists")
+			return common.SendError(nil, "Role filter already exists")
 		}
 		sp.Error("Error inserting role filter", zap.Error(err))
-		return common.SendError("Error inserting role filter")
+		return common.SendErrorf(nil, "Error inserting role filter: %s", err)
 	}
 
 	sp.Info("added filter")
@@ -701,7 +701,7 @@ func AuthedRemoveFilter(ctx context.Context, sig bool, filter, ticker, author st
 
 	if err := perms.CanPerform(ctx, author, adminType[sig], deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command")
+		return common.SendError(&author, "User doesn't have permission to this command")
 	}
 
 	sp.Debug("removing filter")
@@ -721,11 +721,11 @@ func RemoveFilter(ctx context.Context, sig bool, name, ticker string, deps commo
 	err := deps.Storage.DeleteFilter(ctx, name)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFilterMember) {
-			return common.SendError("User not a member of filter")
+			return common.SendErrorf(nil, "User not a member of filter: %s", name)
 		}
 
 		sp.Error("Error deleting filter", zap.Error(err))
-		return common.SendError("Error deleting filter")
+		return common.SendErrorf(nil, "Error deleting filter: %s", err)
 	}
 
 	sp.Info("removed filter")

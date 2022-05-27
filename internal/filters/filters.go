@@ -38,7 +38,7 @@ func List(ctx context.Context, channelID string, deps common.Dependencies) []*di
 	sort.Strings(filterList)
 
 	if len(filterList) == 0 {
-		return common.SendError("No filters")
+		return common.SendError(nil, "No filters")
 	}
 
 	err = common.SendChunkedMessage(ctx, channelID, "Filter List", filterList, deps)
@@ -62,7 +62,7 @@ func AuthedAdd(ctx context.Context, name, description, author string, deps commo
 
 	if err := perms.CanPerform(ctx, author, "role_admins", deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command", author), -1
+		return common.SendError(&author, "User doesn't have permission to this command"), -1
 	}
 
 	sp.Debug("adding filter")
@@ -104,7 +104,7 @@ func AuthedDelete(ctx context.Context, name, author string, deps common.Dependen
 
 	if err := perms.CanPerform(ctx, author, "role_admins", deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command", author)
+		return common.SendError(&author, "User doesn't have permission to this command")
 	}
 
 	sp.Debug("deleting filter")
@@ -180,7 +180,7 @@ func AuthedAddMember(ctx context.Context, userID, filter, author string, deps co
 
 	if err := perms.CanPerform(ctx, author, "role_admins", deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command", author)
+		return common.SendError(&author, "User doesn't have permission to this command")
 	}
 
 	sp.Debug("adding filter member")
@@ -203,7 +203,7 @@ func AddMember(ctx context.Context, userID, filter string, deps common.Dependenc
 	if err != nil {
 		if !common.IsDiscordUser(userID) {
 			sp.Warn("second argument must be a discord user")
-			return common.SendError("second argument must be a discord user")
+			return common.SendError(nil, "second argument must be a discord user")
 		}
 		userID = common.ExtractUserId(userID)
 	}
@@ -282,7 +282,7 @@ func AuthedRemoveMember(ctx context.Context, userID, filter, author string, deps
 
 	if err := perms.CanPerform(ctx, author, "role_admins", deps); err != nil {
 		sp.Warn("user doesn't have permission to this command", zap.Error(err))
-		return common.SendError("User doesn't have permission to this command", author)
+		return common.SendError(&author, "User doesn't have permission to this command")
 	}
 
 	sp.Debug("removing filter member")
@@ -311,7 +311,7 @@ func RemoveMember(ctx context.Context, userID, filterName string, deps common.De
 	if err != nil {
 		if !common.IsDiscordUser(userID) {
 			sp.Warn("second argument must be a discord user")
-			return common.SendError("second argument must be a discord user")
+			return common.SendError(nil, "second argument must be a discord user")
 		}
 		userID = common.ExtractUserId(userID)
 	}

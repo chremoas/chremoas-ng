@@ -29,7 +29,7 @@ const (
 )
 
 // Role will be called (due to AddHandler above) every time a new
-// message is created on any channel that the autenticated bot has access to.
+// message is created on any channel that the authenticated bot has access to.
 func (c Command) Role(s *discordgo.Session, m *discordgo.Message, _ *mux.Context) {
 	ctx, sp := sl.OpenCorrelatedSpan(c.ctx, sl.NewID())
 	defer sp.Close()
@@ -79,7 +79,7 @@ func (c Command) doRole(ctx context.Context, m *discordgo.Message) []*discordgo.
 			}
 
 			if !common.IsDiscordUser(cmdStr[3]) {
-				return common.SendError("member name must be a discord user")
+				return common.SendError(&m.Author.ID, "member name must be a discord user")
 			}
 
 			return roles.ListUserRoles(ctx, roles.Role, common.ExtractUserId(cmdStr[3]), c.dependencies)
