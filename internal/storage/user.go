@@ -13,6 +13,7 @@ import (
 )
 
 var ErrNoDiscordUser = errors.New("no such discord user")
+var ErrUserMapped = errors.New("user already mapped to character")
 
 func (s Storage) GetDiscordUser(ctx context.Context, characterID int32) (string, error) {
 	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
@@ -122,9 +123,9 @@ func (s Storage) InsertUserCharacterMap(ctx context.Context, sender string, char
 
 	_, err = query.QueryContext(ctx)
 	if err != nil {
-		if err.(*pq.Error).Code != "23505" {
+		if err.(*pq.Error).Code == "23505" {
 			// Duplicate entry, which is fine, actually
-			return nil
+			return ErrUserMapped
 		}
 
 		sp.Error("Error updating user character map", zap.Error(err))

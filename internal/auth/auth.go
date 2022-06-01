@@ -170,6 +170,10 @@ func Confirm(ctx context.Context, authCode, sender string, deps common.Dependenc
 
 	err = deps.Storage.InsertUserCharacterMap(ctx, sender, characterID)
 	if err != nil {
+		if err == storage.ErrUserMapped {
+			return common.SendError(&sender, "User already mapped to character")
+		}
+
 		sp.Error("Error inserting user character map", zap.Error(err))
 		return common.SendErrorf(&sender, "Error inserting user character map: %s", err)
 	}
