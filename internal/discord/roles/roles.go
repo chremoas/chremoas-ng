@@ -37,6 +37,7 @@ func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
 
 	for d := range deliveries {
 		func() {
+			sp.Debug("processing delivery")
 			if len(d.Body) == 0 {
 				sp.Error("Message has zero length body", zap.Any("delivery", d))
 
@@ -172,12 +173,14 @@ func (r Role) upsert(ctx context.Context, role payloads.RolePayload) error {
 		role.Role.ID = newRole.ID
 	}
 
-	_, err = r.dependencies.Session.GuildRoleEdit(role.GuildID, role.Role.ID, role.Role.Name, role.Role.Color, role.Role.Hoist,
+	st, err := r.dependencies.Session.GuildRoleEdit(role.GuildID, role.Role.ID, role.Role.Name, role.Role.Color, role.Role.Hoist,
 		role.Role.Permissions, role.Role.Mentionable)
 	if err != nil {
 		sp.Error("Error editing role", zap.Error(err))
 		return err
 	}
+
+	sp.Debug("GuildRoleEdit returned payload", zap.Any("return_payload", st))
 
 	sp.Info("Upserted role to discord")
 

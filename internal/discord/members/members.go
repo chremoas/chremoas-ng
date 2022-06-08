@@ -36,6 +36,7 @@ func (m Member) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) 
 
 	for d := range deliveries {
 		func() {
+			sp.Debug("processing delivery")
 			if len(d.Body) == 0 {
 				sp.Info("message body was empty")
 				err := d.Ack(false)
