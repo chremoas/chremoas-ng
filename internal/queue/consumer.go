@@ -17,7 +17,7 @@ type Consumer struct {
 	handler func(deliveries <-chan amqp.Delivery, done chan error)
 }
 
-func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName, key, ctag string,
+func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName, key, ctag string, threads int,
 	handler func(deliveries <-chan amqp.Delivery, done chan error)) (*Consumer, error) {
 
 	_, sp := sl.OpenSpan(ctx)
@@ -120,7 +120,9 @@ func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName
 		return nil, err
 	}
 
-	go c.handler(deliveries, c.done)
+	for i := 1; i <= threads; i++ {
+		go c.handler(deliveries, c.done)
+	}
 
 	return c, nil
 }

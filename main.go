@@ -173,7 +173,7 @@ func main() {
 	// Member consumer
 	members := discordMembers.New(ctx, dependencies)
 	membersConsumer, err := queue.NewConsumer(ctx, queueURI, "members", "direct", "members",
-		"members", "members", members.HandleMessage)
+		"members", "members", 8, members.HandleMessage)
 	if err != nil {
 		sp.Error("Error setting up members consumer", zap.Error(err))
 	}
@@ -187,7 +187,7 @@ func main() {
 	// Role consumer
 	roles := discordRoles.New(ctx, dependencies)
 	rolesConsumer, err := queue.NewConsumer(ctx, queueURI, "roles", "direct", "roles",
-		"roles", "roles", roles.HandleMessage)
+		"roles", "roles", 8, roles.HandleMessage)
 	if err != nil {
 		sp.Error("Error setting up members consumer", zap.Error(err))
 	}
