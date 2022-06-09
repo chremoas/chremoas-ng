@@ -26,11 +26,14 @@ func New(ctx context.Context, deps common.Dependencies) *Role {
 	}
 }
 
-func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error) {
+func (r Role) HandleMessage(deliveries <-chan amqp.Delivery, done chan error, threadID int) {
 	ctx, sp := sl.OpenSpan(r.ctx)
 	defer sp.Close()
 
-	sp.With(zap.String("queue", "role"))
+	sp.With(
+		zap.String("queue", "role"),
+		zap.Int("threadID", threadID),
+	)
 
 	sp.Info("Started roles message handling")
 	defer sp.Info("Completed roles message handling")

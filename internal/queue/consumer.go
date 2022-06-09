@@ -9,16 +9,18 @@ import (
 	"go.uber.org/zap"
 )
 
+type Handler func(deliveries <-chan amqp.Delivery, done chan error, threadID int)
+
 type Consumer struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
 	tag     string
 	done    chan error
-	handler func(deliveries <-chan amqp.Delivery, done chan error)
+	handler Handler
 }
 
 func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName, key, ctag string, threads int,
-	handler func(deliveries <-chan amqp.Delivery, done chan error)) (*Consumer, error) {
+	handler Handler) (*Consumer, error) {
 
 	_, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
@@ -121,7 +123,7 @@ func NewConsumer(ctx context.Context, amqpURI, exchange, exchangeType, queueName
 	}
 
 	for i := 1; i <= threads; i++ {
-		go c.handler(deliveries, c.done)
+		go c.handler(deliveries, c.done, i)
 	}
 
 	return c, nil
