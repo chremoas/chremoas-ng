@@ -142,7 +142,7 @@ func (s Storage) GetRoleByChatID(ctx context.Context, chatID string) (payloads.R
 }
 
 func (s Storage) GetRoleByType(ctx context.Context, sig bool, shortName string) (payloads.Role, error) {
-	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
+	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
 	sp.With(
@@ -175,7 +175,7 @@ func (s Storage) GetRolesByType(ctx context.Context, sig bool) ([]payloads.Role,
 }
 
 func (s Storage) doGetRoles(ctx context.Context, sig bool, shortName *string) ([]payloads.Role, error) {
-	ctx, sp := sl.OpenCorrelatedSpan(ctx, sl.NewID())
+	ctx, sp := sl.OpenSpan(ctx)
 	defer sp.Close()
 
 	ctx, cancel := context.WithCancel(ctx)
